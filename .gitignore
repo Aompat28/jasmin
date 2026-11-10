@@ -1,0 +1,22 @@
+# Environment variables & secrets
+.env
+.env.*
+
+# Uploaded files & slips (preserve directory with .gitkeep)
+/uploads/*
+!/uploads/.gitkeep
+
+# Temporary & backup files
+*.bak
+*.log
+/scratch/
+scratch_*
+.DS_Store
+Thumbs.db
+
+# Tunnel & deployment scripts containing server passwords
+start_production_tunnel.py
+Start_Production_Tunnel.bat
+
+# Database dumps with user credentials
+*.sql
