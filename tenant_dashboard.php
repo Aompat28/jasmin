@@ -253,8 +253,11 @@ $stmtAllReq = $conn->prepare("
 ");
 
 $stmtAllReq->execute([$tenantId]);
-
 $myRequests = $stmtAllReq->fetchAll(PDO::FETCH_ASSOC);
+foreach ($myRequests as &$r) {
+    $r['reqCode'] = 'REQ-' . str_pad($r['requestId'], 4, '0', STR_PAD_LEFT);
+}
+unset($r);
 
 
 
@@ -695,10 +698,11 @@ foreach ($myRequests as $req) {
     if ($req['status'] === 'Completed') {
         $staffRoleTh = in_array($req['staffRole'] ?? '', ['Cleaner', 'Housekeeper']) ? 'แม่บ้าน' : 'ช่าง';
         $staffNamePart = !empty($req['staffName']) ? ' โดย ' . $staffRoleTh . 'คุณ' . htmlspecialchars($req['staffName']) : '';
+        $reqCode = !empty($req['reqCode']) ? $req['reqCode'] : ('REQ-' . str_pad($req['requestId'] ?? 0, 4, '0', STR_PAD_LEFT));
         $tenantNotifications[] = [
             'type' => 'success',
             'icon' => 'check-circle-2',
-            'title' => 'งานแจ้งซ่อม ' . $req['reqCode'] . ' ดำเนินการเสร็จสิ้นแล้ว',
+            'title' => 'งานแจ้งซ่อม ' . $reqCode . ' ดำเนินการเสร็จสิ้นแล้ว',
             'desc' => htmlspecialchars($req['category']) . ' แก้ไขเสร็จสิ้นเรียบร้อย' . $staffNamePart . ' คลิกเพื่อตรวจผลงานและให้คะแนนบริการ',
             'link' => '#',
             'onclick' => 'openRequestDetailModal(' . $req['requestId'] . ')',
