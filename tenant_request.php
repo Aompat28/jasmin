@@ -178,53 +178,17 @@ if (isset($_POST['submit_request'])) {
 
 
         if (isset($_FILES['request_image']) && $_FILES['request_image']['error'] == 0) {
-
-
-
-            $uploadDir = 'uploads/';
-
-
-
+            $uploadDir = __DIR__ . '/uploads/';
             if (!is_dir($uploadDir)) { 
-
-
-
                 mkdir($uploadDir, 0777, true); 
-
-
-
             }
-
-
-
             $ext = strtolower(pathinfo($_FILES['request_image']['name'], PATHINFO_EXTENSION));
-
-
-
             $fileName = time() . '_req_' . uniqid() . '.' . $ext;
-
-
-
             $targetFilePath = $uploadDir . $fileName;
-
-
-
             
-
-
-
             if (move_uploaded_file($_FILES['request_image']['tmp_name'], $targetFilePath)) {
-
-
-
-                $requestImage = $targetFilePath;
-
-
-
+                $requestImage = 'uploads/' . $fileName;
             }
-
-
-
         }
 
 

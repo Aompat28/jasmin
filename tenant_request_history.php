@@ -335,6 +335,15 @@ $stmtReq->execute([$tenantId]);
 
 
 $requests = $stmtReq->fetchAll(PDO::FETCH_ASSOC);
+foreach ($requests as &$reqItem) {
+    if (!empty($reqItem['requestImage']) && !file_exists(__DIR__ . '/' . $reqItem['requestImage'])) {
+        $reqItem['requestImage'] = '';
+    }
+    if (!empty($reqItem['completionImage']) && !file_exists(__DIR__ . '/' . $reqItem['completionImage'])) {
+        $reqItem['completionImage'] = '';
+    }
+}
+unset($reqItem);
 
 
 
@@ -1108,7 +1117,7 @@ foreach ($requests as $r) {
 
 
 
-                <img src="<?php echo htmlspecialchars($req['requestImage']); ?>" class="w-full h-full object-cover transition group-hover/img:scale-105" alt="รูปปัญหา">
+                <img src="<?php echo htmlspecialchars($req['requestImage']); ?>" class="w-full h-full object-cover transition group-hover/img:scale-105" alt="รูปปัญหา" onerror="this.onerror=null; this.style.display='none';">
 
 
 

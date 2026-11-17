@@ -256,6 +256,12 @@ $stmtAllReq->execute([$tenantId]);
 $myRequests = $stmtAllReq->fetchAll(PDO::FETCH_ASSOC);
 foreach ($myRequests as &$r) {
     $r['reqCode'] = 'REQ-' . str_pad($r['requestId'], 4, '0', STR_PAD_LEFT);
+    if (!empty($r['requestImage']) && !file_exists(__DIR__ . '/' . $r['requestImage'])) {
+        $r['requestImage'] = '';
+    }
+    if (!empty($r['completionImage']) && !file_exists(__DIR__ . '/' . $r['completionImage'])) {
+        $r['completionImage'] = '';
+    }
 }
 unset($r);
 
