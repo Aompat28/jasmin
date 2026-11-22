@@ -2429,21 +2429,21 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
 
                         <tr class="bg-slate-50/75 border-b border-slate-200/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
 
-                            <th class="p-3.5 sm:p-4 whitespace-nowrap">วันที่ยื่น / รหัสคำขอ</th>
+                            <th class="p-3 whitespace-nowrap">วันที่ยื่น / รหัส</th>
 
-                            <th class="p-3.5 sm:p-4 whitespace-nowrap">ผู้เช่า</th>
+                            <th class="p-3 whitespace-nowrap">ผู้เช่า</th>
 
-                            <th class="p-3.5 sm:p-4 whitespace-nowrap">ห้องปัจจุบัน</th>
+                            <th class="p-3 whitespace-nowrap">ห้องปัจจุบัน</th>
 
-                            <th class="p-3.5 sm:p-4 whitespace-nowrap">ห้องที่ต้องการย้าย</th>
+                            <th class="p-3 whitespace-nowrap">ห้องที่ขอย้ายไป</th>
 
-                            <th class="p-3.5 sm:p-4">เหตุผล / วันที่ต้องการ</th>
+                            <th class="p-3 min-w-[140px]">เหตุผล / วันที่ย้าย</th>
 
-                            <th class="p-3.5 sm:p-4 text-center whitespace-nowrap">สลิปค่าทำความสะอาด</th>
+                            <th class="p-3 text-center whitespace-nowrap">สลิปค่าทำความสะอาด</th>
 
-                            <th class="p-3.5 sm:p-4 text-center whitespace-nowrap">สถานะ</th>
+                            <th class="p-3 text-center whitespace-nowrap">สถานะ</th>
 
-                            <th class="p-3.5 sm:p-4 text-center whitespace-nowrap">การจัดการ</th>
+                            <th class="p-3 text-center whitespace-nowrap sticky right-0 bg-slate-100/95 backdrop-blur-md z-20 shadow-[-4px_0_10px_rgba(0,0,0,0.06)] border-l border-slate-200">การจัดการ</th>
 
                         </tr>
 
@@ -2685,9 +2685,9 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
 
 
 
-                            <!-- การจัดการ -->
+                            <!-- การจัดการ (Sticky ขอบขวาเสมอ ไม่หลุดขอบจอ) -->
 
-                            <td class="p-4 text-center">
+                            <td class="p-3 text-center sticky right-0 bg-white/95 backdrop-blur-md z-10 shadow-[-4px_0_10px_rgba(0,0,0,0.06)] border-l border-slate-200">
 
                                 <div class="flex flex-col gap-1.5 w-32 mx-auto">
 
@@ -2695,17 +2695,17 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
 
                                         <button type="button" onclick="openApproveRoomChangeModal('<?php echo $rcr['requestId']; ?>', '<?php echo htmlspecialchars($rcr['fullName']); ?>', '<?php echo htmlspecialchars($rcr['currRoomNumber']); ?>', '<?php echo htmlspecialchars($rcr['targetRoomType'] ?? ''); ?>', '<?php echo htmlspecialchars($rcr['targetRoomId'] ?? ''); ?>', '<?php echo htmlspecialchars($rcr['paymentSlip'] ?? ''); ?>', '<?php echo htmlspecialchars($rcr['leaseImage'] ?? ''); ?>')" 
 
-                                                class="w-full py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center justify-center gap-1 cursor-pointer">
+                                                class="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer">
 
-                                            <i data-lucide="check" class="w-3.5 h-3.5"></i> อนุมัติย้ายห้อง
+                                            <i data-lucide="clipboard-check" class="w-4 h-4 text-white"></i> ตรวจสอบคำขอ
 
                                         </button>
 
                                         <button type="button" onclick="openRejectRoomChangeModal('<?php echo $rcr['requestId']; ?>', '<?php echo htmlspecialchars($rcr['fullName']); ?>', '<?php echo htmlspecialchars($rcr['currRoomNumber']); ?>')" 
 
-                                                class="w-full py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer">
+                                                class="w-full py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer">
 
-                                            <i data-lucide="x" class="w-3.5 h-3.5"></i> ปฏิเสธ
+                                            <i data-lucide="x" class="w-3 h-3"></i> ปฏิเสธ
 
                                         </button>
 
@@ -4117,7 +4117,7 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
 
         <h3 class="font-display font-bold text-slate-900 text-base flex items-center gap-2">
 
-          <i data-lucide="check-circle-2" class="w-5 h-5 text-emerald-600"></i> อนุมัติคำขอย้ายห้องพัก
+          <i data-lucide="clipboard-check" class="w-5 h-5 text-indigo-600"></i> ตรวจสอบคำขอย้ายห้องพัก & จัดสรรห้อง
 
         </h3>
 
