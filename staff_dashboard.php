@@ -629,17 +629,8 @@ foreach ($mergedJobs as $j) {
       box-shadow: 0 16px 32px -10px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(225, 29, 72, 0.12);
     }
   </style>
-
-
-
-
-
-
-
+  <script>
     // ข้อมูลงานทั้งหมดสำหรับ Staff Job Detail Modal
-
-
-
     window.staffJobs = <?php echo json_encode($allJobsData, JSON_UNESCAPED_UNICODE); ?>;
 
 
