@@ -543,14 +543,6 @@ foreach ($mergedJobs as $j) {
 
 
 
-        'tenantComment' => $j['tenantComment'] ?? '',
-
-
-
-        'commentedAt' => !empty($j['commentedAt']) ? date('d/m/Y H:i', strtotime($j['commentedAt'])) : '',
-
-
-
         'estimatedHours' => (int)($j['estimatedHours'] ?? 2),
 
 
@@ -1159,48 +1151,6 @@ function previewCompletionImage(event) {
             if (inlineCommentBox) inlineCommentBox.classList.add('hidden');
             if (afterContainer) afterContainer.innerHTML = '';
         }
-
-        // ความคิดเห็นจากลูกบ้าน
-
-        // ความคิดเห็นจากลูกบ้าน
-
-
-
-        const commentBox = document.getElementById('staff_detail_comment_box');
-
-
-
-        if (job.tenantComment) {
-
-
-
-            commentBox.classList.remove('hidden');
-
-
-
-            document.getElementById('staff_detail_comment_text').textContent = job.tenantComment;
-
-
-
-            document.getElementById('staff_detail_comment_time').textContent = job.commentedAt ? 'เมื่อ ' + job.commentedAt + ' น.' : '';
-
-
-
-        } else {
-
-
-
-            commentBox.classList.add('hidden');
-
-
-
-        }
-
-
-
-
-
-
 
         // บันทึกปัญหาเพิ่มเติมถึงแอดมิน (กล่องพิมพ์และแก้ไขได้ทันทีในหน้าเดียวกัน)
         window.currentActiveStaffJob = job;
@@ -3463,63 +3413,7 @@ function previewCompletionImage(event) {
 
 
 
-              <!-- ======================================================== -->
 
-
-
-              <!-- 🟪 กรอบที่ 3: ส่วนการประเมินและข้อความติชม (Feedback)      -->
-
-
-
-              <!-- ======================================================== -->
-
-
-
-              <div id="staff_detail_comment_box" class="hidden bg-purple-50/70 border-2 border-rose-200 rounded-3xl p-5 shadow-2xs">
-
-
-
-                  <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
-
-
-
-                      <span class="text-xs sm:text-sm font-bold text-purple-950 flex items-center gap-2">
-
-
-
-                          <i data-lucide="message-square-quote" class="w-4 h-4 text-purple-600"></i>
-
-
-
-                          ความคิดเห็นและข้อเสนอแนะจากลูกบ้าน
-
-
-
-                      </span>
-
-
-
-                      <span class="text-[10px] text-purple-700 font-mono" id="staff_detail_comment_time"></span>
-
-
-
-                  </div>
-
-
-
-                  <div class="bg-white/90 p-4 rounded-xl border border-purple-100 text-xs sm:text-sm text-slate-700 leading-relaxed whitespace-pre-line italic font-sans" id="staff_detail_comment_text">
-
-
-
-                      -
-
-
-
-                  </div>
-
-
-
-              </div>
 
 
 

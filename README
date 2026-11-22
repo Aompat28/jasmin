@@ -1,3 +1,11 @@
+# รันในเครื่อง (Local)
 C:\xampp\php\php.exe -S localhost:8000
-รันขึ้นโฮล
+
+# อัปเดตโค้ดขึ้นเซิร์ฟเวอร์จริง (Production)
 .\deploy_to_pro.bat
+
+# เชื่อมต่อเพื่อดูฐานข้อมูล Production ผ่าน phpMyAdmin ในเครื่อง
+.\connect_pro_db.bat
+
+# ตัดการเชื่อมต่อฐานข้อมูล Production
+.\disconnect_pro_db.bat
