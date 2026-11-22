@@ -5243,39 +5243,22 @@ foreach($requests as $r) {
 
 
         const modal = document.getElementById('assignModal');
-
         if (modal) {
-
             modal.classList.remove('hidden');
-
             modal.classList.add('flex');
-
+            modal.style.display = 'flex';
         }
 
-
-
         if (window.lucide) lucide.createIcons();
-
     }
 
-
-
     function closeAssignModal() {
-
-
-
         const assignModal = document.getElementById('assignModal');
-
-
-
-        assignModal.classList.add('hidden');
-
-
-
-        assignModal.style.display = 'none';
-
-
-
+        if (assignModal) {
+            assignModal.classList.remove('flex');
+            assignModal.classList.add('hidden');
+            assignModal.style.display = 'none';
+        }
     }
 
 
@@ -5349,21 +5332,11 @@ foreach($requests as $r) {
 
 
         if (e.key === 'Escape') {
-
-
-
             closeDetailModal();
-
-
-
             closeAssignModal();
-
-
-
             closeImageModal();
-
-
-
+            closeAdminCompleteModal();
+            closeRejectJobModal();
         }
 
 
@@ -5505,6 +5478,33 @@ foreach($requests as $r) {
         if (modal) modal.classList.add('hidden');
     }
 
+    // 🌟 ฟังก์ชันเปิด-ปิด Modal ทำเครื่องหมายเสร็จสิ้นงาน (Admin Complete) 🌟
+    function openAdminCompleteModal(reqId, roomNumber, category) {
+        const modal = document.getElementById('adminCompleteModal');
+        if (!modal) return;
+        document.getElementById('admin_complete_req_id').value = reqId;
+        const roomDisplay = document.getElementById('admin_complete_room_display');
+        if (roomDisplay) roomDisplay.innerText = roomNumber ? ('ห้อง ' + roomNumber) : ('#' + reqId);
+        const catDisplay = document.getElementById('admin_complete_cat_display');
+        if (catDisplay) catDisplay.innerText = category || '-';
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        modal.style.display = 'flex';
+        if (window.lucide) lucide.createIcons();
+    }
+
+    function closeAdminCompleteModal() {
+        const modal = document.getElementById('adminCompleteModal');
+        if (modal) {
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+            modal.style.display = 'none';
+        }
+    }
+
+    function validateAdminCompleteForm() {
+        return true;
+    }
 </script>
 
 
