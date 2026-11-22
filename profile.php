@@ -11,6 +11,34 @@ if (!isset($_SESSION['user_id'])) {
 $userId = $_SESSION['user_id'];
 $userRole = $_SESSION['role'] ?? 'Tenant';
 
+// กำหนดป้ายสถานะ สี และไอคอนตาม Role จริงในฐานข้อมูล
+$roleBadgeLabel = '🏠 ผู้เช่า';
+$roleBadgeClass = 'bg-amber-50 text-amber-800 border-amber-200';
+$roleHeaderLabel = '🏠 ผู้เช่า';
+$roleAvatarGradient = 'from-amber-500 to-rose-500';
+
+if ($userRole === 'Admin') {
+    $roleBadgeLabel = '👑 ผู้ดูแลระบบ';
+    $roleBadgeClass = 'bg-rose-50 text-rose-700 border-rose-200';
+    $roleHeaderLabel = 'ADMIN';
+    $roleAvatarGradient = 'from-rose-500 via-rose-600 to-pink-600';
+} elseif ($userRole === 'Technician') {
+    $roleBadgeLabel = '🔧 ช่างซ่อม';
+    $roleBadgeClass = 'bg-blue-50 text-blue-700 border-blue-200';
+    $roleHeaderLabel = '🔧 ช่างซ่อม';
+    $roleAvatarGradient = 'from-blue-600 to-indigo-600';
+} elseif ($userRole === 'Cleaner') {
+    $roleBadgeLabel = '🧹 แม่บ้าน';
+    $roleBadgeClass = 'bg-purple-50 text-purple-700 border-purple-200';
+    $roleHeaderLabel = '🧹 แม่บ้าน';
+    $roleAvatarGradient = 'from-purple-600 to-pink-600';
+} elseif (in_array($userRole, ['Staff', 'Housekeeper'])) {
+    $roleBadgeLabel = '🔧 ช่าง / แม่บ้าน';
+    $roleBadgeClass = 'bg-indigo-50 text-indigo-700 border-indigo-200';
+    $roleHeaderLabel = '🔧 เจ้าหน้าที่';
+    $roleAvatarGradient = 'from-indigo-600 to-blue-600';
+}
+
 // ดึงข้อมูลเลขห้องพักสำหรับผู้เช่า (Tenant)
 $tenantRoomNumber = '';
 if ($userRole === 'Tenant') {
@@ -217,14 +245,16 @@ $initials = strtoupper(mb_substr($user['fullName'] ?? $user['username'] ?? 'U', 
               <span class="font-display font-bold text-lg tracking-tight text-slate-800">หอพักจัสมิน</span>
               <?php if ($userRole === 'Tenant'): ?>
                 <a href="profile.php" class="inline-flex items-center gap-1.5 text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-2.5 py-0.5 rounded-full border border-rose-200 transition shadow-2xs" title="โปรไฟล์ของฉัน">
-                  <span><?php echo htmlspecialchars($user['fullName'] ?? ($headerTenantName ?? 'ผู้เช่า')); ?></span>
-                  <?php if(!empty($tenantRoomNumber ?? ($headerRoomNumber ?? ''))): ?>
+                  <span><?php echo htmlspecialchars($user['fullName'] ?? 'ผู้เช่า'); ?></span>
+                  <?php if(!empty($tenantRoomNumber)): ?>
                     <span class="text-rose-400">•</span>
-                    <span class="text-rose-700 font-bold">ห้อง <?php echo htmlspecialchars($tenantRoomNumber ?? ($headerRoomNumber ?? '')); ?></span>
+                    <span class="text-rose-700 font-bold">ห้อง <?php echo htmlspecialchars($tenantRoomNumber); ?></span>
                   <?php endif; ?>
                 </a>
               <?php else: ?>
-                <span class="text-xs bg-rose-50 text-rose-700 font-bold px-2 py-0.5 rounded-full border border-rose-200 uppercase tracking-wider">ADMIN</span>
+                <span class="text-xs px-2.5 py-0.5 rounded-full border font-bold uppercase tracking-wider <?php echo $roleBadgeClass; ?>">
+                  <?php echo $roleHeaderLabel; ?>
+                </span>
               <?php endif; ?>
             </div>
             <p class="text-[11px] text-slate-400 font-medium">โปรไฟล์ & ตั้งค่าความปลอดภัย</p>
@@ -235,9 +265,7 @@ $initials = strtoupper(mb_substr($user['fullName'] ?? $user['username'] ?? 'U', 
         <div class="flex items-center space-x-3">
           <?php include 'includes/theme_toggle.php'; ?>
 
- 
-
-          <!-- ปุ่มออกจากระบบ (สำหรับทุก role รวมทั้ง Tenant) -->
+          <!-- ปุ่มออกจากระบบ -->
           <a href="logout.php" onclick="return confirm('ยืนยันออกจากระบบ?');" class="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 hover:text-rose-700 border border-rose-200 text-xs font-bold transition shadow-2xs cursor-pointer shrink-0" title="ออกจากระบบ">
             <i data-lucide="log-out" class="w-4 h-4"></i>
             <span class="hidden sm:inline">ออกจากระบบ</span>
@@ -249,10 +277,10 @@ $initials = strtoupper(mb_substr($user['fullName'] ?? $user['username'] ?? 'U', 
   </header>
 
   <!-- Main Container -->
-  <main class="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+  <main class="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
     
     <!-- 🌟 Top Hero Banner (Warm Rose & Linen Boutique Style) 🌟 -->
-    <div class="p-6 sm:p-8 relative overflow-hidden bg-gradient-to-br from-rose-50/90 via-pink-50/50 to-white border border-rose-200/80 rounded-3xl shadow-xs mb-6 sm:mb-8">
+    <div class="p-6 sm:p-8 relative overflow-hidden bg-gradient-to-br from-rose-50/90 via-pink-50/50 to-white border border-rose-200/80 rounded-3xl shadow-xs">
       <div class="absolute -right-16 -top-16 w-64 h-64 bg-rose-400/10 rounded-full blur-3xl pointer-events-none"></div>
       <div class="absolute -left-16 -bottom-16 w-64 h-64 bg-pink-400/10 rounded-full blur-3xl pointer-events-none"></div>
 
@@ -272,18 +300,20 @@ $initials = strtoupper(mb_substr($user['fullName'] ?? $user['username'] ?? 'U', 
             โปรไฟล์และความปลอดภัย
           </h1>
           <p class="text-xs sm:text-sm text-slate-500 mt-1">
-            จัดการข้อมูลส่วนตัว เบอร์ติดต่อ ความปลอดภัยของรหัสผ่าน และข้อมูลสัญญาเช่า
+            จัดการข้อมูลส่วนตัว เบอร์ติดต่อ ความปลอดภัยของรหัสผ่าน และข้อมูลสถานะบัญชี
           </p>
         </div>
 
         <div class="flex flex-wrap items-center gap-3 shrink-0">
           <a href="<?php echo $backPage; ?>" class="px-4 py-2.5 bg-white hover:bg-stone-50 text-slate-700 rounded-2xl text-xs sm:text-sm font-bold transition flex items-center gap-2 cursor-pointer border border-stone-200 shadow-2xs active:scale-95">
             <i data-lucide="arrow-left" class="w-4 h-4 text-slate-500"></i>
-            <span>ย้อนกลับ</span>
+            <span>กลับสู่<?php echo $backPageTitle; ?></span>
           </a>
         </div>
       </div>
     </div>
+
+    <?php if(!empty($message)) echo $message; ?>
 
     <!-- Layout Grid: 2 คอลัมน์ (ซ้าย 4 Cols, ขวา 8 Cols) -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -294,7 +324,7 @@ $initials = strtoupper(mb_substr($user['fullName'] ?? $user['username'] ?? 'U', 
         <!-- การ์ดโปรไฟล์สรุปตัวตน -->
         <div class="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-6 relative overflow-hidden">
           <div class="flex items-center gap-4">
-            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-rose-500 via-rose-600 to-pink-600 text-white flex items-center justify-center font-display font-black text-2xl shadow-sm shrink-0">
+            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br <?php echo $roleAvatarGradient; ?> text-white flex items-center justify-center font-display font-black text-2xl shadow-sm shrink-0">
               <?php echo mb_substr($user['fullName'] ?? 'U', 0, 1, 'UTF-8'); ?>
             </div>
             <div class="min-w-0">
@@ -302,8 +332,8 @@ $initials = strtoupper(mb_substr($user['fullName'] ?? $user['username'] ?? 'U', 
                 <?php echo htmlspecialchars($user['fullName']); ?>
               </h2>
               <div class="flex items-center gap-2 mt-1">
-                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                  <?php echo $userRole === 'Admin' ? '👑 ผู้ดูแลระบบ' : ($userRole === 'Staff' ? '🔧 ช่าง/แม่บ้าน' : '🏠 ผู้เช่า'); ?>
+                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold border <?php echo $roleBadgeClass; ?>">
+                  <?php echo $roleBadgeLabel; ?>
                 </span>
                 <span class="text-xs font-mono text-slate-500 truncate">@<?php echo htmlspecialchars($user['username']); ?></span>
               </div>
@@ -382,6 +412,69 @@ $initials = strtoupper(mb_substr($user['fullName'] ?? $user['username'] ?? 'U', 
               <p>ยังไม่มีข้อมูลสัญญาเช่าที่เปิดใช้งานอยู่</p>
             </div>
           <?php endif; ?>
+        </div>
+        <?php endif; ?>
+
+        <!-- 🌟 การ์ดข้อมูลสำหรับช่าง / แม่บ้าน (เฉพาะช่าง/แม่บ้าน Staff, Technician, Cleaner) 🌟 -->
+        <?php if(in_array($userRole, ['Technician', 'Cleaner', 'Staff', 'Housekeeper'])): ?>
+        <div class="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-6 space-y-4">
+          <div class="flex items-center gap-2 pb-3 border-b border-slate-100">
+            <div class="w-8 h-8 rounded-xl <?php echo $userRole === 'Technician' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'; ?> flex items-center justify-center">
+              <i data-lucide="<?php echo $userRole === 'Technician' ? 'wrench' : 'sparkles'; ?>" class="w-4 h-4"></i>
+            </div>
+            <h3 class="font-bold text-slate-900 text-sm font-display">หน้าที่ความรับผิดชอบ</h3>
+          </div>
+
+          <div class="space-y-3 text-xs">
+            <div class="p-3.5 <?php echo $userRole === 'Technician' ? 'bg-blue-50/70 border-blue-100 text-blue-900' : 'bg-purple-50/70 border-purple-100 text-purple-900'; ?> border rounded-2xl">
+              <div class="font-bold text-[10px] uppercase tracking-wider mb-0.5 text-slate-500">ตำแหน่งงาน</div>
+              <div class="text-sm font-bold flex items-center gap-1.5">
+                <?php echo $userRole === 'Technician' ? '🔧 ช่างซ่อมบำรุงประจำหอพัก' : ($userRole === 'Cleaner' ? '🧹 แม่บ้านดูแลความสะอาด' : '🔧 เจ้าหน้าที่ประจำหอพัก'); ?>
+              </div>
+            </div>
+
+            <div class="space-y-1.5 text-slate-600">
+              <div class="flex items-center justify-between py-1 border-b border-slate-100">
+                <span>พื้นที่รับผิดชอบ:</span>
+                <span class="font-semibold text-slate-800">หอพักจัสมิน ทุกชั้น</span>
+              </div>
+              <div class="flex items-center justify-between py-1 border-b border-slate-100">
+                <span>ระบบปฏิบัติงาน:</span>
+                <span class="font-semibold text-slate-800">ระบบคิวงานช่างและแม่บ้าน</span>
+              </div>
+            </div>
+
+            <a href="staff_dashboard.php" class="w-full py-2.5 px-3 bg-gradient-to-r <?php echo $userRole === 'Technician' ? 'from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700' : 'from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700'; ?> text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm active:scale-95">
+              <i data-lucide="clipboard-list" class="w-4 h-4"></i>
+              <span>ไปที่หน้ารับงานของฉัน (Staff Dashboard)</span>
+            </a>
+          </div>
+        </div>
+        <?php endif; ?>
+
+        <!-- 🌟 การ์ดข้อมูลสำหรับแอดมิน (Admin Info Card) 🌟 -->
+        <?php if($userRole === 'Admin'): ?>
+        <div class="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-6 space-y-4">
+          <div class="flex items-center gap-2 pb-3 border-b border-slate-100">
+            <div class="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
+              <i data-lucide="shield-check" class="w-4 h-4"></i>
+            </div>
+            <h3 class="font-bold text-slate-900 text-sm font-display">สิทธิ์การดูแลระบบ</h3>
+          </div>
+
+          <div class="space-y-3 text-xs">
+            <div class="p-3.5 bg-rose-50/70 border border-rose-100 text-rose-900 rounded-2xl">
+              <div class="font-bold text-[10px] uppercase tracking-wider mb-0.5 text-slate-500">ระดับสิทธิ์</div>
+              <div class="text-sm font-bold flex items-center gap-1.5">
+                👑 ผู้ดูแลระบบสูงสุด (Administrator)
+              </div>
+            </div>
+
+            <a href="admin_dashboard.php" class="w-full py-2.5 px-3 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm active:scale-95">
+              <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+              <span>ไปที่แดชบอร์ดแอดมิน (Admin Dashboard)</span>
+            </a>
+          </div>
         </div>
         <?php endif; ?>
 

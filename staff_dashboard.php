@@ -39,10 +39,13 @@ if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['Staff', 'Tech
 
 
 $staffId = $_SESSION['user_id'];
-
-
-
 $staffName = $_SESSION['full_name'];
+$staffRole = $_SESSION['role'] ?? 'Technician';
+$isMaid = in_array($staffRole, ['Cleaner', 'Housekeeper']);
+$roleTitle = $isMaid ? '🧹 แม่บ้าน' : '🔧 ช่างซ่อมบำรุง';
+$deptTitle = $isMaid ? 'ฝ่ายดูแลความสะอาด & แม่บ้าน' : 'ฝ่ายช่างซ่อมบำรุง & บริการ';
+$pageHeading = $isMaid ? 'จัดการงานทำความสะอาดและบริการ' : 'จัดการงานซ่อมและบริการ';
+$subTitle = $isMaid ? 'ระบบงานแม่บ้าน' : 'ระบบงานช่างซ่อม';
 
 
 
@@ -188,7 +191,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'save_staff_comment') {
     $requestId = intval($_POST['request_id'] ?? 0);
     $staffComment = trim($_POST['staff_comment'] ?? '');
 
-    $stmtCheck = $conn->prepare("SELECT requestId, roomNumber, category FROM ServiceRequest sr JOIN Room r ON sr.roomId = r.roomId WHERE sr.requestId = ? AND (sr.assignedTo = ? OR sr.assignedTo IS NULL)");
+    $stmtCheck = $conn->prepare("SELECT requestId, roomNumber, category FROM ServiceRequest sr JOIN Room r ON sr.roomId = r.roomId WHERE sr.requestId = ? AND sr.assignedTo = ?");
     $stmtCheck->execute([$requestId, $staffId]);
     $jobInfo = $stmtCheck->fetch(PDO::FETCH_ASSOC);
 
@@ -234,7 +237,7 @@ if (isset($_POST['save_staff_comment'])) {
 
 
 
-    $stmtCheck = $conn->prepare("SELECT requestId, roomNumber, category FROM ServiceRequest sr JOIN Room r ON sr.roomId = r.roomId WHERE sr.requestId = ? AND (sr.assignedTo = ? OR sr.assignedTo IS NULL)");
+    $stmtCheck = $conn->prepare("SELECT requestId, roomNumber, category FROM ServiceRequest sr JOIN Room r ON sr.roomId = r.roomId WHERE sr.requestId = ? AND sr.assignedTo = ?");
 
 
 
@@ -346,7 +349,7 @@ $stmtJobs = $conn->prepare("
 
 
 
-    WHERE sr.status = 'In Progress' AND (sr.assignedTo = ? OR sr.assignedTo IS NULL)
+    WHERE sr.status = 'In Progress' AND sr.assignedTo = ?
 
 
 
@@ -394,7 +397,7 @@ $stmtCompleted = $conn->prepare("
 
 
 
-    WHERE sr.status IN ('Pending Approval', 'Completed') AND (sr.assignedTo = ? OR sr.assignedTo IS NULL)
+    WHERE sr.status IN ('Pending Approval', 'Completed') AND sr.assignedTo = ?
     ORDER BY COALESCE(sr.completedAt, sr.requestDate) DESC, sr.requestId DESC LIMIT 50
 
 
@@ -1339,15 +1342,9 @@ function previewCompletionImage(event) {
 
 
 
-              <span class="text-[10px] bg-slate-100 text-slate-700 font-semibold px-2 py-0.5 rounded-full border border-rose-100/80 uppercase"><?php echo $_SESSION['role']; ?></span>
-
-
-
+              <span class="text-[10px] <?php echo $isMaid ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'; ?> font-bold px-2.5 py-0.5 rounded-full border"><?php echo $roleTitle; ?></span>
             </div>
-
-
-
-            <p class="text-[11px] text-slate-400 font-medium">ระบบช่างและแม่บ้าน</p>
+            <p class="text-[11px] text-slate-400 font-medium"><?php echo $subTitle; ?></p>
 
 
 
@@ -1455,23 +1452,23 @@ function previewCompletionImage(event) {
         <div>
           <div class="flex items-center gap-2 flex-wrap mb-2">
             <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 bg-white border border-stone-200/80 px-3 py-1 rounded-full shadow-2xs">
-              <i data-lucide="wrench" class="w-3.5 h-3.5 text-rose-500"></i>
-              <span>ฝ่ายช่างซ่อมบำรุง & บริการ</span>
+              <i data-lucide="<?php echo $isMaid ? 'sparkles' : 'wrench'; ?>" class="w-3.5 h-3.5 <?php echo $isMaid ? 'text-purple-600' : 'text-blue-600'; ?>"></i>
+              <span><?php echo $deptTitle; ?></span>
             </span>
             <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full">
               <i data-lucide="clipboard-list" class="w-3.5 h-3.5 text-amber-500"></i>
-              <span>งานปัจจุบัน: <?php echo count($activeJobs); ?> รายการ</span>
+              <span>งานปัจจุบันของคุณ: <?php echo count($activeJobs); ?> รายการ</span>
             </span>
             <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">
               <i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-500"></i>
-              <span>งานเสร็จสิ้นแล้ว: <?php echo count($completedJobs); ?> รายการ</span>
+              <span>งานเสร็จสิ้นของคุณ: <?php echo count($completedJobs); ?> รายการ</span>
             </span>
           </div>
           <h1 class="text-2xl sm:text-3xl lg:text-4xl font-display font-extrabold text-slate-900 tracking-tight">
-            จัดการงานซ่อมและบริการ
+            <?php echo $pageHeading; ?>
           </h1>
           <p class="text-xs sm:text-sm text-slate-500 mt-1">
-            รายการงานที่นิติบุคคลมอบหมายให้คุณเข้าดำเนินการ ตรวจสอบสถานะ และอัปเดตผลการดำเนินงาน
+            รายการงานเฉพาะที่คุณได้รับมอบหมาย ตรวจสอบสถานะ และอัปเดตผลการดำเนินงานของตนเอง
           </p>
         </div>
 
@@ -1673,7 +1670,7 @@ function previewCompletionImage(event) {
     <!-- 🌟 แท็บสลับหน้า (งานปัจจุบัน / ประวัติงานเสร็จ) 🌟 -->
     <div class="mb-6 flex gap-2 border-b border-rose-100/80 pb-px overflow-x-auto hide-scrollbar">
         <button onclick="switchTab('active')" id="tab-active" class="<?php echo ($activeTab === 'completed' ? 'px-5 py-2.5 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition' : 'px-5 py-2.5 text-sm font-bold border-b-2 border-indigo-600 text-indigo-600 flex items-center gap-2 whitespace-nowrap transition'); ?>">
-            <i data-lucide="hammer" class="w-4 h-4"></i> งานที่ต้องทำ (<?php echo count($activeJobs); ?>)
+            <i data-lucide="<?php echo $isMaid ? 'sparkles' : 'hammer'; ?>" class="w-4 h-4"></i> งานที่ต้องทำ (<?php echo count($activeJobs); ?>)
         </button>
         <button onclick="switchTab('completed')" id="tab-completed" class="<?php echo ($activeTab === 'completed' ? 'px-5 py-2.5 text-sm font-bold border-b-2 border-indigo-600 text-indigo-600 flex items-center gap-2 whitespace-nowrap transition' : 'px-5 py-2.5 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition'); ?>">
             <i data-lucide="check-circle-2" class="w-4 h-4"></i> งานที่ทำเสร็จแล้ว (<?php echo count($completedJobs); ?>)
