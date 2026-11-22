@@ -61,7 +61,7 @@ if (isset($conn) && $conn instanceof PDO) {
     } catch(Throwable $e) {}
 }
 
-$sidebarPendingRoomActions = $sidebarPendingRenewals + $sidebarPendingRoomChanges + $sidebarPendingMoveOuts;
+$sidebarPendingRoomActions = $sidebarPendingRenewals + $sidebarPendingMoveOuts;
 
 // 2. ตรวจสอบหน้าปัจจุบันเพื่อทำการไฮไลท์กรอบเมนูที่เลือก (Active Item)
 $currentScript = basename($_SERVER['PHP_SELF']);
@@ -70,7 +70,9 @@ $queryString = $_SERVER['QUERY_STRING'] ?? '';
 $activeKey = '';
 if ($currentScript === 'admin_dashboard.php') {
     $activeKey = 'dashboard';
-} elseif (in_array($currentScript, ['manage_room.php', 'admin_renewals.php', 'admin_room_changes.php', 'move_out_form.php', 'check_in_form.php', 'admin_room_checklist.php'])) {
+} elseif (strpos($queryString, 'tab=room_changes') !== false || $currentScript === 'admin_room_changes.php') {
+    $activeKey = 'room_changes';
+} elseif (in_array($currentScript, ['manage_room.php', 'admin_renewals.php', 'move_out_form.php', 'check_in_form.php', 'admin_room_checklist.php'])) {
     $activeKey = 'room';
 } elseif ($currentScript === 'manage_invoice.php') {
     $activeKey = 'invoice';
@@ -107,6 +109,16 @@ $sidebarMenuItems = [
         'iconBg' => 'bg-pink-50 text-pink-600 border border-pink-200/60',
         'badge' => $sidebarPendingRoomActions,
         'badgeColor' => 'bg-rose-500 text-white'
+    ],
+    [
+        'key' => 'room_changes',
+        'title' => 'คำขอย้ายห้อง',
+        'subtitle' => ($sidebarPendingRoomChanges > 0 ? "รออนุมัติ {$sidebarPendingRoomChanges} คำขอ" : 'คำขอย้ายห้องพัก'),
+        'url' => 'manage_room.php?tab=room_changes',
+        'icon' => 'arrow-left-right',
+        'iconBg' => 'bg-blue-50 text-blue-600 border border-blue-200/60',
+        'badge' => $sidebarPendingRoomChanges,
+        'badgeColor' => 'bg-amber-500 text-white'
     ],
     [
         'key' => 'invoice',

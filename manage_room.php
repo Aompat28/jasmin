@@ -1199,98 +1199,107 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
       </div>
     </div>
 
+    <!-- 🌟 MAIN TAB NAVIGATION BAR (4 แท็บหลัก: ผังห้องพัก / คำขอต่อสัญญา / คำขอย้ายห้อง / แจ้งย้ายออก) 🌟 -->
+    <div class="mb-6 sm:mb-8 flex items-center justify-between flex-wrap gap-3 border-b border-rose-100/80 pb-4">
+      <div class="inline-flex p-1.5 bg-stone-100/90 backdrop-blur-md rounded-2xl border border-stone-200/80 gap-1.5 flex-wrap">
+        
+        <!-- Tab 1: ผังห้องพัก -->
+        <button type="button" id="mainTabBtnRooms" onclick="switchMainTab('rooms')" 
+                class="px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 cursor-pointer <?php echo $initialTab === 'rooms' ? 'bg-white text-slate-900 shadow-2xs font-bold border border-slate-200' : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'; ?>">
+          <i data-lucide="door-closed" class="w-4 h-4 text-rose-500"></i>
+          <span>ผังห้องพัก</span>
+          <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-semibold"><?php echo $totalRooms; ?></span>
+        </button>
 
+        <!-- Tab 2: คำขอต่อสัญญา -->
+        <button type="button" id="mainTabBtnRenewals" onclick="switchMainTab('renewals')" 
+                class="px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 cursor-pointer <?php echo $initialTab === 'renewals' ? 'bg-white text-rose-700 shadow-2xs font-bold border border-rose-200' : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'; ?>">
+          <i data-lucide="file-check-2" class="w-4 h-4 text-amber-500"></i>
+          <span>คำขอต่อสัญญา</span>
+          <?php if ($countPendingRenewals > 0): ?>
+            <span class="text-[10px] px-2 py-0.5 rounded-full bg-rose-500 text-white font-bold animate-pulse"><?php echo $countPendingRenewals; ?> รอ</span>
+          <?php else: ?>
+            <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-semibold"><?php echo $totalRenewals; ?></span>
+          <?php endif; ?>
+        </button>
 
-<!-- Summary Stats 4 Cards for Room Changes -->
+        <!-- Tab 3: คำขอย้ายห้อง -->
+        <button type="button" id="mainTabBtnRoomChanges" onclick="switchMainTab('room_changes')" 
+                class="px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 cursor-pointer <?php echo $initialTab === 'room_changes' ? 'bg-white text-rose-700 shadow-2xs font-bold border border-rose-200' : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'; ?>">
+          <i data-lucide="arrow-left-right" class="w-4 h-4 text-blue-500"></i>
+          <span>คำขอย้ายห้อง</span>
+          <?php if ($countPendingRoomChanges > 0): ?>
+            <span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500 text-white font-bold animate-pulse"><?php echo $countPendingRoomChanges; ?> รอ</span>
+          <?php else: ?>
+            <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-semibold"><?php echo $totalRoomChanges; ?></span>
+          <?php endif; ?>
+        </button>
 
+        <!-- Tab 4: แจ้งย้ายออก -->
+        <button type="button" id="mainTabBtnMoveOuts" onclick="switchMainTab('moveouts')" 
+                class="px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 cursor-pointer <?php echo $initialTab === 'moveouts' ? 'bg-white text-rose-700 shadow-2xs font-bold border border-rose-200' : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'; ?>">
+          <i data-lucide="log-out" class="w-4 h-4 text-rose-500"></i>
+          <span>แจ้งย้ายออก</span>
+          <?php if ($countPendingMoveOuts > 0): ?>
+            <span class="text-[10px] px-2 py-0.5 rounded-full bg-rose-500 text-white font-bold animate-pulse"><?php echo $countPendingMoveOuts; ?> รอ</span>
+          <?php else: ?>
+            <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-semibold"><?php echo $totalMoveOuts; ?></span>
+          <?php endif; ?>
+        </button>
+
+      </div>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- 🌟 SECTION 1: แท็บผังห้องพัก (ROOMS TAB) 🌟 -->
+    <!-- ======================================================== -->
+    <div id="tabContentRooms" class="space-y-6 <?php echo $initialTab !== 'rooms' ? 'hidden' : ''; ?>">
+
+        <!-- Summary Stats 4 Cards for Rooms -->
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6 sm:mb-8">
-
             <div class="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 sm:p-8 flex items-center justify-between">
-
                 <div>
-
-                    <p class="text-xs text-slate-500 font-semibold mb-1">คำขอย้ายห้องทั้งหมด</p>
-
-                    <p class="text-2xl sm:text-3xl font-display font-bold text-slate-900"><?php echo $totalRoomChanges; ?> <span class="text-xs font-normal text-slate-400">รายการ</span></p>
-
-                    <p class="text-[11px] text-slate-400 mt-0.5">รวมทุกสถานะ</p>
-
+                    <p class="text-xs text-slate-500 font-semibold mb-1">ห้องพักทั้งหมด</p>
+                    <p class="text-2xl sm:text-3xl font-display font-bold text-slate-900"><?php echo $totalRooms; ?> <span class="text-xs font-normal text-slate-400">ห้อง</span></p>
+                    <p class="text-[11px] text-slate-400 mt-0.5">ในระบบทั้งหมด</p>
                 </div>
-
                 <div class="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
-
-                    <i data-lucide="arrow-left-right" class="w-6 h-6"></i>
-
+                    <i data-lucide="door-closed" class="w-6 h-6"></i>
                 </div>
-
             </div>
-
-
-
-            <div class="bg-white p-5 rounded-2xl border border-amber-200 bg-amber-50/20 shadow-sm flex items-center justify-between">
-
-                <div>
-
-                    <p class="text-xs text-amber-800 font-semibold mb-1">รอการอนุมัติ</p>
-
-                    <p class="text-2xl sm:text-3xl font-display font-bold text-amber-600"><?php echo $countPendingRoomChanges; ?> <span class="text-xs font-normal text-slate-400">คำขอ</span></p>
-
-                    <p class="text-[11px] text-amber-600 font-medium mt-0.5">รอแอดมินพิจารณา</p>
-
-                </div>
-
-                <div class="w-12 h-12 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
-
-                    <i data-lucide="clock" class="w-6 h-6"></i>
-
-                </div>
-
-            </div>
-
-
 
             <div class="bg-white p-5 rounded-2xl border border-emerald-200 bg-emerald-50/20 shadow-sm flex items-center justify-between">
-
                 <div>
-
-                    <p class="text-xs text-emerald-800 font-semibold mb-1">อนุมัติการย้ายแล้ว</p>
-
-                    <p class="text-2xl sm:text-3xl font-display font-bold text-emerald-600"><?php echo $countApprovedRoomChanges; ?> <span class="text-xs font-normal text-slate-400">รายการ</span></p>
-
-                    <p class="text-[11px] text-emerald-600 font-medium mt-0.5">ย้ายเข้าห้องใหม่แล้ว</p>
-
+                    <p class="text-xs text-emerald-800 font-semibold mb-1">มีผู้เช่าแล้ว</p>
+                    <p class="text-2xl sm:text-3xl font-display font-bold text-emerald-600"><?php echo $occupiedCount; ?> <span class="text-xs font-normal text-slate-400">ห้อง</span></p>
+                    <p class="text-[11px] text-emerald-600 font-medium mt-0.5">สัญญา Active</p>
                 </div>
-
                 <div class="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
-
-                    <i data-lucide="check-circle-2" class="w-6 h-6"></i>
-
+                    <i data-lucide="user-check" class="w-6 h-6"></i>
                 </div>
-
             </div>
 
-
+            <div class="bg-white p-5 rounded-2xl border border-blue-200 bg-blue-50/20 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs text-blue-800 font-semibold mb-1">ห้องว่างพร้อมเช่า</p>
+                    <p class="text-2xl sm:text-3xl font-display font-bold text-blue-600"><?php echo $availableCount; ?> <span class="text-xs font-normal text-slate-400">ห้อง</span></p>
+                    <p class="text-[11px] text-blue-600 font-medium mt-0.5">พร้อมทำสัญญาใหม่</p>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+                    <i data-lucide="key" class="w-6 h-6"></i>
+                </div>
+            </div>
 
             <div class="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 sm:p-8 flex items-center justify-between">
-
                 <div>
-
-                    <p class="text-xs text-slate-500 font-semibold mb-1">ปฏิเสธคำขอ</p>
-
-                    <p class="text-2xl sm:text-3xl font-display font-bold text-slate-600"><?php echo $countRejectedRoomChanges; ?> <span class="text-xs font-normal text-slate-400">รายการ</span></p>
-
-                    <p class="text-[11px] text-slate-400 font-medium mt-0.5">ไม่อนุมัติการย้าย</p>
-
+                    <p class="text-xs text-slate-500 font-semibold mb-1">อัตราการเข้าพัก</p>
+                    <p class="text-2xl sm:text-3xl font-display font-bold text-slate-800"><?php echo $occupancyRate; ?>%</p>
+                    <p class="text-[11px] text-slate-400 font-medium mt-0.5">Occupancy Rate</p>
                 </div>
-
-                <div class="w-12 h-12 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
-
-                    <i data-lucide="x-circle" class="w-6 h-6"></i>
-
+                <div class="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                    <i data-lucide="pie-chart" class="w-6 h-6"></i>
                 </div>
-
             </div>
-
         </div>
 
         <!-- Rooms Table Card -->
@@ -2310,6 +2319,53 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
     <!-- ======================================================== -->
 
     <div id="tabContentRoomChanges" class="space-y-6 <?php echo $initialTab !== 'room_changes' ? 'hidden' : ''; ?>">
+
+        <!-- Summary Stats 4 Cards for Room Changes -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 sm:p-8 flex items-center justify-between">
+                <div>
+                    <p class="text-xs text-slate-500 font-semibold mb-1">คำขอย้ายห้องทั้งหมด</p>
+                    <p class="text-2xl sm:text-3xl font-display font-bold text-slate-900"><?php echo $totalRoomChanges; ?> <span class="text-xs font-normal text-slate-400">รายการ</span></p>
+                    <p class="text-[11px] text-slate-400 mt-0.5">รวมทุกสถานะ</p>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                    <i data-lucide="arrow-left-right" class="w-6 h-6"></i>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl border border-amber-200 bg-amber-50/20 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs text-amber-800 font-semibold mb-1">รอการอนุมัติ</p>
+                    <p class="text-2xl sm:text-3xl font-display font-bold text-amber-600"><?php echo $countPendingRoomChanges; ?> <span class="text-xs font-normal text-slate-400">คำขอ</span></p>
+                    <p class="text-[11px] text-amber-600 font-medium mt-0.5">รอแอดมินพิจารณา</p>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                    <i data-lucide="clock" class="w-6 h-6"></i>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl border border-emerald-200 bg-emerald-50/20 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs text-emerald-800 font-semibold mb-1">อนุมัติการย้ายแล้ว</p>
+                    <p class="text-2xl sm:text-3xl font-display font-bold text-emerald-600"><?php echo $countApprovedRoomChanges; ?> <span class="text-xs font-normal text-slate-400">รายการ</span></p>
+                    <p class="text-[11px] text-emerald-600 font-medium mt-0.5">ย้ายเข้าห้องใหม่แล้ว</p>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                    <i data-lucide="check-circle-2" class="w-6 h-6"></i>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 sm:p-8 flex items-center justify-between">
+                <div>
+                    <p class="text-xs text-slate-500 font-semibold mb-1">ปฏิเสธคำขอ</p>
+                    <p class="text-2xl sm:text-3xl font-display font-bold text-slate-600"><?php echo $countRejectedRoomChanges; ?> <span class="text-xs font-normal text-slate-400">รายการ</span></p>
+                    <p class="text-[11px] text-slate-400 font-medium mt-0.5">ไม่อนุมัติการย้าย</p>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
+                    <i data-lucide="x-circle" class="w-6 h-6"></i>
+                </div>
+            </div>
+        </div>
 
         <!-- Filter & Search Bar for Room Changes -->
 
