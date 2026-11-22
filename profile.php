@@ -201,11 +201,11 @@ $initials = strtoupper(mb_substr($user['fullName'] ?? $user['username'] ?? 'U', 
         <!-- Logo & Brand -->
         <div class="flex items-center space-x-2">
           <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'Admin'): ?>
-            <button type="button" onclick="toggleAdminSidebar()" class="p-2 -ml-1 rounded-xl text-slate-600 hover:text-white hover:bg-slate-100 transition focus:outline-none cursor-pointer" title="เปิด/ปิด แถบเมนูด้านซ้าย">
+            <button type="button" onclick="toggleAdminSidebar()" class="p-2 -ml-1 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition focus:outline-none cursor-pointer" title="เปิด/ปิด แถบเมนูด้านซ้าย">
               <i data-lucide="menu" class="w-5 h-5"></i>
             </button>
           <?php elseif (isset($_SESSION['role']) && $_SESSION['role'] === 'Tenant'): ?>
-            <button type="button" onclick="toggleTenantSidebar()" class="p-2 -ml-1 rounded-xl text-slate-600 hover:text-white hover:bg-slate-100 transition focus:outline-none cursor-pointer" title="เปิด/ปิด แถบเมนูด้านซ้าย">
+            <button type="button" onclick="toggleTenantSidebar()" class="p-2 -ml-1 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition focus:outline-none cursor-pointer" title="เปิด/ปิด แถบเมนูด้านซ้าย">
               <i data-lucide="menu" class="w-5 h-5"></i>
             </button>
           <?php endif; ?>
@@ -284,6 +284,31 @@ $initials = strtoupper(mb_substr($user['fullName'] ?? $user['username'] ?? 'U', 
         </div>
       </div>
     </div>
+
+    <!-- Layout Grid: 2 คอลัมน์ (ซ้าย 4 Cols, ขวา 8 Cols) -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      
+      <!-- ================= ฝั่งซ้าย: ข้อมูลผู้ใช้งาน & ห้องพัก (4 Cols) ================= -->
+      <div class="lg:col-span-4 space-y-6">
+
+        <!-- การ์ดโปรไฟล์สรุปตัวตน -->
+        <div class="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-6 relative overflow-hidden">
+          <div class="flex items-center gap-4">
+            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-rose-500 via-rose-600 to-pink-600 text-white flex items-center justify-center font-display font-black text-2xl shadow-sm shrink-0">
+              <?php echo mb_substr($user['fullName'] ?? 'U', 0, 1, 'UTF-8'); ?>
+            </div>
+            <div class="min-w-0">
+              <h2 class="font-display font-extrabold text-base sm:text-lg text-slate-900 truncate">
+                <?php echo htmlspecialchars($user['fullName']); ?>
+              </h2>
+              <div class="flex items-center gap-2 mt-1">
+                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                  <?php echo $userRole === 'Admin' ? '👑 ผู้ดูแลระบบ' : ($userRole === 'Staff' ? '🔧 ช่าง/แม่บ้าน' : '🏠 ผู้เช่า'); ?>
+                </span>
+                <span class="text-xs font-mono text-slate-500 truncate">@<?php echo htmlspecialchars($user['username']); ?></span>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- 🌟 การ์ดข้อมูลห้องพักและสัญญาเช่า (เฉพาะลูกบ้าน Tenant) 🌟 -->
@@ -294,7 +319,7 @@ $initials = strtoupper(mb_substr($user['fullName'] ?? $user['username'] ?? 'U', 
               <div class="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
                 <i data-lucide="home" class="w-4 h-4"></i>
               </div>
-              <h3 class="font-bold text-white text-sm font-display">ห้องพักของคุณ</h3>
+              <h3 class="font-bold text-slate-900 text-sm font-display">ห้องพักของคุณ</h3>
             </div>
             <?php if($myRoom): ?>
               <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">สัญญาเช่า Active</span>
@@ -304,34 +329,34 @@ $initials = strtoupper(mb_substr($user['fullName'] ?? $user['username'] ?? 'U', 
           <?php if($myRoom): ?>
             <div class="space-y-3.5 text-xs">
               
-              <div class="bg-gradient-to-r from-blue-50 to-indigo-50/70 p-4 rounded-2xl border border-blue-100 flex items-center justify-between">
+              <div class="bg-gradient-to-r from-blue-50 to-indigo-50/70 p-4 rounded-2xl border border-blue-200/80 flex items-center justify-between">
                 <div>
-                  <div class="text-[10px] font-bold text-blue-600 uppercase tracking-wider">หมายเลขห้อง</div>
-                  <div class="text-2xl font-bold font-display text-white mt-0.5">ห้อง <?php echo htmlspecialchars($myRoom['roomNumber']); ?></div>
-                  <div class="text-[11px] text-slate-500 mt-0.5"><?php echo htmlspecialchars($myRoom['roomType']); ?> (ชั้น <?php echo htmlspecialchars($myRoom['floor']); ?>)</div>
+                  <div class="text-[10px] font-bold text-blue-700 uppercase tracking-wider">หมายเลขห้อง</div>
+                  <div class="text-2xl font-black font-display text-slate-900 mt-0.5">ห้อง <?php echo htmlspecialchars($myRoom['roomNumber']); ?></div>
+                  <div class="text-[11px] font-medium text-slate-600 mt-0.5"><?php echo htmlspecialchars($myRoom['roomType']); ?> (ชั้น <?php echo htmlspecialchars($myRoom['floor']); ?>)</div>
                 </div>
                 <div class="text-right">
-                  <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ค่าเช่ารายเดือน</div>
+                  <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">ค่าเช่ารายเดือน</div>
                   <div class="text-lg font-bold font-display text-blue-700 mt-0.5">฿<?php echo number_format($myRoom['rentPrice'], 2); ?></div>
                 </div>
               </div>
 
               <!-- ข้อมูลระยะเวลาสัญญา -->
-              <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 space-y-1.5">
-                <div class="flex items-center justify-between text-slate-500">
-                  <span>วันเริ่มสัญญา:</span>
-                  <span class="font-mono font-bold text-slate-700"><?php echo date("d/m/Y", strtotime($myRoom['startDate'])); ?></span>
+              <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 space-y-2">
+                <div class="flex items-center justify-between text-slate-700">
+                  <span class="font-medium text-slate-600">วันเริ่มสัญญา:</span>
+                  <span class="font-mono font-bold text-slate-900 text-[13px]"><?php echo date("d/m/Y", strtotime($myRoom['startDate'])); ?></span>
                 </div>
-                <div class="flex items-center justify-between text-slate-500">
-                  <span>วันสิ้นสุดสัญญา:</span>
-                  <span class="font-mono font-bold text-rose-600"><?php echo date("d/m/Y", strtotime($myRoom['endDate'])); ?></span>
+                <div class="flex items-center justify-between text-slate-700">
+                  <span class="font-medium text-slate-600">วันสิ้นสุดสัญญา:</span>
+                  <span class="font-mono font-bold text-rose-600 text-[13px]"><?php echo date("d/m/Y", strtotime($myRoom['endDate'])); ?></span>
                 </div>
                 <?php
                   $daysLeft = ceil((strtotime($myRoom['endDate']) - time()) / 86400);
                 ?>
-                <div class="pt-2 border-t border-slate-200/60 flex items-center justify-between">
-                  <span class="text-slate-400">ระยะเวลาคงเหลือ:</span>
-                  <span class="font-bold text-[11px] px-2 py-0.5 rounded-md <?php echo $daysLeft > 30 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'; ?>">
+                <div class="pt-2 border-t border-slate-200/80 flex items-center justify-between">
+                  <span class="text-slate-600 font-medium">ระยะเวลาคงเหลือ:</span>
+                  <span class="font-bold text-[11px] px-2.5 py-0.5 rounded-lg <?php echo $daysLeft > 30 ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-amber-100 text-amber-800 border border-amber-200'; ?>">
                     <?php echo $daysLeft > 0 ? "เหลือ {$daysLeft} วัน" : "ครบกำหนดสัญญาแล้ว"; ?>
                   </span>
                 </div>
@@ -353,7 +378,7 @@ $initials = strtoupper(mb_substr($user['fullName'] ?? $user['username'] ?? 'U', 
             </div>
           <?php else: ?>
             <div class="text-center py-6 text-slate-400 text-xs">
-              <i data-lucide="folder-x" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
+              <i data-lucide="folder-x" class="w-8 h-8 mx-auto mb-2 text-slate-400"></i>
               <p>ยังไม่มีข้อมูลสัญญาเช่าที่เปิดใช้งานอยู่</p>
             </div>
           <?php endif; ?>
@@ -372,8 +397,8 @@ $initials = strtoupper(mb_substr($user['fullName'] ?? $user['username'] ?? 'U', 
               <i data-lucide="user-edit" class="w-5 h-5"></i>
             </div>
             <div>
-              <h3 class="font-display font-bold text-white text-base sm:text-lg">ข้อมูลส่วนตัว</h3>
-              <p class="text-xs text-slate-400">แก้ไขข้อมูลชื่อ-นามสกุล เบอร์โทรศัพท์ และอีเมลสำหรับการติดต่อ</p>
+              <h3 class="font-display font-bold text-slate-900 text-base sm:text-lg">ข้อมูลส่วนตัว</h3>
+              <p class="text-xs text-slate-500">แก้ไขข้อมูลชื่อ-นามสกุล เบอร์โทรศัพท์ และอีเมลสำหรับการติดต่อ</p>
             </div>
           </div>
 
@@ -442,8 +467,8 @@ $initials = strtoupper(mb_substr($user['fullName'] ?? $user['username'] ?? 'U', 
               <i data-lucide="shield-check" class="w-5 h-5"></i>
             </div>
             <div>
-              <h3 class="font-display font-bold text-white text-base sm:text-lg">ความปลอดภัยและรหัสผ่าน</h3>
-              <p class="text-xs text-slate-400">เปลี่ยนรหัสผ่านเพื่อความปลอดภัยในการเข้าใช้งานบัญชีของคุณ</p>
+              <h3 class="font-display font-bold text-slate-900 text-base sm:text-lg">ความปลอดภัยและรหัสผ่าน</h3>
+              <p class="text-xs text-slate-500">เปลี่ยนรหัสผ่านเพื่อความปลอดภัยในการเข้าใช้งานบัญชีของคุณ</p>
             </div>
           </div>
 

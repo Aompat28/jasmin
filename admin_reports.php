@@ -430,15 +430,15 @@ $totalUnpaidAmount = (float)$conn->query("
                 <i data-lucide="trending-up" class="w-5 h-5"></i>
               </div>
               <div>
-                <h3 class="font-bold text-white text-base">แนวโน้มรายรับรายเดือน (12 เดือนล่าสุด)</h3>
-                <p class="text-xs text-slate-400">เปรียบเทียบยอดการชำระเงินที่เกิดขึ้นจริงในแต่ละรอบบิล</p>
+                <h3 class="font-bold text-slate-900 text-base">แนวโน้มรายรับรายเดือน (12 เดือนล่าสุด)</h3>
+                <p class="text-xs text-slate-500">เปรียบเทียบยอดการชำระเงินที่เกิดขึ้นจริงในแต่ละรอบบิล</p>
               </div>
             </div>
             
             <!-- ปุ่มสลับโหมด แท่ง / เส้น -->
             <div class="inline-flex rounded-xl bg-slate-100 p-1 text-xs font-bold no-print">
-              <button type="button" id="btnChartBar" onclick="setChartType('bar')" class="px-3 py-1 rounded-lg bg-white text-white shadow-xs transition">แท่ง (Bar)</button>
-              <button type="button" id="btnChartLine" onclick="setChartType('line')" class="px-3 py-1 rounded-lg text-slate-500 hover:text-white transition">เส้น (Line)</button>
+              <button type="button" id="btnChartBar" onclick="setChartType('bar')" class="px-3 py-1 rounded-lg bg-white text-slate-800 shadow-xs transition">แท่ง (Bar)</button>
+              <button type="button" id="btnChartLine" onclick="setChartType('line')" class="px-3 py-1 rounded-lg text-slate-500 hover:text-slate-900 transition">เส้น (Line)</button>
             </div>
           </div>
 
@@ -454,8 +454,8 @@ $totalUnpaidAmount = (float)$conn->query("
               <i data-lucide="pie-chart" class="w-5 h-5"></i>
             </div>
             <div>
-              <h3 class="font-bold text-white text-base">สัดส่วนโครงสร้างรายรับ (Revenue Breakdown)</h3>
-              <p class="text-xs text-slate-400">วิเคราะห์แหล่งที่มาของรายรับจากค่าเช่า ค่าน้ำ ค่าไฟ และค่าบริการ</p>
+              <h3 class="font-bold text-slate-900 text-base">สัดส่วนโครงสร้างรายรับ (Revenue Breakdown)</h3>
+              <p class="text-xs text-slate-500">วิเคราะห์แหล่งที่มาของรายรับจากค่าเช่า ค่าน้ำ ค่าไฟ และค่าบริการ</p>
             </div>
           </div>
 
@@ -520,7 +520,7 @@ $totalUnpaidAmount = (float)$conn->query("
         <!-- 1. สัดส่วนห้องพัก -->
         <div class="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="font-bold text-white text-sm flex items-center gap-2">
+            <h3 class="font-bold text-slate-900 text-sm flex items-center gap-2">
               <i data-lucide="home" class="w-4 h-4 text-amber-500"></i> สัดส่วนการเช่าห้องพัก
             </h3>
             <span class="text-xs font-bold text-slate-500">รวม <?php echo $totalRooms; ?> ห้อง</span>
@@ -543,7 +543,7 @@ $totalUnpaidAmount = (float)$conn->query("
         <!-- 2. สัดส่วนงานบริการและแจ้งซ่อม -->
         <div class="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="font-bold text-white text-sm flex items-center gap-2">
+            <h3 class="font-bold text-slate-900 text-sm flex items-center gap-2">
               <i data-lucide="wrench" class="w-4 h-4 text-purple-600"></i> สถานะงานบริการแจ้งซ่อม
             </h3>
             <span class="text-xs font-bold text-purple-600">รวม <?php echo $totalReqs; ?> งาน</span>
@@ -569,7 +569,7 @@ $totalUnpaidAmount = (float)$conn->query("
         <!-- 3. รายรับสะสมรายปี -->
         <div class="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="font-bold text-white text-sm flex items-center gap-2">
+            <h3 class="font-bold text-slate-900 text-sm flex items-center gap-2">
               <i data-lucide="calendar" class="w-4 h-4 text-teal-600"></i> สรุปรายรับรายปี
             </h3>
             <span class="text-xs text-slate-400">เปรียบเทียบปี</span>
