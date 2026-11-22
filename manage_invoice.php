@@ -301,15 +301,17 @@ if ($step === 2) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>jasmin</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&family=Kanit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Kanit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest"></script>
   <script>
     tailwind.config = { 
+      darkMode: ['selector', '[data-theme="dark"]'],
       theme: { 
         extend: { 
           fontFamily: { 
             sans: ['Prompt', 'sans-serif'], 
-            display: ['Kanit', 'sans-serif'] 
+            display: ['Kanit', 'sans-serif'],
+            mono: ['Plus Jakarta Sans', 'monospace']
           } 
         } 
       } 
@@ -317,8 +319,6 @@ if ($step === 2) {
   </script>
   <style>
     body {
-      background: radial-gradient(circle at 15% 15%, #0f172a 0%, #080d1a 50%, #030712 100%);
-      color: #f1f5f9;
       font-family: 'Prompt', sans-serif;
       min-height: 100vh;
       overflow-x: hidden;

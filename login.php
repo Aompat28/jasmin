@@ -234,7 +234,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
 
 
-  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&family=Kanit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Kanit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
 
 
@@ -668,45 +668,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
 
         <div class="mb-8">
-
-
-
-            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200/80 text-blue-700 text-xs font-bold mb-3 shadow-2xs">
-
-
-
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-50 border border-rose-200/80 text-rose-700 text-xs font-bold mb-3 shadow-sm">
                 <span class="relative flex h-2 w-2">
-
-
-
                     <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-
-
-
-                    <span class="relative inline-flex rounded-full h-2 w-2 bg-blue-600"></span>
-
-
-
+                    <span class="relative inline-flex rounded-full h-2 w-2 bg-rose-600"></span>
                 </span>
-
-
-
                 เข้าสู่ระบบสมาชิก
-
-
-
             </div>
-
-
-
             <h2 class="text-2xl sm:text-3xl font-display font-extrabold text-slate-900 tracking-tight">เข้าสู่ระบบ</h2>
-
-
-
-            <p class="text-sm text-slate-500 mt-1">กรุณากรอกชื่อผู้ใช้งานและรหัสผ่านเพื่อเข้าสู่ระบบ</p>
-
-
-
+            <p class="text-xs sm:text-sm text-slate-500 mt-1">กรุณากรอกชื่อผู้ใช้งานและรหัสผ่านเพื่อเข้าสู่ระบบ</p>
         </div>
 
 
@@ -1020,9 +990,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
 
   <script>
-
-
-
     lucide.createIcons();
 
 

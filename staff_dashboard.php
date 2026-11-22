@@ -604,22 +604,31 @@ foreach ($mergedJobs as $j) {
 
 
   <script src="https://cdn.tailwindcss.com"></script>
-
-
-
-  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&family=Kanit:wght@400;500;600;700&display=swap" rel="stylesheet">
-
-
-
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Kanit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest"></script>
-
-
-
   <script>
-
-
-
-    tailwind.config = { theme: { extend: { fontFamily: { sans: ['Prompt', 'sans-serif'], display: ['Kanit', 'sans-serif'] } } } }
+    tailwind.config = {
+      darkMode: ['selector', '[data-theme="dark"]'],
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Prompt', 'sans-serif'],
+            display: ['Kanit', 'sans-serif'],
+            mono: ['Plus Jakarta Sans', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    .modern-job-card {
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .modern-job-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 16px 32px -10px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(225, 29, 72, 0.12);
+    }
+  </style>
 
 
 

@@ -78,40 +78,57 @@ if (is_dir($imgDirPath)) {
 <html lang="th">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>jasmin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Kanit:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+      tailwind.config = {
+        darkMode: ['selector', '[data-theme="dark"]'],
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Prompt', 'sans-serif'],
+              display: ['Kanit', 'sans-serif'],
+              mono: ['Plus Jakarta Sans', 'monospace']
+            }
+          }
+        }
+      }
+    </script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: #FAF4F6; padding: 30px; color: #1e293b; }
+        body { font-family: 'Prompt', sans-serif; background-color: #FAF4F6; padding: 20px; color: #1e293b; }
         .container { max-width: 950px; margin: 0 auto; }
         .back-btn-pill:hover { background-color: #FFF0F3 !important; color: #0f172a !important; transform: translateX(-2px); }
-        .invoice-card { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 12px; padding: 25px; margin-bottom: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.03); }
-        .invoice-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #FFF0F3; padding-bottom: 15px; margin-bottom: 20px; }
+        .invoice-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 1.25rem; padding: 25px; margin-bottom: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); }
+        .invoice-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 15px; margin-bottom: 20px; }
         .details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 15px; margin-bottom: 20px; }
-        .detail-box { background: #FAF4F6; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 13px; }
+        .detail-box { background: #FAF4F6; padding: 15px; border-radius: 1rem; border: 1px solid #f1f5f9; font-size: 13px; }
         .detail-title { font-weight: bold; color: #64748b; margin-bottom: 6px; }
-        .detail-val { font-size: 16px; font-weight: bold; color: #1e293b; }
-        .payment-section { background: #fdf4ff; border: 1px solid #f5d0fe; padding: 20px; border-radius: 10px; margin-top: 20px; display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+        .detail-val { font-size: 16px; font-weight: bold; color: #1e293b; font-family: 'Plus Jakarta Sans', monospace; }
+        .payment-section { background: #fdf4ff; border: 1px solid #f5d0fe; padding: 20px; border-radius: 1rem; margin-top: 20px; display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
         
         /* สไตล์สำหรับรูป QR Code */
-        .qr-box { background: white; padding: 10px; border-radius: 8px; border: 1px solid #d8b4fe; text-align: center; width: 140px; flex-shrink: 0; }
-        .qr-box img { width: 120px; height: 120px; object-fit: contain; cursor: zoom-in; transition: transform 0.2s ease; }
+        .qr-box { background: white; padding: 10px; border-radius: 1rem; border: 1px solid #d8b4fe; text-align: center; width: 140px; flex-shrink: 0; }
+        .qr-box img { width: 120px; height: 120px; object-fit: contain; cursor: zoom-in; transition: transform 0.2s ease; border-radius: 0.5rem; }
         .qr-box img:hover { transform: scale(1.05); }
         
         /* สไตล์สำหรับกล่องขยายรูปภาพ (Modal) */
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); align-items: center; justify-content: center; backdrop-filter: blur(4px); }
-        .modal-content { max-width: 90%; max-height: 90%; border-radius: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+        .modal-content { max-width: 90%; max-height: 90%; border-radius: 1rem; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
         .close-modal { position: absolute; top: 20px; right: 30px; color: white; font-size: 40px; font-weight: bold; cursor: pointer; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
         .close-modal:hover { color: #f87171; }
 
         /* สไตล์สำหรับปุ่มคัดลอก */
-        .copy-btn { background: #FFF0F3; color: #334155; border: 1px solid #cbd5e1; padding: 4px 10px; font-size: 12px; font-weight: bold; border-radius: 6px; cursor: pointer; margin-left: 8px; transition: 0.2s; display: inline-flex; align-items: center; gap: 4px; }
+        .copy-btn { background: #FFF0F3; color: #334155; border: 1px solid #cbd5e1; padding: 4px 10px; font-size: 12px; font-weight: bold; border-radius: 8px; cursor: pointer; margin-left: 8px; transition: 0.2s; display: inline-flex; align-items: center; gap: 4px; }
         .copy-btn:hover { background: #e2e8f0; }
 
-        .total-row { display: flex; justify-content: space-between; align-items: center; background: #eff6ff; padding: 15px 20px; border-radius: 8px; border: 1px solid #bfdbfe; margin-top: 15px; }
-        .total-amount { font-size: 24px; font-weight: bold; color: #2563eb; }
-        .badge { padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; color: white; }
+        .total-row { display: flex; justify-content: space-between; align-items: center; background: #eff6ff; padding: 15px 20px; border-radius: 1rem; border: 1px solid #bfdbfe; margin-top: 15px; }
+        .total-amount { font-size: 24px; font-weight: bold; color: #2563eb; font-family: 'Plus Jakarta Sans', monospace; }
+        .badge { padding: 6px 14px; border-radius: 9999px; font-size: 12px; font-weight: bold; color: white; }
         .upload-box { margin-top: 15px; padding-top: 15px; border-top: 1px dashed #cbd5e1; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; width: 100%; }
-        button.btn-upload { background: #10b981; color: white; border: none; padding: 10px 18px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 14px; }
+        button.btn-upload { background: #10b981; color: white; border: none; padding: 10px 20px; border-radius: 12px; font-weight: bold; cursor: pointer; font-size: 14px; transition: all 0.2s; }
         button.btn-upload:hover { background: #059669; }
         .img-link { color: #4f46e5; text-decoration: none; font-weight: bold; font-size: 13px; }
         .img-link:hover { text-decoration: underline; }
