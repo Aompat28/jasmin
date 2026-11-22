@@ -1249,15 +1249,7 @@ foreach ($requests as $r) {
 
 
 
-              <span class="text-[11px] text-rose-600 font-bold hidden sm:inline-flex items-center gap-1 ml-auto opacity-70 group-hover:opacity-100 transition">
 
-
-
-                <i data-lucide="eye" class="w-3.5 h-3.5"></i> ดูรายละเอียด
-
-
-
-              </span>
 
 
 

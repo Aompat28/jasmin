@@ -2041,15 +2041,6 @@ if ($currentHour >= 5 && $currentHour < 12) {
                     <span class="hidden sm:inline">อ่านแล้ว</span>
                   </button>
 
-                  <!-- ปุ่มดูรายละเอียดสำหรับทุกรายการ -->
-                  <button type="button" 
-                          onclick="event.stopPropagation(); openAlertDetail('<?php echo $item['id']; ?>')" 
-                          class="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95" 
-                          title="ดูรายละเอียดแบบเต็มจอ">
-                    <i data-lucide="eye" class="w-3.5 h-3.5 text-rose-600"></i>
-                    <span class="hidden sm:inline">ดูรายละเอียด</span>
-                  </button>
-
                   <a href="<?php echo $item['link']; ?>" onclick="markNotifReadBeacon('<?php echo $item['id']; ?>')" class="px-4 py-2 bg-gradient-to-r from-rose-600 via-rose-500 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 shadow-xs active:scale-95">
                     <span><?php echo $item['btnText'] ?? 'ดำเนินการ'; ?></span>
                     <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>

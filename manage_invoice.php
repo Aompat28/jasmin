@@ -664,14 +664,6 @@ if ($step === 2) {
                 <!-- จัดการ (ตรวจสอบบิล) -->
                 <td class="py-3.5 px-4 text-center">
                   <div class="flex items-center justify-center gap-1.5 flex-wrap">
-                    <!-- ปุ่มดูรายละเอียดบิลฉบับเต็ม -->
-                    <button type="button" 
-                            onclick="event.stopPropagation(); openInvoiceDetailModal(<?php echo $inv['invoiceId']; ?>)" 
-                            class="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow-md transition cursor-pointer" 
-                            title="ดูรายละเอียดใบแจ้งหนี้แบบเต็มจอ">
-                      <i data-lucide="eye" class="w-3.5 h-3.5"></i> ดูรายละเอียด
-                    </button>
-
                     <!-- ฟอร์มเปลี่ยนสถานะ -->
                     <form action="manage_invoice.php?tab=list" method="POST" class="inline-flex items-center justify-center gap-1.5 m-0" onsubmit="return handleStatusSubmit(event, this)">
                       <input type="hidden" name="invoiceId" value="<?php echo $inv['invoiceId']; ?>">
