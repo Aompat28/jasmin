@@ -111,15 +111,17 @@ if (isset($_POST['confirm_invoice'])) {
     $totalAmount = floatval($_POST['totalAmount']);
 
     try {
-        // ตรวจสอบว่าเคยออกบิลรอบเดือนนี้สำหรับห้องนี้แล้วหรือไม่ เพื่อป้องกันการออกบิลซ้ำซ้อน
-        $stmtCheck = $conn->prepare("SELECT invoiceId FROM Invoices WHERE roomId = ? AND billingMonth = ? LIMIT 1");
+        // ตรวจสอบว่าเคยออกบิลรอบเดือนนี้สำหรับห้องนี้แล้วหรือไม่
+        $stmtCheck = $conn->prepare("SELECT invoiceId, status FROM Invoices WHERE roomId = ? AND billingMonth = ? ORDER BY invoiceId DESC LIMIT 1");
         $stmtCheck->execute([$roomId, $billingMonth]);
         $existingInvoice = $stmtCheck->fetch(PDO::FETCH_ASSOC);
 
-        if ($existingInvoice) {
+        // หากมีบิลอยู่แล้วและยังไม่ได้ชำระเงิน (Unpaid หรือ Pending Approval) ให้อัปเดตข้อมูลบิลนั้นได้
+        // แต่ถ้าบิลเดิมมีสถานะ 'Paid' (ชำระแล้ว) แล้ว จะต้องไม่เขียนทับสถานะชำระเงินเด็ดขาด! ให้สร้างบิลใหม่แทน เพื่อไม่ให้ตัวเลขบิลที่ชำระแล้วลดลง
+        if ($existingInvoice && $existingInvoice['status'] !== 'Paid') {
             $stmt = $conn->prepare("UPDATE Invoices SET tenantId = ?, rentPrice = ?, waterPrev = ?, waterCurr = ?, waterUnitRate = ?, electricPrev = ?, electricCurr = ?, electricUnitRate = ?, otherFee = ?, otherFeeNote = ?, totalAmount = ?, status = 'Unpaid', slipImage = NULL WHERE invoiceId = ?");
             $stmt->execute([$tenantId, $rentPrice, $waterPrev, $waterCurr, $waterRate, $electricPrev, $electricCurr, $electricRate, $otherFee, $otherFeeNote, $totalAmount, $existingInvoice['invoiceId']]);
-            $message = "<div class='alert-box p-4 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600'></i> อัปเดตข้อมูลใบแจ้งหนี้ประจำเดือน {$billingMonth} เรียบร้อยแล้ว (ไม่สร้างบิลซ้ำ)!</div>";
+            $message = "<div class='alert-box p-4 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600'></i> อัปเดตข้อมูลใบแจ้งหนี้ประจำเดือน {$billingMonth} เรียบร้อยแล้ว!</div>";
         } else {
             $stmt = $conn->prepare("INSERT INTO Invoices (roomId, tenantId, billingMonth, rentPrice, waterPrev, waterCurr, waterUnitRate, electricPrev, electricCurr, electricUnitRate, otherFee, otherFeeNote, totalAmount, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Unpaid')");
             $stmt->execute([$roomId, $tenantId, $billingMonth, $rentPrice, $waterPrev, $waterCurr, $waterRate, $electricPrev, $electricCurr, $electricRate, $otherFee, $otherFeeNote, $totalAmount]);
@@ -389,6 +391,12 @@ if ($step === 2) {
 
   <!-- 🌟 Main Content 🌟 -->
   <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <?php if (!empty($message)): ?>
+      <div id="flashAlert">
+        <?php echo $message; ?>
+      </div>
+    <?php endif; ?>
 
     <!-- 🌟 Top Hero Banner (Warm Rose & Linen Boutique Style) 🌟 -->
     <div class="p-6 sm:p-8 relative overflow-hidden bg-gradient-to-br from-rose-50/90 via-pink-50/50 to-white border border-rose-200/80 rounded-3xl shadow-xs mb-6 sm:mb-8">
@@ -1981,7 +1989,69 @@ if ($step === 2) {
       calculateLiveTotal();
     }
 
+    function getNextBillingMonth(lastBillingMonthStr) {
+      if (!lastBillingMonthStr || typeof lastBillingMonthStr !== 'string') {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        return `${y}-${m}`;
+      }
+      
+      const thaiMonthsMap = {
+        'มกราคม': 1, 'กุมภาพันธ์': 2, 'มีนาคม': 3, 'เมษายน': 4,
+        'พฤษภาคม': 5, 'มิถุนายน': 6, 'กรกฎาคม': 7, 'สิงหาคม': 8,
+        'กันยายน': 9, 'ตุลาคม': 10, 'พฤศจิกายน': 11, 'ธันวาคม': 12
+      };
+      
+      let year = null;
+      let month = null;
+      
+      for (const [name, num] of Object.entries(thaiMonthsMap)) {
+        if (lastBillingMonthStr.includes(name)) {
+          month = num;
+          break;
+        }
+      }
+      
+      const yearMatch = lastBillingMonthStr.match(/\b(20\d\d|25\d\d)\b/);
+      if (yearMatch) {
+        let y = parseInt(yearMatch[1], 10);
+        if (y > 2400) y -= 543;
+        year = y;
+      }
+      
+      const yyyyMm = lastBillingMonthStr.match(/^(\d{4})-(\d{2})$/);
+      if (yyyyMm) {
+        year = parseInt(yyyyMm[1], 10);
+        month = parseInt(yyyyMm[2], 10);
+      }
+      
+      if (year && month) {
+        month += 1;
+        if (month > 12) {
+          month = 1;
+          year += 1;
+        }
+        return `${year}-${String(month).padStart(2, '0')}`;
+      }
+      
+      const now = new Date();
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    }
+
     function handleRoomChange() {
+      const roomSelect = document.getElementById('roomSelect');
+      const selectedOpt = roomSelect ? roomSelect.selectedOptions[0] : null;
+      if (selectedOpt && selectedOpt.value) {
+        const lastMonth = selectedOpt.getAttribute('data-last-month');
+        if (lastMonth && lastMonth.trim() !== '') {
+          const nextMonth = getNextBillingMonth(lastMonth);
+          const monthInput = document.getElementById('billingMonthInput');
+          if (monthInput) {
+            monthInput.value = nextMonth;
+          }
+        }
+      }
       autoFillPreviousMeters(true);
     }
 
