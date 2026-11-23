@@ -1294,33 +1294,8 @@ $countInactive = $countRejected + $countCancelled;
 
 
 
-  <!-- MODAL: Preview Image -->
-
-  <div id="imageModal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-
-    <div class="bg-white rounded-3xl max-w-2xl w-full p-4 shadow-2xl modal-enter">
-
-      <div class="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
-
-        <h4 id="imageModalTitle" class="font-bold text-slate-900 text-sm"></h4>
-
-        <button onclick="closeImageModal()" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-full hover:bg-slate-100 transition">
-
-          <i data-lucide="x" class="w-5 h-5"></i>
-
-        </button>
-
-      </div>
-
-      <div class="flex justify-center p-2 bg-slate-50 rounded-2xl overflow-hidden max-h-[70vh]">
-
-        <img id="imageModalImg" src="" class="max-w-full max-h-full object-contain rounded-lg">
-
-      </div>
-
-    </div>
-
-  </div>
+  <!-- MODAL: Standard Document/Image Viewer -->
+  <?php include_once 'includes/doc_viewer_modal.php'; ?>
 
 
 
@@ -1532,25 +1507,7 @@ $countInactive = $countRejected + $countCancelled;
 
 
 
-    // Modal รูปภาพ
 
-    function openImageModal(src, title) {
-
-      document.getElementById('imageModalImg').src = src;
-
-      document.getElementById('imageModalTitle').innerText = title;
-
-      document.getElementById('imageModal').classList.remove('hidden');
-
-    }
-
-    function closeImageModal() {
-
-      document.getElementById('imageModal').classList.add('hidden');
-
-      document.getElementById('imageModalImg').src = '';
-
-    }
 
   </script>
 

@@ -8,7 +8,7 @@
         <div class="w-8 h-8 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
           <i data-lucide="file-text" class="w-4 h-4"></i>
         </div>
-        <h3 class="font-bold text-slate-800 text-sm sm:text-base">เอกสารสัญญาเช่า</h3>
+        <h3 id="docModalTitle" class="font-bold text-slate-800 text-sm sm:text-base">เอกสารแนบ</h3>
       </div>
       <div class="flex items-center gap-2">
         <a id="downloadDocBtn" href="#" download target="_blank" class="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition flex items-center gap-1 text-xs font-bold" title="ดาวน์โหลดไฟล์">
@@ -37,15 +37,21 @@
 </div>
 
 <script>
-  function openDocModal(filePath) {
+  function openDocModal(filePath, title) {
     if (!filePath || filePath.trim() === '') return;
 
     const modal = document.getElementById('imageViewerModal');
     const img = document.getElementById('viewerImage');
     const iframe = document.getElementById('viewerIframe');
     const downloadBtn = document.getElementById('downloadDocBtn');
+    const titleEl = document.getElementById('docModalTitle');
 
-    downloadBtn.href = filePath;
+    if (titleEl) {
+      titleEl.innerText = title || 'ดูเอกสารแนบ';
+    }
+    if (downloadBtn) {
+      downloadBtn.href = filePath;
+    }
 
     const cleanPath = filePath.split('?')[0].split('#')[0];
     const ext = cleanPath.split('.').pop().toLowerCase();
@@ -76,6 +82,15 @@
     if (iframe) iframe.src = '';
     if (img) img.src = '';
     document.body.style.overflow = '';
+  }
+
+  // รองรับชื่อฟังก์ชันเดิม openImageModal ให้เปิด Modal มาตรฐานเดียวกัน
+  function openImageModal(src, title) {
+    openDocModal(src, title || 'ดูรูปภาพเอกสาร');
+  }
+
+  function closeImageModal() {
+    closeDocModal();
   }
 
   // ปิดเมื่อกดปุ่ม ESC
