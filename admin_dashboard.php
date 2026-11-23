@@ -191,45 +191,47 @@ if (isset($_REQUEST['action'])) {
 
 $alertMessage = "";
 
-if (isset($_POST['add_announcement'])) {
+if (isset($_POST['add_announcement']) || isset($_POST['create_announcement']) || (isset($_POST['action']) && in_array($_POST['action'], ['create_announcement', 'add_announcement']))) {
 
     $title = trim($_POST['title']);
 
-    $msg = trim($_POST['message']);
+    $msg = trim($_POST['message'] ?? ($_POST['content'] ?? ''));
 
-    $type = $_POST['type']; 
+    $type = $_POST['type'] ?? 'info'; 
 
-    
+    if (!empty($title) && !empty($msg)) {
 
-    try {
+        try {
 
-        $stmt = $conn->prepare("INSERT INTO Announcements (title, content, message, type) VALUES (?, ?, ?, ?)");
+            $stmt = $conn->prepare("INSERT INTO Announcements (title, content, message, type) VALUES (?, ?, ?, ?)");
 
-        $stmt->execute([$title, $msg, $msg, $type]);
+            $stmt->execute([$title, $msg, $msg, $type]);
 
-        $alertMessage = "<div class='alert-box bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 p-4 mb-6 rounded-2xl shadow-xs flex items-center justify-between transition-all duration-300'>
+            $alertMessage = "<div class='alert-box bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 p-4 mb-6 rounded-2xl shadow-xs flex items-center justify-between transition-all duration-300'>
 
-            <div class='flex items-center gap-2'>
+                <div class='flex items-center gap-2'>
 
-                <i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600 shrink-0'></i>
+                    <i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600 shrink-0'></i>
 
-                <span class='font-bold text-sm'>สร้างประกาศข่าวสารเรียบร้อยแล้ว! ข้อมูลส่งถึงลูกบ้านทุกคนทันที</span>
+                    <span class='font-bold text-sm'>สร้างประกาศข่าวสารเรียบร้อยแล้ว! ข้อมูลส่งถึงลูกบ้านทุกคนทันที</span>
 
-            </div>
+                </div>
 
-            <button type='button' onclick='this.closest(\".alert-box\").remove()' class='text-emerald-600 hover:text-emerald-800 p-1 cursor-pointer'><i data-lucide='x' class='w-4 h-4'></i></button>
+                <button type='button' onclick='this.closest(\".alert-box\").remove()' class='text-emerald-600 hover:text-emerald-800 p-1 cursor-pointer'><i data-lucide='x' class='w-4 h-4'></i></button>
 
-        </div>";
+            </div>";
 
-    } catch(Throwable $e) {
+        } catch(Throwable $e) {
 
-        $alertMessage = "<div class='alert-box bg-rose-50 border-l-4 border-rose-500 text-rose-700 p-4 mb-6 rounded-2xl shadow-xs text-sm font-bold flex items-center gap-2'>
+            $alertMessage = "<div class='alert-box bg-rose-50 border-l-4 border-rose-500 text-rose-700 p-4 mb-6 rounded-2xl shadow-xs text-sm font-bold flex items-center gap-2'>
 
-            <i data-lucide='alert-circle' class='w-5 h-5 shrink-0'></i>
+                <i data-lucide='alert-circle' class='w-5 h-5 shrink-0'></i>
 
-            <span>เกิดข้อผิดพลาดในการสร้างประกาศ: " . htmlspecialchars($e->getMessage()) . "</span>
+                <span>เกิดข้อผิดพลาดในการสร้างประกาศ: " . htmlspecialchars($e->getMessage()) . "</span>
 
-        </div>";
+            </div>";
+
+        }
 
     }
 
@@ -237,13 +239,13 @@ if (isset($_POST['add_announcement'])) {
 
 
 
-if (isset($_POST['edit_announcement'])) {
+if (isset($_POST['edit_announcement']) || (isset($_POST['action']) && in_array($_POST['action'], ['edit_announcement', 'update_announcement']))) {
 
-    $id = intval($_POST['announcement_id']);
+    $id = intval($_POST['id'] ?? ($_POST['announcement_id'] ?? 0));
 
     $title = trim($_POST['title']);
 
-    $msg = trim($_POST['message']);
+    $msg = trim($_POST['message'] ?? ($_POST['content'] ?? ''));
 
     $type = $_POST['type'] ?? 'info';
 
@@ -285,13 +287,13 @@ if (isset($_POST['edit_announcement'])) {
 
 
 
-if (isset($_POST['delete_announcement'])) {
+if (isset($_POST['delete_announcement']) || (isset($_POST['action']) && $_POST['action'] === 'delete_announcement')) {
 
-    $id = intval($_POST['announcement_id']);
+    $id = intval($_POST['id'] ?? ($_POST['announcement_id'] ?? 0));
 
     try {
 
-        $stmt = $conn->prepare("DELETE FROM Announcements WHERE id = ?");
+        $stmt = $conn->prepare("DELETE FROM Announcements WHERE announcementId = ?");
 
         $stmt->execute([$id]);
 
@@ -313,7 +315,7 @@ if (isset($_POST['delete_announcement'])) {
 
         try {
 
-            $stmt = $conn->prepare("DELETE FROM Announcements WHERE announcementId = ?");
+            $stmt = $conn->prepare("DELETE FROM Announcements WHERE id = ?");
 
             $stmt->execute([$id]);
 
@@ -2284,6 +2286,8 @@ if ($currentHour >= 5 && $currentHour < 12) {
 
 
       <form action="" method="POST" class="p-6 space-y-4">
+        <input type="hidden" name="action" value="create_announcement">
+        <input type="hidden" name="add_announcement" value="1">
 
         <div>
 
@@ -2412,10 +2416,10 @@ if ($currentHour >= 5 && $currentHour < 12) {
 
 
       <form action="" method="POST" class="p-6 space-y-4">
-
         <input type="hidden" name="action" value="update_announcement">
-
+        <input type="hidden" name="edit_announcement" value="1">
         <input type="hidden" name="id" id="editAnnouncementId">
+        <input type="hidden" name="announcement_id" id="editAnnouncementId2">
 
 
 
@@ -3316,7 +3320,10 @@ if ($currentHour >= 5 && $currentHour < 12) {
 
       if (!modal) return;
 
-      document.getElementById('editAnnouncementId').value = ann.id || '';
+      const annId = ann.id || ann.announcementId || '';
+      document.getElementById('editAnnouncementId').value = annId;
+      const elId2 = document.getElementById('editAnnouncementId2');
+      if (elId2) elId2.value = annId;
 
       document.getElementById('editAnnouncementTitle').value = ann.title || '';
 
