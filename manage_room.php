@@ -644,7 +644,7 @@ $rooms = $conn->query("
 
 $stmtReqs = $conn->prepare("
 
-    SELECT lr.*, u.fullName, u.phone AS tenantPhone, r.roomNumber, r.rentPrice, l.startDate, l.endDate AS currentEndDate
+    SELECT lr.*, u.fullName, u.phone AS tenantPhone, r.roomNumber, r.rentPrice, l.startDate, l.endDate AS currentEndDate, l.depositAmount, l.leaseImage
 
     FROM LeaseRenewals lr
 
@@ -1458,14 +1458,13 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
 
                         ?>
 
-                        <tr class="room-row hover:bg-rose-50/30/70 transition <?php echo $hasRenewal ? 'bg-rose-50/30' : ($hasMoveOut ? 'bg-rose-50/30' : ''); ?>" 
-
+                        <tr class="room-row hover:bg-rose-50/30/70 transition <?php echo ($r['status'] == 'Occupied' && !empty($r['tenantName'])) ? 'cursor-pointer' : ''; ?> <?php echo $hasRenewal ? 'bg-rose-50/30' : ($hasMoveOut ? 'bg-rose-50/30' : ''); ?>" 
+                            <?php if($r['status'] == 'Occupied' && !empty($r['tenantName'])): ?>
+                            onclick="openTenantModal('<?php echo $r['roomNumber']; ?>', '<?php echo htmlspecialchars($r['tenantName'], ENT_QUOTES, 'UTF-8'); ?>', '<?php echo htmlspecialchars($r['phone'], ENT_QUOTES, 'UTF-8'); ?>', '<?php echo htmlspecialchars($r['email'] ?? '', ENT_QUOTES, 'UTF-8'); ?>', '<?php echo htmlspecialchars($r['emergencyName'] ?? '', ENT_QUOTES, 'UTF-8'); ?>', '<?php echo htmlspecialchars($r['emergencyPhone'] ?? '', ENT_QUOTES, 'UTF-8'); ?>', '<?php echo date('d/m/Y', strtotime($r['startDate'])); ?>', '<?php echo date('d/m/Y', strtotime($r['endDate'])); ?>', '<?php echo number_format($r['rentPrice']); ?>', '<?php echo number_format($r['depositAmount'] ?? 0); ?>', '<?php echo htmlspecialchars($r['leaseImage'] ?? '', ENT_QUOTES, 'UTF-8'); ?>', <?php echo htmlspecialchars(json_encode($coresidentsByRoom[$r['roomId']] ?? []), ENT_QUOTES, 'UTF-8'); ?>, '<?php echo $r['roomId']; ?>')"
+                            <?php endif; ?>
                             data-search="<?php echo htmlspecialchars($searchKeywords, ENT_QUOTES, 'UTF-8'); ?>"
-
                             data-status="<?php echo htmlspecialchars($r['status']); ?>"
-
                             data-has-moveout="<?php echo $hasMoveOut ? '1' : '0'; ?>"
-
                             data-has-renewal="<?php echo $hasRenewal ? '1' : '0'; ?>">
 
                             
@@ -1700,7 +1699,7 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
 
                             <td class="p-4 text-center">
 
-                                <div class="flex flex-col gap-1.5 w-36 mx-auto">
+                                <div class="flex flex-col gap-1.5 w-36 mx-auto" onclick="event.stopPropagation()">
 
                                     <?php if($r['status'] == 'Occupied' && !empty($r['tenantName'])): ?>
 
@@ -2094,10 +2093,9 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
 
                         ?>
 
-                        <tr class="renewal-row hover:bg-rose-50/30/70 transition <?php echo $isPending ? 'bg-rose-50/20' : ''; ?>"
-
+                        <tr class="renewal-row cursor-pointer hover:bg-rose-50/30/70 transition <?php echo $isPending ? 'bg-rose-50/20' : ''; ?>"
+                            onclick="openRenewalDetailModal(<?php echo htmlspecialchars(json_encode($req), ENT_QUOTES, 'UTF-8'); ?>)"
                             data-search="<?php echo htmlspecialchars($searchKeywords, ENT_QUOTES, 'UTF-8'); ?>"
-
                             data-status="<?php echo htmlspecialchars($req['status']); ?>">
 
                             
@@ -2252,7 +2250,13 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
 
                             <td class="p-4 text-center">
 
-                                <div class="flex flex-col gap-1.5 w-36 mx-auto">
+                                <div class="flex flex-col gap-1.5 w-36 mx-auto" onclick="event.stopPropagation()">
+
+                                    <button type="button" 
+                                            onclick="openRenewalDetailModal(<?php echo htmlspecialchars(json_encode($req), ENT_QUOTES, 'UTF-8'); ?>)" 
+                                            class="w-full py-1.5 bg-white hover:bg-rose-50 text-slate-700 hover:text-rose-700 border border-slate-200 hover:border-rose-300 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 shadow-2xs cursor-pointer">
+                                        <i data-lucide="eye" class="w-3.5 h-3.5 text-rose-600"></i> ดูรายละเอียด
+                                    </button>
 
                                     <?php if($isPending): ?>
 
@@ -2479,10 +2483,9 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
 
                         ?>
 
-                        <tr class="rc-row hover:bg-rose-50/30/70 transition <?php echo $isPending ? 'bg-rose-50/20' : ''; ?>"
-
+                        <tr class="rc-row cursor-pointer hover:bg-rose-50/30/70 transition <?php echo $isPending ? 'bg-rose-50/20' : ''; ?>"
+                            onclick="openRoomChangeDetailModal(<?php echo htmlspecialchars(json_encode($rcr), ENT_QUOTES, 'UTF-8'); ?>)"
                             data-status="<?php echo $rcr['status']; ?>"
-
                             data-search="<?php echo htmlspecialchars($searchKeywords); ?>">
 
                             
@@ -2689,7 +2692,13 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
 
                             <td class="p-3 text-center sticky right-0 bg-white/95 backdrop-blur-md z-10 shadow-[-4px_0_10px_rgba(0,0,0,0.06)] border-l border-slate-200">
 
-                                <div class="flex flex-col gap-1.5 w-32 mx-auto">
+                                <div class="flex flex-col gap-1.5 w-32 mx-auto" onclick="event.stopPropagation()">
+
+                                    <button type="button" 
+                                            onclick="openRoomChangeDetailModal(<?php echo htmlspecialchars(json_encode($rcr), ENT_QUOTES, 'UTF-8'); ?>)" 
+                                            class="w-full py-1.5 bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 hover:border-indigo-300 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 shadow-2xs cursor-pointer">
+                                        <i data-lucide="eye" class="w-3.5 h-3.5 text-indigo-600"></i> ดูรายละเอียด
+                                    </button>
 
                                     <?php if($isPending): ?>
 
@@ -2949,11 +2958,15 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
 
                         ?>
 
-                        <tr class="mo-row hover:bg-rose-50/30/70 transition <?php echo $isPendingClear ? 'bg-rose-50/20' : ''; ?>"
+                        <tr class="mo-row cursor-pointer hover:bg-rose-50/40 transition group <?php echo $isPendingClear ? 'bg-rose-50/15' : ''; ?>"
 
                             data-status="<?php echo $isPendingClear ? 'Pending' : 'Settled'; ?>"
 
-                            data-search="<?php echo htmlspecialchars($searchKeywords); ?>">
+                            data-search="<?php echo htmlspecialchars($searchKeywords); ?>"
+
+                            onclick="openMoveOutModal(<?php echo htmlspecialchars(json_encode($mo), ENT_QUOTES, 'UTF-8'); ?>)"
+
+                            title="คลิกเพื่อเปิดดูรายละเอียดคำขอแจ้งย้ายออก">
 
                             
 
@@ -2971,7 +2984,7 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
 
                                     <div>
 
-                                        <div class="font-bold text-white">
+                                        <div class="font-bold text-slate-800">
 
                                             <?php echo ($mo['roomType'] === 'Air') ? '❄️ แอร์' : '🌀 พัดลม'; ?> (ชั้น <?php echo $mo['floor']; ?>)
 
@@ -3075,27 +3088,71 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
 
                                 <?php if(!$isPendingClear && isset($mo['netRefundAmount'])): ?>
 
-                                    <div class="text-xs font-bold text-emerald-700 mt-0.5">
+                                    <?php if(floatval($mo['netRefundAmount']) < 0): ?>
 
-                                        ยอดคืนสุทธิ: ฿<?php echo number_format($mo['netRefundAmount'], 2); ?>
+                                        <div class="text-xs font-bold text-rose-700 mt-0.5">
 
-                                    </div>
+                                            ยอดชำระเพิ่ม: ฿<?php echo number_format(abs($mo['netRefundAmount']), 2); ?>
 
-                                    <?php if(!empty($mo['refundReceipt'])): ?>
+                                        </div>
 
-                                        <button type="button" onclick="openDocViewer('<?php echo htmlspecialchars($mo['refundReceipt']); ?>', 'หลักฐานการโอนคืนเงินประกัน - ห้อง <?php echo htmlspecialchars($mo['roomNumber']); ?>')" 
+                                    <?php else: ?>
 
-                                                class="text-[10px] text-rose-600 hover:underline flex items-center gap-1 mt-0.5 cursor-pointer">
+                                        <div class="text-xs font-bold text-emerald-700 mt-0.5">
 
-                                            <i data-lucide="receipt" class="w-3 h-3"></i> ดูสลิปคืนเงิน
+                                            ยอดคืนสุทธิ: ฿<?php echo number_format($mo['netRefundAmount'], 2); ?>
 
-                                        </button>
+                                        </div>
 
                                     <?php endif; ?>
+
+                                    <div class="flex flex-col gap-0.5 mt-0.5">
+
+                                        <?php if(!empty($mo['refundReceipt'])): ?>
+
+                                            <button type="button" onclick="openDocViewer('<?php echo htmlspecialchars($mo['refundReceipt']); ?>', 'หลักฐานการโอนคืนเงินประกัน - ห้อง <?php echo htmlspecialchars($mo['roomNumber']); ?>')" 
+
+                                                    class="text-[10px] text-rose-600 hover:underline flex items-center gap-1 cursor-pointer">
+
+                                                <i data-lucide="receipt" class="w-3 h-3"></i> ดูสลิปคืนเงิน
+
+                                            </button>
+
+                                        <?php endif; ?>
+
+                                        <?php if(!empty($mo['tenantPaymentSlip'])): ?>
+
+                                            <button type="button" onclick="openDocViewer('<?php echo htmlspecialchars($mo['tenantPaymentSlip']); ?>', 'สลิปชำระเงินส่วนต่างย้ายออก - ห้อง <?php echo htmlspecialchars($mo['roomNumber']); ?>')" 
+
+                                                    class="text-[10px] text-emerald-600 hover:underline flex items-center gap-1 cursor-pointer">
+
+                                                <i data-lucide="receipt" class="w-3 h-3"></i> ดูสลิปชำระเงิน
+
+                                            </button>
+
+                                        <?php endif; ?>
+
+                                    </div>
 
                                 <?php else: ?>
 
                                     <span class="text-[10px] text-amber-700 font-medium">รอตรวจเช็คสภาพห้อง & มิเตอร์</span>
+
+                                    <?php if(!empty($mo['tenantPaymentSlip'])): ?>
+
+                                        <div class="mt-0.5">
+
+                                            <button type="button" onclick="openDocViewer('<?php echo htmlspecialchars($mo['tenantPaymentSlip']); ?>', 'สลิปชำระเงินที่ลูกบ้านแนบมา - ห้อง <?php echo htmlspecialchars($mo['roomNumber']); ?>')" 
+
+                                                    class="text-[10px] text-emerald-600 hover:underline flex items-center gap-1 cursor-pointer">
+
+                                                <i data-lucide="receipt" class="w-3 h-3"></i> ดูสลิปชำระเงิน
+
+                                            </button>
+
+                                        </div>
+
+                                    <?php endif; ?>
 
                                 <?php endif; ?>
 
@@ -3143,7 +3200,19 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
 
                             <td class="p-4 text-center">
 
-                                <div class="flex flex-col gap-1.5 w-36 mx-auto">
+                                <div class="flex flex-col gap-1.5 w-36 mx-auto" onclick="event.stopPropagation()">
+
+                                    <!-- ปุ่มดูรายละเอียด (เปิด Modal เด้งขึ้นมาแบบ 2 กรอบ) -->
+
+                                    <button type="button" 
+
+                                            onclick="openMoveOutModal(<?php echo htmlspecialchars(json_encode($mo), ENT_QUOTES, 'UTF-8'); ?>)" 
+
+                                            class="w-full py-1.5 bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200 hover:border-blue-300 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 shadow-2xs cursor-pointer">
+
+                                        <i data-lucide="eye" class="w-3.5 h-3.5 text-blue-600"></i> ดูรายละเอียด
+
+                                    </button>
 
                                     <?php if($isPendingClear): ?>
 
@@ -3707,168 +3776,150 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
 
 
 
-  <!-- MODAL 3: ดูข้อมูลผู้เช่า & สัญญาเช่า -->
-
-  <div id="tenantInfoModal" class="hidden fixed inset-0 z-[50] overflow-y-auto bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-
-    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 modal-enter">
-
-      <div class="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
-
-        <h3 class="font-display font-bold text-slate-900 text-lg flex items-center gap-2">
-
-            <i data-lucide="user" class="w-5 h-5 text-blue-600"></i> ข้อมูลสัญญา ห้อง <span id="modalRoomNum" class="text-blue-600 font-bold"></span>
-
-        </h3>
-
-        <button onclick="document.getElementById('tenantInfoModal').classList.add('hidden')" class="text-slate-400 hover:text-slate-600 p-1 bg-slate-100 hover:bg-slate-200 rounded-full transition">
-
+  <!-- MODAL 3: ดูข้อมูลผู้เช่า & สัญญาเช่า (2 Columns) -->
+  <div id="tenantInfoModal" class="hidden fixed inset-0 z-[50] overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4">
+    <div class="bg-white w-full max-w-4xl max-h-[92vh] rounded-3xl shadow-2xl overflow-hidden modal-enter border border-slate-200/80 flex flex-col">
+      <!-- Header -->
+      <div class="px-5 py-4 sm:px-6 sm:py-5 border-b border-slate-200/80 flex justify-between items-center bg-slate-50/70 shrink-0">
+        <div class="flex items-center gap-3">
+          <span class="px-3 py-1 bg-slate-900 text-white rounded-xl font-bold text-sm shadow-xs font-mono">ห้อง <span id="modalRoomNum">-</span></span>
+          <span class="font-display font-extrabold text-slate-900 text-base sm:text-lg">ข้อมูลสัญญาเช่าและผู้เช่า</span>
+          <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">กำลังพักอาศัย</span>
+        </div>
+        <button type="button" onclick="document.getElementById('tenantInfoModal').classList.add('hidden')" class="w-9 h-9 rounded-2xl bg-white/80 backdrop-blur-md p-1.5 border border-rose-200/60 shadow-xs hover:bg-rose-100 hover:text-rose-600 text-slate-600 transition flex items-center justify-center cursor-pointer shadow-2xs" title="ปิด">
           <i data-lucide="x" class="w-5 h-5"></i>
-
         </button>
-
       </div>
 
+      <!-- Body 2 columns -->
+      <div class="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+          <!-- 🟦 กรอบที่ 1: ส่วนข้อมูลของผู้เช่า -->
+          <div class="rounded-3xl p-5 sm:p-6 border-2 border-indigo-200 bg-gradient-to-b from-indigo-50/40 to-slate-50/20 shadow-2xs space-y-4">
+            <div class="flex items-center gap-2.5 pb-3.5 border-b border-indigo-200/80">
+              <div class="w-9 h-9 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                <i data-lucide="user" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h4 class="font-display font-bold text-slate-900 text-base">ส่วนข้อมูลของผู้เช่า</h4>
+                <p class="text-[11px] text-indigo-700 font-medium">รายละเอียดผู้เช่าหลักและช่องทางติดต่อ</p>
+              </div>
+            </div>
 
+            <!-- การ์ดผู้เช่า -->
+            <div class="bg-white p-4 rounded-2xl border border-indigo-200/80 shadow-2xs flex items-center justify-between gap-3">
+              <div class="flex items-center gap-3">
+                <div id="modalTenantAvatar" class="w-11 h-11 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-700 font-extrabold flex items-center justify-center text-base">
+                  ผ
+                </div>
+                <div>
+                  <span class="text-[10px] text-slate-400 font-semibold uppercase">ผู้เช่าหลัก</span>
+                  <div id="modalTenantName" class="font-bold text-slate-900 text-sm sm:text-base">-</div>
+                  <div id="modalPhone" class="text-xs text-slate-500 font-mono mt-0.5">📞 -</div>
+                </div>
+              </div>
+              <a id="modalTenantCallBtn" href="#" class="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-2xs">
+                <i data-lucide="phone-call" class="w-3.5 h-3.5"></i> โทรหา
+              </a>
+            </div>
 
-      <div class="space-y-3.5 text-sm text-slate-600">
+            <!-- ข้อมูลติดต่ออื่นๆ -->
+            <div class="bg-white p-4 rounded-2xl border border-indigo-200/80 shadow-2xs space-y-2.5 text-xs text-slate-600">
+              <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <span class="text-slate-400">อีเมล:</span>
+                <strong id="modalEmail" class="text-slate-900">-</strong>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-slate-400">ติดต่อฉุกเฉิน:</span>
+                <strong id="modalEmergency" class="text-slate-900 text-xs">-</strong>
+              </div>
+            </div>
 
-          <div class="flex justify-between border-b border-slate-50 pb-2">
-
-              <span class="text-xs text-slate-400">ชื่อผู้เช่า:</span>
-
-              <strong id="modalTenantName" class="text-slate-900"></strong>
-
-          </div>
-
-          <div class="flex justify-between border-b border-slate-50 pb-2">
-
-              <span class="text-xs text-slate-400">เบอร์โทรศัพท์:</span>
-
-              <strong id="modalPhone" class="text-slate-900"></strong>
-
-          </div>
-
-          <div class="flex justify-between border-b border-slate-50 pb-2">
-
-              <span class="text-xs text-slate-400">อีเมล:</span>
-
-              <strong id="modalEmail" class="text-slate-900"></strong>
-
-          </div>
-
-          <div class="flex justify-between border-b border-slate-50 pb-2">
-
-              <span class="text-xs text-slate-400">ติดต่อฉุกเฉิน:</span>
-
-              <strong id="modalEmergency" class="text-slate-900 text-xs"></strong>
-
-          </div>
-
-          <div class="flex justify-between border-b border-slate-50 pb-2">
-
-              <span class="text-xs text-slate-400">ค่าเช่ารายเดือน:</span>
-
-              <strong class="text-slate-900 font-bold">฿<span id="modalRent"></span></strong>
-
-          </div>
-
-          <div class="flex justify-between border-b border-slate-50 pb-2">
-
-              <span class="text-xs text-slate-400">เงินประกัน (มัดจำ):</span>
-
-              <strong class="text-emerald-600 font-bold">฿<span id="modalDeposit"></span></strong>
-
-          </div>
-
-          <div class="flex justify-between border-b border-slate-50 pb-2">
-
-              <span class="text-xs text-slate-400">วันเริ่มต้นสัญญา:</span>
-
-              <strong id="modalStartDate" class="text-slate-900 font-mono"></strong>
-
-          </div>
-
-          <div class="flex justify-between border-b border-slate-50 pb-2">
-
-              <span class="text-xs text-slate-400">วันสิ้นสุดสัญญา:</span>
-
-              <strong id="modalEndDate" class="text-rose-600 font-mono font-bold"></strong>
-
-          </div>
-
-          
-
-          <!-- ปุ่มดูเอกสารสัญญาเช่า -->
-
-          <div id="modalLeaseDocWrap" class="hidden flex justify-between items-center bg-rose-50 p-3 rounded-2xl border border-indigo-100">
-
-              <span class="text-indigo-900 font-bold text-xs flex items-center gap-1.5"><i data-lucide="file-check" class="w-4 h-4 text-rose-600"></i> เอกสารสัญญาเช่า</span>
-
-              <button id="modalLeaseDocBtn" type="button" class="px-3 py-1.5 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-xs font-bold shadow-2xs transition">
-
-                  ดูเอกสาร
-
-              </button>
-
-          </div>
-
-
-
-          <!-- แสดงผู้ร่วมอาศัยในห้อง -->
-
-          <div class="border-t border-slate-200 pt-3">
-
+            <!-- ผู้ร่วมอาศัยในห้อง -->
+            <div class="bg-white p-4 rounded-2xl border border-indigo-200/80 shadow-2xs">
               <div class="flex items-center justify-between mb-2">
-
-                  <span class="font-semibold text-slate-700 text-xs flex items-center gap-1.5">
-
-                      <i data-lucide="users" class="w-4 h-4 text-indigo-500"></i> ผู้ร่วมอาศัยในห้อง:
-
-                  </span>
-
-                  <a id="modalCoresidentsLink" href="admin_coresidents.php" class="text-[11px] text-rose-600 hover:underline font-semibold flex items-center gap-0.5">
-
-                      จัดการคำขอ <i data-lucide="arrow-right" class="w-3 h-3"></i>
-
-                  </a>
-
+                <span class="font-semibold text-slate-700 text-xs flex items-center gap-1.5">
+                  <i data-lucide="users" class="w-4 h-4 text-indigo-500"></i> ผู้ร่วมอาศัยในห้อง:
+                </span>
+                <a id="modalCoresidentsLink" href="admin_coresidents.php" class="text-[11px] text-rose-600 hover:underline font-semibold flex items-center gap-0.5">
+                  จัดการคำขอ <i data-lucide="arrow-right" class="w-3 h-3"></i>
+                </a>
               </div>
-
               <div id="modalCoresidentsList" class="space-y-1.5 text-xs">
-
               </div>
-
-              
-
-              <div class="mt-3 pt-2.5 border-t border-dashed border-slate-200 flex items-center justify-between">
-
-                  <a id="modalRepairRequestsLink" href="admin_requests.php" class="text-[11px] text-blue-600 hover:underline font-semibold flex items-center gap-1">
-
-                      <i data-lucide="wrench" class="w-3.5 h-3.5"></i> ดูประวัติแจ้งซ่อมห้องนี้ <i data-lucide="chevron-right" class="w-3 h-3"></i>
-
-                  </a>
-
-              </div>
-
+            </div>
           </div>
 
+          <!-- 🟩 กรอบที่ 2: ส่วนสัญญาเช่า & ห้องพัก -->
+          <div class="rounded-3xl p-5 sm:p-6 border-2 border-emerald-200 bg-gradient-to-b from-emerald-50/50 to-slate-50/30 flex flex-col justify-between shadow-2xs space-y-4">
+            <div>
+              <div class="flex items-center justify-between pb-3.5 border-b border-emerald-200/80 mb-4">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-9 h-9 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <i data-lucide="file-check" class="w-5 h-5"></i>
+                  </div>
+                  <div>
+                    <h4 class="font-display font-bold text-slate-900 text-base">ส่วนสัญญาเช่า & ค่าเช่า</h4>
+                    <p class="text-[11px] text-emerald-700 font-medium">ค่าเช่ารายเดือน เงินประกัน และระยะเวลาสัญญา</p>
+                  </div>
+                </div>
+                <span class="text-[11px] font-bold px-2.5 py-1 rounded-xl bg-emerald-100/80 text-emerald-800 border border-emerald-200 font-mono">
+                  สัญญาปกติ
+                </span>
+              </div>
+
+              <!-- รายละเอียดการเงิน & สัญญา -->
+              <div class="bg-white p-4 rounded-2xl border border-emerald-200/80 shadow-2xs space-y-2.5 text-xs text-slate-600 mb-4">
+                <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <span class="text-slate-400">ค่าเช่ารายเดือน:</span>
+                  <strong class="text-slate-900 font-bold font-mono text-sm">฿<span id="modalRent">0</span></strong>
+                </div>
+                <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <span class="text-slate-400">เงินประกัน (มัดจำ):</span>
+                  <strong class="text-emerald-600 font-bold font-mono text-sm">฿<span id="modalDeposit">0</span></strong>
+                </div>
+                <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <span class="text-slate-400">วันเริ่มต้นสัญญา:</span>
+                  <strong id="modalStartDate" class="text-slate-900 font-mono">-</strong>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="text-slate-400">วันสิ้นสุดสัญญา:</span>
+                  <strong id="modalEndDate" class="text-rose-600 font-mono font-bold">-</strong>
+                </div>
+              </div>
+
+              <!-- เอกสารสัญญาเช่า (Preview) -->
+              <div id="modalLeaseDocWrap" class="hidden bg-white border-2 border-dashed border-emerald-300 rounded-2xl p-3.5 shadow-2xs mb-4">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                    <i data-lucide="file-text" class="w-4 h-4 text-emerald-600"></i> เอกสารสัญญาเช่า
+                  </span>
+                  <span class="text-[10px] bg-emerald-100 text-emerald-900 font-extrabold px-2 py-0.5 rounded-lg border border-emerald-200">LEASE DOC</span>
+                </div>
+                <div id="modalLeaseDocImgBox" class="min-h-[120px] flex items-center justify-center bg-stone-50 rounded-xl overflow-hidden">
+                </div>
+              </div>
+
+              <!-- ลิงก์ด่วน -->
+              <div class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs space-y-2 text-xs">
+                <div class="flex items-center justify-between">
+                  <a id="modalRepairRequestsLink" href="admin_requests.php" class="text-blue-600 hover:underline font-semibold flex items-center gap-1">
+                    <i data-lucide="wrench" class="w-3.5 h-3.5"></i> ประวัติการแจ้งซ่อมห้องนี้ <i data-lucide="chevron-right" class="w-3 h-3"></i>
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      
-
-      <div class="mt-5 pt-2">
-
-          <button type="button" onclick="document.getElementById('tenantInfoModal').classList.add('hidden')" class="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition">
-
-              ปิดหน้าต่าง
-
-          </button>
-
+      <!-- Footer -->
+      <div class="px-5 py-4 border-t border-slate-200/80 bg-white flex items-center justify-between shrink-0">
+        <button type="button" onclick="document.getElementById('tenantInfoModal').classList.add('hidden')" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl text-xs sm:text-sm transition cursor-pointer">
+          ปิดหน้าต่าง
+        </button>
       </div>
-
     </div>
-
   </div>
 
 
@@ -4315,6 +4366,498 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
   </div>
 
 
+
+  <!-- ======================================================== -->
+  <!-- 🌟 MODAL: รายละเอียดคำขอแจ้งย้ายออก (Move Out Detail Modal แบบ 2 กรอบ) 🌟 -->
+  <!-- ======================================================== -->
+  <div id="moveOutDetailModal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 backdrop-blur-sm p-3 sm:p-5 flex items-center justify-center animate-fade-in" onclick="if(event.target === this) closeMoveOutModal()">
+    <div class="bg-white border border-slate-200/90 rounded-3xl shadow-2xl max-w-5xl w-full overflow-hidden flex flex-col max-h-[92vh] my-auto animate-scale-up" onclick="event.stopPropagation()">
+      
+      <!-- Modal Top Header -->
+      <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-stone-50 via-white to-rose-50/30 shrink-0">
+        <div class="flex items-center gap-2.5 flex-wrap">
+          <span id="mod_room_badge" class="font-bold font-mono text-xs px-3 py-1 bg-slate-900 text-white rounded-xl shadow-2xs">ห้อง -</span>
+          <span id="mod_code_badge" class="text-xs font-mono font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-xl border border-slate-200">MOVE-OUT</span>
+          <span id="mod_status_badge" class="text-xs font-bold px-3 py-1 rounded-full border">สถานะ</span>
+        </div>
+        <button type="button" onclick="closeMoveOutModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-rose-50 hover:text-rose-600 flex items-center justify-center text-slate-400 transition cursor-pointer" title="ปิดหน้าต่าง">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body (Two-Column Layout) -->
+      <div class="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4 bg-[#FAF9F6]">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+          <!-- 🟦 กรอบที่ 1: ส่วนข้อมูลของผู้เช่า (Tenant Frame) -->
+          <div class="rounded-3xl p-5 sm:p-6 border-2 border-blue-200/80 bg-gradient-to-b from-blue-50/40 to-slate-50/30 flex flex-col justify-between shadow-2xs space-y-4">
+            <div>
+              <!-- Header กรอบผู้เช่า -->
+              <div class="flex items-center justify-between pb-3.5 border-b border-blue-200/80 mb-4">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-9 h-9 rounded-2xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <i data-lucide="user" class="w-5 h-5"></i>
+                  </div>
+                  <div>
+                    <h4 class="font-display font-bold text-slate-900 text-base">ส่วนข้อมูลของผู้เช่า</h4>
+                    <p class="text-[11px] text-blue-700 font-medium">รายละเอียดคำขอย้ายออก และวันเวลานัดหมาย</p>
+                  </div>
+                </div>
+                <span class="text-[11px] font-bold px-2.5 py-1 rounded-xl bg-blue-100/80 text-blue-800 border border-blue-200 font-mono">
+                  ผู้เช่าห้องพัก
+                </span>
+              </div>
+
+              <!-- ข้อมูลผู้เช่า / ผู้แจ้งเรื่อง -->
+              <div class="p-4 bg-white rounded-2xl border border-blue-200/80 shadow-2xs flex items-center justify-between flex-wrap gap-3 mb-4">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 shadow-2xs font-bold">
+                    <i data-lucide="user" class="w-5 h-5"></i>
+                  </div>
+                  <div>
+                    <span class="text-[10px] text-slate-400 block font-bold uppercase tracking-wider">ผู้เช่า / ผู้แจ้งเรื่อง</span>
+                    <span id="mod_tenant_name" class="font-bold text-slate-900 text-sm sm:text-base">-</span>
+                    <div class="text-xs text-slate-500 font-mono mt-0.5" id="mod_tenant_phone">-</div>
+                  </div>
+                </div>
+                <a id="mod_tenant_call_btn" href="#" class="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold border border-emerald-200 transition flex items-center gap-1.5 shadow-2xs">
+                  <i data-lucide="phone-call" class="w-3.5 h-3.5 text-emerald-600"></i>
+                  <span>โทรหาผู้เช่า</span>
+                </a>
+              </div>
+
+              <!-- วันที่และเหตุผลการย้ายออก -->
+              <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs mb-4 space-y-3">
+                <div class="flex items-center gap-2.5 p-3 rounded-xl bg-rose-50 border border-rose-200/80">
+                  <div class="w-8 h-8 rounded-xl bg-rose-500 text-white flex items-center justify-center shrink-0">
+                    <i data-lucide="calendar" class="w-4 h-4"></i>
+                  </div>
+                  <div>
+                    <span class="text-[10px] text-rose-500 font-bold uppercase tracking-wider block">วันที่ประสงค์จะย้ายออก</span>
+                    <span id="mod_moveout_date" class="font-bold text-rose-950 text-xs sm:text-sm">-</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="text-[11px] font-bold text-slate-500 mb-1 flex items-center gap-1.5">
+                    <i data-lucide="align-left" class="w-3.5 h-3.5 text-blue-600"></i> รายละเอียดเหตุผลการย้ายออก:
+                  </div>
+                  <p id="mod_moveout_reason" class="text-xs sm:text-sm text-slate-700 bg-stone-50 p-3 rounded-xl border border-stone-200/60 leading-relaxed font-normal whitespace-pre-line">-</p>
+                </div>
+
+                <div class="text-xs text-slate-500 pt-2 border-t border-slate-100 flex items-center justify-between">
+                  <span>ช่วงเวลาสัญญาเช่าเดิม:</span>
+                  <span id="mod_lease_period" class="font-bold text-slate-800 font-mono">-</span>
+                </div>
+              </div>
+
+              <!-- บัญชีรับเงินประกันคืน -->
+              <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs mb-4">
+                <div class="text-[11px] font-bold text-slate-500 mb-2 flex items-center gap-1.5">
+                  <i data-lucide="credit-card" class="w-3.5 h-3.5 text-blue-600"></i> บัญชีธนาคารสำหรับรับเงินคืน:
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                  <div class="p-2.5 bg-stone-50 rounded-xl border border-stone-200/60">
+                    <span class="text-[10px] text-slate-400 block">ธนาคาร</span>
+                    <span id="mod_bank_name" class="font-bold text-slate-800 text-xs">-</span>
+                  </div>
+                  <div class="p-2.5 bg-stone-50 rounded-xl border border-stone-200/60">
+                    <span class="text-[10px] text-slate-400 block">เลขที่บัญชี</span>
+                    <span id="mod_bank_account" class="font-mono font-bold text-slate-900 text-xs">-</span>
+                  </div>
+                  <div class="p-2.5 bg-stone-50 rounded-xl border border-stone-200/60">
+                    <span class="text-[10px] text-slate-400 block">ชื่อบัญชี</span>
+                    <span id="mod_account_name" class="font-bold text-slate-800 text-xs">-</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- สลิปชำระเงินส่วนต่างจากลูกบ้าน (TENANT SLIP) -->
+              <div id="mod_tenant_slip_wrap" class="hidden bg-white border-2 border-dashed border-emerald-300 rounded-2xl p-3.5 shadow-2xs">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                    <i data-lucide="receipt" class="w-4 h-4 text-emerald-600"></i> สลิปชำระเงินส่วนต่างจากผู้เช่า
+                  </span>
+                  <span class="text-[10px] bg-emerald-100 text-emerald-900 font-extrabold px-2 py-0.5 rounded-lg border border-emerald-200">TENANT SLIP</span>
+                </div>
+                <div id="mod_tenant_slip_img_box" class="min-h-[140px] flex items-center justify-center bg-stone-50 rounded-xl overflow-hidden">
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- 🟩 กรอบที่ 2: ส่วนการตรวจสอบ & สรุปเงินประกัน (Staff Frame) -->
+          <div class="rounded-3xl p-5 sm:p-6 border-2 border-emerald-200 bg-gradient-to-b from-emerald-50/50 to-slate-50/30 flex flex-col justify-between shadow-2xs space-y-4">
+            <div>
+              <!-- Header กรอบนิติบุคคล -->
+              <div class="flex items-center justify-between pb-3.5 border-b border-emerald-200/80 mb-4">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-9 h-9 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <i data-lucide="calculator" class="w-5 h-5"></i>
+                  </div>
+                  <div>
+                    <h4 class="font-display font-bold text-slate-900 text-base">ส่วนการตรวจสอบ & สรุปเงินประกัน</h4>
+                    <p class="text-[11px] text-emerald-700 font-medium">เจ้าหน้าที่ผู้รับผิดชอบ ไทม์ไลน์ และผลสรุปเงิน</p>
+                  </div>
+                </div>
+                <span id="mod_staff_status_badge" class="text-[11px] font-bold px-2.5 py-1 rounded-xl bg-emerald-100/80 text-emerald-800 border border-emerald-200 font-mono">
+                  นิติบุคคล
+                </span>
+              </div>
+
+              <!-- กล่องสถานะการเคลียร์ห้อง -->
+              <div id="mod_status_box" class="p-4 rounded-2xl border shadow-2xs flex items-center justify-between flex-wrap gap-3 mb-4">
+              </div>
+
+              <!-- ไทม์ไลน์ 3 ขั้นตอน -->
+              <div class="bg-white p-4 rounded-2xl border border-emerald-200/80 shadow-2xs mb-4">
+                <div class="text-[11px] font-bold text-slate-400 mb-2.5 uppercase tracking-wider">บันทึกวันและเวลาการทำงาน</div>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                  <div class="p-3 bg-stone-50 rounded-xl border border-stone-200/70">
+                    <div class="text-amber-600 font-bold flex items-center gap-1 mb-1">
+                      <i data-lucide="send" class="w-3.5 h-3.5"></i> 1. แจ้งเมื่อ
+                    </div>
+                    <span id="mod_time_requested" class="font-mono text-slate-700 font-bold block">-</span>
+                  </div>
+                  <div class="p-3 bg-stone-50 rounded-xl border border-stone-200/70">
+                    <div class="text-blue-600 font-bold flex items-center gap-1 mb-1">
+                      <i data-lucide="calendar" class="w-3.5 h-3.5"></i> 2. วันที่ย้ายออก
+                    </div>
+                    <span id="mod_time_moveout" class="font-mono text-slate-700 font-bold block">-</span>
+                  </div>
+                  <div class="p-3 bg-stone-50 rounded-xl border border-stone-200/70">
+                    <div class="text-emerald-600 font-bold flex items-center gap-1 mb-1">
+                      <i data-lucide="check-circle" class="w-3.5 h-3.5"></i> 3. เคลียร์เสร็จ
+                    </div>
+                    <span id="mod_time_settled" class="font-mono text-slate-700 font-bold block">-</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- สรุปตัวเลขเงินประกัน / ค่าใช้จ่าย -->
+              <div class="bg-white p-4 rounded-2xl border border-emerald-200/80 shadow-2xs mb-4 space-y-2.5 text-xs">
+                <div class="flex items-center justify-between pb-2 border-b border-slate-100 font-bold text-slate-800">
+                  <span>เงินประกันเดิม (มัดจำ):</span>
+                  <span id="mod_deposit_amount" class="font-mono font-bold text-slate-900">฿0.00</span>
+                </div>
+                <div id="mod_deductions_detail" class="space-y-1.5 text-slate-600">
+                </div>
+                <div class="pt-2 border-t-2 border-dashed border-slate-200 flex items-center justify-between font-bold text-sm">
+                  <span id="mod_net_label">ยอดเงิน:</span>
+                  <span id="mod_net_amount" class="font-mono font-bold text-base sm:text-lg text-emerald-600">฿0.00</span>
+                </div>
+              </div>
+
+              <!-- สลิปหลักฐานโอนคืนเงินประกัน (REFUND SLIP) -->
+              <div id="mod_refund_slip_wrap" class="hidden bg-white border-2 border-dashed border-rose-300 rounded-2xl p-3.5 shadow-2xs">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-xs font-bold text-rose-900 flex items-center gap-1.5">
+                    <i data-lucide="receipt" class="w-4 h-4 text-rose-600"></i> สลิปโอนคืนเงินประกันจากนิติบุคคล
+                  </span>
+                  <span class="text-[10px] bg-rose-100 text-rose-900 font-extrabold px-2 py-0.5 rounded-lg border border-rose-200">REFUND SLIP</span>
+                </div>
+                <div id="mod_refund_slip_img_box" class="min-h-[140px] flex items-center justify-center bg-stone-50 rounded-xl overflow-hidden">
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Modal Footer Actions -->
+      <div class="px-5 py-4 border-t border-slate-200/80 bg-white flex items-center justify-between shrink-0">
+        <button type="button" onclick="closeMoveOutModal()" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl text-xs sm:text-sm transition cursor-pointer">
+          ปิดหน้าต่าง
+        </button>
+        <a id="mod_action_btn" href="#" class="px-6 py-2.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white font-bold rounded-2xl text-xs sm:text-sm shadow-md transition flex items-center gap-2 cursor-pointer">
+          <i data-lucide="calculator" class="w-4 h-4"></i>
+          <span id="mod_action_btn_text">สรุปเงิน & เคลียร์ห้อง</span>
+        </a>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MODAL: รายละเอียดคำขอต่อสัญญาเช่า (2 Columns) -->
+  <div id="renewalDetailModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+    <div class="bg-white w-full max-w-4xl max-h-[92vh] rounded-3xl shadow-2xl overflow-hidden modal-enter border border-slate-200/80 flex flex-col">
+      <!-- Header -->
+      <div class="px-5 py-4 sm:px-6 sm:py-5 border-b border-slate-200/80 flex justify-between items-center bg-slate-50/70 shrink-0">
+        <div class="flex items-center gap-3">
+          <span id="ren_modal_room_badge" class="px-3 py-1 bg-slate-900 text-white rounded-xl font-bold text-sm shadow-xs font-mono">ห้อง -</span>
+          <span id="ren_modal_id_badge" class="px-2.5 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-xs font-mono font-bold">#REN-0000</span>
+          <span id="ren_modal_status_badge" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">รออนุมัติ</span>
+        </div>
+        <button type="button" onclick="closeRenewalDetailModal()" class="w-9 h-9 rounded-2xl bg-white/80 backdrop-blur-md p-1.5 border border-rose-200/60 shadow-xs hover:bg-rose-100 hover:text-rose-600 text-slate-600 transition flex items-center justify-center cursor-pointer shadow-2xs" title="ปิด">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <!-- Body 2 columns -->
+      <div class="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+          <!-- 🟦 กรอบที่ 1: ส่วนข้อมูลผู้เช่า & สัญญาเดิม -->
+          <div class="rounded-3xl p-5 sm:p-6 border-2 border-indigo-200 bg-gradient-to-b from-indigo-50/40 to-slate-50/20 shadow-2xs space-y-4">
+            <div class="flex items-center gap-2.5 pb-3.5 border-b border-indigo-200/80">
+              <div class="w-9 h-9 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                <i data-lucide="user" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h4 class="font-display font-bold text-slate-900 text-base">ส่วนข้อมูลผู้เช่า & สัญญาเดิม</h4>
+                <p class="text-[11px] text-indigo-700 font-medium">รายละเอียดผู้ยื่นคำขอและเงื่อนไขสัญญาปัจจุบัน</p>
+              </div>
+            </div>
+            <!-- ข้อมูลผู้เช่า -->
+            <div class="bg-white p-4 rounded-2xl border border-indigo-200/80 shadow-2xs flex items-center justify-between gap-3">
+              <div class="flex items-center gap-3">
+                <div id="ren_modal_avatar" class="w-11 h-11 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-700 font-extrabold flex items-center justify-center text-base">
+                  ผ
+                </div>
+                <div>
+                  <span class="text-[10px] text-slate-400 font-semibold uppercase">ผู้เช่า / ผู้ยื่นคำขอ</span>
+                  <div id="ren_modal_tenant_name" class="font-bold text-slate-900 text-sm sm:text-base">-</div>
+                  <div id="ren_modal_tenant_phone" class="text-xs text-slate-500 font-mono mt-0.5">📞 -</div>
+                </div>
+              </div>
+              <a id="ren_modal_call_btn" href="#" class="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-2xs">
+                <i data-lucide="phone-call" class="w-3.5 h-3.5"></i> โทรหาผู้เช่า
+              </a>
+            </div>
+            <!-- รายละเอียดสัญญาเดิม -->
+            <div class="bg-white p-4 rounded-2xl border border-indigo-200/80 shadow-2xs space-y-2.5 text-xs text-slate-600">
+              <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <span class="text-slate-400">ห้องพัก:</span>
+                <strong id="ren_modal_room_info" class="text-slate-900 font-mono font-bold">-</strong>
+              </div>
+              <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <span class="text-slate-400">ค่าเช่ารายเดือน:</span>
+                <strong id="ren_modal_rent_price" class="text-slate-900 font-mono font-bold">฿0.00</strong>
+              </div>
+              <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <span class="text-slate-400">เงินประกันสัญญา:</span>
+                <strong id="ren_modal_deposit" class="text-emerald-600 font-mono font-bold">฿0.00</strong>
+              </div>
+              <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <span class="text-slate-400">เริ่มสัญญาเมื่อ:</span>
+                <span id="ren_modal_start_date" class="font-mono text-slate-700 font-bold">-</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-slate-400">สิ้นสุดสัญญาปัจจุบัน:</span>
+                <span id="ren_modal_current_end_date" class="font-mono text-rose-600 font-bold">-</span>
+              </div>
+            </div>
+            <!-- เอกสารสัญญาเช่าเดิม -->
+            <div id="ren_modal_lease_doc_wrap" class="bg-white border-2 border-dashed border-indigo-300 rounded-2xl p-3.5 shadow-2xs">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
+                  <i data-lucide="file-text" class="w-4 h-4 text-indigo-600"></i> เอกสารสัญญาเช่าปัจจุบัน
+                </span>
+                <span class="text-[10px] bg-indigo-100 text-indigo-900 font-extrabold px-2 py-0.5 rounded-lg border border-indigo-200">LEASE DOC</span>
+              </div>
+              <div id="ren_modal_lease_doc_box" class="min-h-[100px] flex items-center justify-center bg-stone-50 rounded-xl overflow-hidden text-xs text-slate-400">
+                ไม่มีเอกสารแนบ
+              </div>
+            </div>
+          </div>
+
+          <!-- 🟩 กรอบที่ 2: ส่วนคำขอต่อสัญญา & นิติบุคคล -->
+          <div class="rounded-3xl p-5 sm:p-6 border-2 border-emerald-200 bg-gradient-to-b from-emerald-50/50 to-slate-50/30 flex flex-col justify-between shadow-2xs space-y-4">
+            <div>
+              <div class="flex items-center justify-between pb-3.5 border-b border-emerald-200/80 mb-4">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-9 h-9 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <i data-lucide="calendar-plus" class="w-5 h-5"></i>
+                  </div>
+                  <div>
+                    <h4 class="font-display font-bold text-slate-900 text-base">ส่วนคำขอต่อสัญญา & นิติบุคคล</h4>
+                    <p class="text-[11px] text-emerald-700 font-medium">ระยะเวลาที่ขอต่อ ไทม์ไลน์ และผลการพิจารณา</p>
+                  </div>
+                </div>
+                <span class="text-[11px] font-bold px-2.5 py-1 rounded-xl bg-emerald-100/80 text-emerald-800 border border-emerald-200 font-mono">
+                  นิติบุคคล
+                </span>
+              </div>
+
+              <!-- กล่องสรุปการต่อสัญญา -->
+              <div class="p-4 rounded-2xl border border-emerald-200 bg-white shadow-2xs space-y-3 mb-4">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs text-slate-500">ระยะเวลาที่ขอขยายสัญญา:</span>
+                  <span id="ren_modal_ext_months" class="px-3 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl font-bold font-mono text-sm">+0 เดือน</span>
+                </div>
+                <div class="flex items-center justify-between pt-2 border-t border-slate-100">
+                  <span class="text-xs text-slate-500">วันสิ้นสุดสัญญาใหม่:</span>
+                  <span id="ren_modal_new_end_date" class="font-mono text-emerald-700 font-extrabold text-sm sm:text-base">-</span>
+                </div>
+                <div class="flex items-center justify-between pt-2 border-t border-slate-100">
+                  <span class="text-xs text-slate-500">ยื่นคำขอเมื่อ:</span>
+                  <span id="ren_modal_created_at" class="font-mono text-slate-700 text-xs">-</span>
+                </div>
+              </div>
+
+              <!-- บันทึกจากนิติบุคคล (Admin Remark) -->
+              <div id="ren_modal_remark_wrap" class="p-4 rounded-2xl border border-slate-200 bg-white shadow-2xs mb-4">
+                <div class="text-[11px] font-bold text-slate-400 mb-1 flex items-center gap-1.5 uppercase">
+                  <i data-lucide="message-square" class="w-3.5 h-3.5"></i> ข้อความ / บันทึกจากนิติบุคคล
+                </div>
+                <p id="ren_modal_remark_text" class="text-xs text-slate-700 leading-relaxed font-normal">-</p>
+              </div>
+            </div>
+
+            <!-- Actions Area -->
+            <div id="ren_modal_actions" class="pt-2">
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Footer -->
+      <div class="px-5 py-4 border-t border-slate-200/80 bg-white flex items-center justify-between shrink-0">
+        <button type="button" onclick="closeRenewalDetailModal()" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl text-xs sm:text-sm transition cursor-pointer">
+          ปิดหน้าต่าง
+        </button>
+        <div id="ren_modal_footer_right" class="flex gap-2">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: รายละเอียดคำขอย้ายห้อง (2 Columns) -->
+  <div id="roomChangeDetailModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+    <div class="bg-white w-full max-w-4xl max-h-[92vh] rounded-3xl shadow-2xl overflow-hidden modal-enter border border-slate-200/80 flex flex-col">
+      <!-- Header -->
+      <div class="px-5 py-4 sm:px-6 sm:py-5 border-b border-slate-200/80 flex justify-between items-center bg-slate-50/70 shrink-0">
+        <div class="flex items-center gap-3">
+          <span id="rc_modal_room_badge" class="px-3 py-1 bg-slate-900 text-white rounded-xl font-bold text-sm shadow-xs font-mono">ห้อง -</span>
+          <span id="rc_modal_id_badge" class="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-mono font-bold">#CHG-0000</span>
+          <span id="rc_modal_status_badge" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">รออนุมัติ</span>
+        </div>
+        <button type="button" onclick="closeRoomChangeDetailModal()" class="w-9 h-9 rounded-2xl bg-white/80 backdrop-blur-md p-1.5 border border-rose-200/60 shadow-xs hover:bg-rose-100 hover:text-rose-600 text-slate-600 transition flex items-center justify-center cursor-pointer shadow-2xs" title="ปิด">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <!-- Body 2 columns -->
+      <div class="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+          <!-- 🟦 กรอบที่ 1: ส่วนข้อมูลผู้เช่า & ห้องปัจจุบัน -->
+          <div class="rounded-3xl p-5 sm:p-6 border-2 border-indigo-200 bg-gradient-to-b from-indigo-50/40 to-slate-50/20 shadow-2xs space-y-4">
+            <div class="flex items-center gap-2.5 pb-3.5 border-b border-indigo-200/80">
+              <div class="w-9 h-9 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                <i data-lucide="user" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h4 class="font-display font-bold text-slate-900 text-base">ส่วนข้อมูลผู้เช่า & ห้องปัจจุบัน</h4>
+                <p class="text-[11px] text-indigo-700 font-medium">รายละเอียดผู้ขอย้ายและห้องพักปัจจุบัน</p>
+              </div>
+            </div>
+            <!-- ผู้เช่า -->
+            <div class="bg-white p-4 rounded-2xl border border-indigo-200/80 shadow-2xs flex items-center justify-between gap-3">
+              <div class="flex items-center gap-3">
+                <div id="rc_modal_avatar" class="w-11 h-11 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-700 font-extrabold flex items-center justify-center text-base">
+                  ผ
+                </div>
+                <div>
+                  <span class="text-[10px] text-slate-400 font-semibold uppercase">ผู้เช่า / ผู้ยื่นคำขอ</span>
+                  <div id="rc_modal_tenant_name" class="font-bold text-slate-900 text-sm sm:text-base">-</div>
+                  <div id="rc_modal_tenant_phone" class="text-xs text-slate-500 font-mono mt-0.5">📞 -</div>
+                </div>
+              </div>
+              <a id="rc_modal_call_btn" href="#" class="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-2xs">
+                <i data-lucide="phone-call" class="w-3.5 h-3.5"></i> โทรหาผู้เช่า
+              </a>
+            </div>
+            <!-- ห้องปัจจุบัน -->
+            <div class="bg-white p-4 rounded-2xl border border-indigo-200/80 shadow-2xs space-y-2.5 text-xs text-slate-600">
+              <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <span class="text-slate-400">ห้องพักปัจจุบัน:</span>
+                <strong id="rc_modal_curr_room" class="text-slate-900 font-mono font-bold">-</strong>
+              </div>
+              <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <span class="text-slate-400">ประเภท / ชั้น:</span>
+                <span id="rc_modal_curr_type" class="text-slate-700 font-semibold">-</span>
+              </div>
+              <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <span class="text-slate-400">ค่าเช่าปัจจุบัน:</span>
+                <strong id="rc_modal_curr_rent" class="text-slate-900 font-mono font-bold">฿0.00</strong>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-slate-400">สัญญาปัจจุบัน:</span>
+                <span id="rc_modal_curr_lease_dates" class="font-mono text-slate-700">-</span>
+              </div>
+            </div>
+            <!-- สลิปค่าทำความสะอาด -->
+            <div id="rc_modal_slip_wrap" class="bg-white border-2 border-dashed border-emerald-300 rounded-2xl p-3.5 shadow-2xs">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                  <i data-lucide="receipt" class="w-4 h-4 text-emerald-600"></i> สลิปค่าทำความสะอาด (500 บาท)
+                </span>
+                <span id="rc_modal_slip_badge" class="text-[10px] bg-emerald-100 text-emerald-900 font-extrabold px-2 py-0.5 rounded-lg border border-emerald-200">SLIP 500฿</span>
+              </div>
+              <div id="rc_modal_slip_box" class="min-h-[120px] flex items-center justify-center bg-stone-50 rounded-xl overflow-hidden">
+              </div>
+            </div>
+          </div>
+
+          <!-- 🟩 กรอบที่ 2: ส่วนคำขอย้าย & การดำเนินการของนิติบุคคล -->
+          <div class="rounded-3xl p-5 sm:p-6 border-2 border-emerald-200 bg-gradient-to-b from-emerald-50/50 to-slate-50/30 flex flex-col justify-between shadow-2xs space-y-4">
+            <div>
+              <div class="flex items-center justify-between pb-3.5 border-b border-emerald-200/80 mb-4">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-9 h-9 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <i data-lucide="arrow-right-left" class="w-5 h-5"></i>
+                  </div>
+                  <div>
+                    <h4 class="font-display font-bold text-slate-900 text-base">ส่วนคำขอย้าย & นิติบุคคล</h4>
+                    <p class="text-[11px] text-emerald-700 font-medium">ประเภทห้องที่ต้องการ เหตุผล และผลการจัดสรร</p>
+                  </div>
+                </div>
+                <span class="text-[11px] font-bold px-2.5 py-1 rounded-xl bg-emerald-100/80 text-emerald-800 border border-emerald-200 font-mono">
+                  นิติบุคคล
+                </span>
+              </div>
+
+              <!-- กล่องเป้าหมายการย้าย -->
+              <div class="p-4 rounded-2xl border border-emerald-200 bg-white shadow-2xs space-y-3 mb-4 text-xs">
+                <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <span class="text-slate-500">ประเภทห้องที่ขอย้าย:</span>
+                  <span id="rc_modal_target_type" class="px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-xl font-bold">-</span>
+                </div>
+                <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <span class="text-slate-500">วันที่ต้องการย้าย:</span>
+                  <span id="rc_modal_target_date" class="font-mono text-slate-800 font-bold">-</span>
+                </div>
+                <div class="pb-1">
+                  <span class="text-slate-400 block mb-1">เหตุผลในการขอย้าย:</span>
+                  <div id="rc_modal_reason" class="p-2.5 bg-stone-50 rounded-xl border border-stone-200 text-slate-700 text-xs">-</div>
+                </div>
+              </div>
+
+              <!-- กล่องผลการจัดสรรห้อง / บันทึกนิติบุคคล -->
+              <div class="p-4 rounded-2xl border border-slate-200 bg-white shadow-2xs space-y-2 mb-4 text-xs">
+                <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1">
+                  <i data-lucide="check-circle" class="w-3.5 h-3.5"></i> ผลการพิจารณา & ห้องที่จัดสรร
+                </div>
+                <div id="rc_modal_allocation_box" class="space-y-2">
+                </div>
+              </div>
+            </div>
+
+            <!-- Actions -->
+            <div id="rc_modal_actions" class="pt-2">
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Footer -->
+      <div class="px-5 py-4 border-t border-slate-200/80 bg-white flex items-center justify-between shrink-0">
+        <button type="button" onclick="closeRoomChangeDetailModal()" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl text-xs sm:text-sm transition cursor-pointer">
+          ปิดหน้าต่าง
+        </button>
+        <div id="rc_modal_footer_right" class="flex gap-2">
+        </div>
+      </div>
+    </div>
+  </div>
 
   <?php include_once 'includes/doc_viewer_modal.php'; ?>
 
@@ -4821,113 +5364,80 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
 
 
     // 7. ฟังก์ชันเปิด Modal แสดงข้อมูลผู้เช่า
-
     function openTenantModal(room, name, phone, email, emergencyName, emergencyPhone, start, end, rent, deposit, leaseImage, coresidents, roomId) {
-
         document.getElementById('modalRoomNum').innerText = room;
-
         document.getElementById('modalTenantName').innerText = name;
-
+        const avatarEl = document.getElementById('modalTenantAvatar');
+        if (avatarEl) avatarEl.innerText = name ? name.charAt(0) : 'ผ';
         document.getElementById('modalPhone').innerText = phone ? phone : '-';
-
         document.getElementById('modalEmail').innerText = email ? email : '-';
 
-
+        const callBtn = document.getElementById('modalTenantCallBtn');
+        if (callBtn) {
+            if (phone && phone !== '-') {
+                callBtn.href = 'tel:' + phone;
+                callBtn.classList.remove('hidden');
+            } else {
+                callBtn.classList.add('hidden');
+            }
+        }
 
         let emText = '-';
-
         if (emergencyName || emergencyPhone) {
-
             emText = (emergencyName || '') + (emergencyPhone ? ' (' + emergencyPhone + ')' : '');
-
         }
-
         document.getElementById('modalEmergency').innerText = emText;
 
-
-
         document.getElementById('modalStartDate').innerText = start;
-
         document.getElementById('modalEndDate').innerText = end;
-
         document.getElementById('modalRent').innerText = rent;
-
         document.getElementById('modalDeposit').innerText = deposit;
-
         
-
         let coresLink = document.getElementById('modalCoresidentsLink');
-
         if (coresLink && roomId) {
-
             coresLink.href = 'admin_coresidents.php?roomId=' + roomId;
-
         }
-
         let repairLink = document.getElementById('modalRepairRequestsLink');
-
         if (repairLink && roomId) {
-
             repairLink.href = 'admin_requests.php?roomId=' + roomId;
-
         }
-
-
 
         let docWrap = document.getElementById('modalLeaseDocWrap');
-
-        let docBtn = document.getElementById('modalLeaseDocBtn');
-
+        let docImgBox = document.getElementById('modalLeaseDocImgBox');
         if (leaseImage && leaseImage.trim() !== '') {
-
-            docWrap.classList.remove('hidden');
-
-            docBtn.setAttribute('onclick', "openLeaseDoc('" + leaseImage + "')");
-
+            if (docWrap) docWrap.classList.remove('hidden');
+            if (docImgBox) {
+                docImgBox.innerHTML = `
+                    <div class="relative group cursor-pointer w-full rounded-xl overflow-hidden border border-emerald-200 shadow-sm" onclick="openDocViewer('${leaseImage}', 'สัญญาเช่า - ห้อง ${room}')">
+                        <img src="${leaseImage}" class="w-full max-h-[160px] object-cover transition duration-300 group-hover:scale-105" alt="เอกสารสัญญา">
+                        <div class="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2 text-white font-bold text-xs backdrop-blur-2xs">
+                            <i data-lucide="zoom-in" class="w-4 h-4"></i> คลิกดูภาพขยาย
+                        </div>
+                    </div>
+                `;
+            }
         } else {
-
-            docWrap.classList.add('hidden');
-
-            docBtn.setAttribute('onclick', "");
-
+            if (docWrap) docWrap.classList.add('hidden');
+            if (docImgBox) docImgBox.innerHTML = '';
         }
-
-
 
         let coresList = document.getElementById('modalCoresidentsList');
-
         if (coresList) {
-
             coresList.innerHTML = '';
-
             if (coresidents && coresidents.length > 0) {
-
                 coresidents.forEach(c => {
-
                     const item = document.createElement('div');
-
                     item.className = 'flex items-center justify-between p-2 bg-stone-50 rounded-xl text-slate-700 text-xs border border-slate-200';
-
                     item.innerHTML = `<span><strong class="text-slate-900">${c.fullName}</strong> <span class="text-rose-600 text-[11px]">(${c.relationship})</span></span><span class="text-[11px] text-slate-400">📞 ${c.phone || '-'}</span>`;
-
                     coresList.appendChild(item);
-
                 });
-
             } else {
-
                 coresList.innerHTML = '<span class="text-slate-400 italic text-[11px] block py-1">ไม่มีผู้ร่วมอาศัยที่ลงทะเบียนในห้องนี้</span>';
-
             }
-
         }
-
         
-
         document.getElementById('tenantInfoModal').classList.remove('hidden');
-
         lucide.createIcons();
-
     }
 
 
@@ -5360,10 +5870,489 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
 
         if (typeof openDocModal === 'function') {
 
-            openDocModal(filePath);
+            openDocModal(filePath, title);
+
+        } else {
+
+            window.open(filePath, '_blank');
 
         }
 
+    }
+
+    // 🌟 ฟังก์ชันเปิด Modal ดูรายละเอียดคำขอแจ้งย้ายออก (แบบ 2 กรอบ) 🌟
+    function openMoveOutModal(data) {
+        if (!data) return;
+
+        function fmtDate(d) {
+            if (!d) return '-';
+            const clean = d.split(' ')[0];
+            const parts = clean.split('-');
+            if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+            return d;
+        }
+
+        // Header Badges
+        document.getElementById('mod_room_badge').innerText = `ห้อง ${data.roomNumber} (${data.roomType === 'Air' ? '❄️ แอร์' : '🌀 พัดลม'} ชั้น ${data.floor})`;
+        document.getElementById('mod_code_badge').innerText = `MOVE-${String(data.leaseId).padStart(4, '0')}`;
+
+        const isPending = (data.status === 'Active');
+        const statusBadge = document.getElementById('mod_status_badge');
+        if (isPending) {
+            statusBadge.className = 'text-xs font-bold px-3 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 animate-pulse';
+            statusBadge.innerHTML = '<i data-lucide="alert-circle" class="w-3.5 h-3.5 inline mr-1 text-rose-500"></i> รอเคลียร์ห้อง';
+        } else {
+            statusBadge.className = 'text-xs font-bold px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200';
+            statusBadge.innerHTML = '<i data-lucide="check-circle" class="w-3.5 h-3.5 inline mr-1 text-emerald-500"></i> เคลียร์เรียบร้อย';
+        }
+
+        // 🟦 กรอบที่ 1: ข้อมูลผู้เช่า
+        document.getElementById('mod_tenant_name').innerText = data.tenantName || '-';
+        document.getElementById('mod_tenant_phone').innerText = data.tenantPhone || 'ไม่ระบุเบอร์โทร';
+        const callBtn = document.getElementById('mod_tenant_call_btn');
+        if (data.tenantPhone && data.tenantPhone !== '-') {
+            callBtn.href = `tel:${data.tenantPhone}`;
+            callBtn.classList.remove('hidden');
+        } else {
+            callBtn.classList.add('hidden');
+        }
+
+        document.getElementById('mod_moveout_date').innerText = fmtDate(data.moveOutRequestDate);
+        document.getElementById('mod_moveout_reason').innerText = data.moveOutReason || 'ครบกำหนดสัญญาเช่า / ไม่ระบุเหตุผลเพิ่มเติม';
+        document.getElementById('mod_lease_period').innerText = `${fmtDate(data.startDate)} - ${fmtDate(data.endDate)}`;
+
+        document.getElementById('mod_bank_name').innerText = data.bankName || 'ไม่ระบุ';
+        document.getElementById('mod_bank_account').innerText = data.bankAccount || '-';
+        document.getElementById('mod_account_name').innerText = data.accountName || '-';
+
+        // Tenant Slip
+        const tenantSlipWrap = document.getElementById('mod_tenant_slip_wrap');
+        const tenantSlipImgBox = document.getElementById('mod_tenant_slip_img_box');
+        if (data.tenantPaymentSlip && String(data.tenantPaymentSlip).trim() !== '') {
+            tenantSlipWrap.classList.remove('hidden');
+            tenantSlipImgBox.innerHTML = `
+                <div class="relative group cursor-pointer w-full rounded-xl overflow-hidden border border-emerald-200 shadow-sm" onclick="openDocViewer('${data.tenantPaymentSlip}', 'สลิปชำระเงินส่วนต่าง - ห้อง ${data.roomNumber}')">
+                    <img src="${data.tenantPaymentSlip}" class="w-full max-h-[180px] object-cover transition duration-300 group-hover:scale-105" alt="สลิปจากลูกบ้าน">
+                    <div class="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2 text-white font-bold text-xs backdrop-blur-2xs">
+                        <i data-lucide="zoom-in" class="w-4 h-4"></i> คลิกดูภาพขยาย
+                    </div>
+                </div>
+            `;
+        } else {
+            tenantSlipWrap.classList.add('hidden');
+            tenantSlipImgBox.innerHTML = '';
+        }
+
+        // 🟩 กรอบที่ 2: ส่วนการตรวจสอบ & สรุปเงินประกัน
+        const statusBox = document.getElementById('mod_status_box');
+        if (isPending) {
+            statusBox.className = 'p-4 rounded-2xl border border-amber-200 bg-amber-50/70 shadow-2xs flex items-center justify-between flex-wrap gap-3 mb-4';
+            statusBox.innerHTML = `
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                        <i data-lucide="clock" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <span class="font-bold text-amber-950 text-sm block">รอนิติบุคคลตรวจเช็คสภาพห้อง & มิเตอร์</span>
+                        <p class="text-[11px] text-amber-800">ส่งคำขอย้ายออกแล้ว นิติบุคคลต้องลงบันทึกมิเตอร์และความเสียหาย</p>
+                    </div>
+                </div>
+                <a href="move_out_form.php?roomId=${data.roomId}&leaseId=${data.leaseId}" class="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-xs">
+                    <i data-lucide="calculator" class="w-3.5 h-3.5"></i> สรุปเงิน & เคลียร์ห้อง
+                </a>
+            `;
+        } else {
+            statusBox.className = 'p-4 rounded-2xl border border-emerald-200 bg-emerald-50/70 shadow-2xs flex items-center justify-between flex-wrap gap-3 mb-4';
+            statusBox.innerHTML = `
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                        <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <span class="font-bold text-emerald-950 text-sm block">เคลียร์ห้องและสรุปยอดเงินเรียบร้อยแล้ว</span>
+                        <p class="text-[11px] text-emerald-800">ตรวจสอบและปิดสัญญาเช่าสมบูรณ์ สถานะห้องปรับเป็นห้องว่างแล้ว</p>
+                    </div>
+                </div>
+                <span class="text-xs font-bold text-emerald-800 bg-white px-3 py-1 rounded-xl border border-emerald-200 shadow-2xs font-mono">
+                    ${data.settledAt ? fmtDate(data.settledAt) : 'เรียบร้อย'}
+                </span>
+            `;
+        }
+
+        // Timeline 3 steps
+        document.getElementById('mod_time_requested').innerText = fmtDate(data.moveOutRequestDate);
+        document.getElementById('mod_time_moveout').innerText = fmtDate(data.moveOutRequestDate);
+        document.getElementById('mod_time_settled').innerText = data.settledAt ? fmtDate(data.settledAt) : (isPending ? 'รอตรวจห้อง' : 'เสร็จสิ้น');
+
+        // Deposit & Deductions
+        const depVal = parseFloat(data.depositAmount || 0);
+        document.getElementById('mod_deposit_amount').innerText = `฿${depVal.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+
+        const dedBox = document.getElementById('mod_deductions_detail');
+        dedBox.innerHTML = '';
+        const items = [];
+        if (parseFloat(data.finalElectricFee || 0) > 0) items.push({ label: 'ค่าไฟฟ้าคงค้าง', val: parseFloat(data.finalElectricFee) });
+        if (parseFloat(data.finalWaterFee || 0) > 0) items.push({ label: 'ค่าน้ำประปาคงค้าง', val: parseFloat(data.finalWaterFee) });
+        if (parseFloat(data.cleaningFee || 0) > 0) items.push({ label: 'ค่าทำความสะอาด / แอร์', val: parseFloat(data.cleaningFee) });
+        if (parseFloat(data.damageFee || 0) > 0) items.push({ label: `ค่าความเสียหาย${data.damageDetail ? ` (${data.damageDetail})` : ''}`, val: parseFloat(data.damageFee) });
+        if (parseFloat(data.breachFee || 0) > 0) items.push({ label: 'ค่าปรับไม่ครบสัญญา / ริบมัดจำ', val: parseFloat(data.breachFee) });
+
+        if (items.length > 0) {
+            items.forEach(it => {
+                const row = document.createElement('div');
+                row.className = 'flex justify-between items-center text-rose-600 text-[11px]';
+                row.innerHTML = `<span>- ${it.label}:</span><span class="font-mono font-semibold">-฿${it.val.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>`;
+                dedBox.appendChild(row);
+            });
+        } else if (isPending) {
+            dedBox.innerHTML = '<div class="text-[11px] text-amber-700 italic">รอลงบันทึกการหักค่าใช้จ่ายในหน้าสรุปเงิน</div>';
+        } else {
+            dedBox.innerHTML = '<div class="text-[11px] text-slate-400 italic">ไม่มีรายการหักค่าใช้จ่ายเพิ่มเติม</div>';
+        }
+
+        // Net Amount
+        const netLabel = document.getElementById('mod_net_label');
+        const netAmount = document.getElementById('mod_net_amount');
+        if (isPending) {
+            netLabel.innerText = 'สถานะเงินประกัน:';
+            netLabel.className = 'font-bold text-slate-700';
+            netAmount.innerText = 'รอตรวจเช็คสภาพห้อง & มิเตอร์';
+            netAmount.className = 'text-xs font-bold text-amber-600';
+        } else {
+            const netVal = parseFloat(data.netRefundAmount || 0);
+            if (netVal < 0) {
+                netLabel.innerText = 'ยอดผู้เช่าชำระเงินส่วนต่างเพิ่ม:';
+                netLabel.className = 'font-bold text-rose-800';
+                netAmount.innerText = `฿${Math.abs(netVal).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+                netAmount.className = 'font-mono font-bold text-base sm:text-lg text-rose-600';
+            } else {
+                netLabel.innerText = 'ยอดโอนเงินคืนสุทธิให้ผู้เช่า:';
+                netLabel.className = 'font-bold text-emerald-800';
+                netAmount.innerText = `฿${netVal.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+                netAmount.className = 'font-mono font-bold text-base sm:text-lg text-emerald-600';
+            }
+        }
+
+        // Refund Slip
+        const refundSlipWrap = document.getElementById('mod_refund_slip_wrap');
+        const refundSlipImgBox = document.getElementById('mod_refund_slip_img_box');
+        if (data.refundReceipt && String(data.refundReceipt).trim() !== '') {
+            refundSlipWrap.classList.remove('hidden');
+            refundSlipImgBox.innerHTML = `
+                <div class="relative group cursor-pointer w-full rounded-xl overflow-hidden border border-rose-200 shadow-sm" onclick="openDocViewer('${data.refundReceipt}', 'สลิปโอนคืนเงินประกัน - ห้อง ${data.roomNumber}')">
+                    <img src="${data.refundReceipt}" class="w-full max-h-[180px] object-cover transition duration-300 group-hover:scale-105" alt="สลิปโอนคืนเงินประกัน">
+                    <div class="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2 text-white font-bold text-xs backdrop-blur-2xs">
+                        <i data-lucide="zoom-in" class="w-4 h-4"></i> คลิกดูภาพขยาย
+                    </div>
+                </div>
+            `;
+        } else {
+            refundSlipWrap.classList.add('hidden');
+            refundSlipImgBox.innerHTML = '';
+        }
+
+        // Action button
+        const actionBtn = document.getElementById('mod_action_btn');
+        const actionBtnText = document.getElementById('mod_action_btn_text');
+        actionBtn.href = `move_out_form.php?roomId=${data.roomId}&leaseId=${data.leaseId}`;
+        if (isPending) {
+            actionBtnText.innerText = 'สรุปเงิน & เคลียร์ห้อง';
+            actionBtn.className = 'px-6 py-2.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white font-bold rounded-2xl text-xs sm:text-sm shadow-md transition flex items-center gap-2 cursor-pointer';
+        } else {
+            actionBtnText.innerText = 'ดูใบสรุปย้ายออกเต็ม';
+            actionBtn.className = 'px-6 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-2xl text-xs sm:text-sm shadow-md transition flex items-center gap-2 cursor-pointer';
+        }
+
+        // Open modal
+        const modal = document.getElementById('moveOutDetailModal');
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+        if (window.lucide) lucide.createIcons();
+    }
+
+    function closeMoveOutModal() {
+        const modal = document.getElementById('moveOutDetailModal');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.style.display = 'none';
+        }
+        document.body.style.overflow = '';
+    }
+
+    // 🌟 ฟังก์ชันเปิด Modal ดูรายละเอียดคำขอต่อสัญญาเช่า (แบบ 2 กรอบ) 🌟
+    function openRenewalDetailModal(data) {
+        if (!data) return;
+
+        function fmtDate(d) {
+            if (!d) return '-';
+            const clean = d.split(' ')[0];
+            const parts = clean.split('-');
+            if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+            return d;
+        }
+
+        // Header Badges
+        document.getElementById('ren_modal_room_badge').innerText = `ห้อง ${data.roomNumber || '-'}`;
+        document.getElementById('ren_modal_id_badge').innerText = `#REN-${String(data.renewalId).padStart(4, '0')}`;
+
+        const statusBadge = document.getElementById('ren_modal_status_badge');
+        const isPending = (data.status === 'Pending');
+        const isApproved = (data.status === 'Approved');
+
+        if (isPending) {
+            statusBadge.className = 'text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 animate-pulse';
+            statusBadge.innerHTML = 'รออนุมัติต่อสัญญา';
+        } else if (isApproved) {
+            statusBadge.className = 'text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200';
+            statusBadge.innerHTML = 'อนุมัติเรียบร้อยแล้ว';
+        } else {
+            statusBadge.className = 'text-xs font-bold px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200';
+            statusBadge.innerHTML = 'ปฏิเสธการต่อสัญญา';
+        }
+
+        // 🟦 กรอบที่ 1: ข้อมูลผู้เช่า & สัญญาเดิม
+        const tenantName = data.fullName || '-';
+        document.getElementById('ren_modal_tenant_name').innerText = tenantName;
+        document.getElementById('ren_modal_avatar').innerText = tenantName.charAt(0);
+        document.getElementById('ren_modal_tenant_phone').innerText = `📞 ${data.tenantPhone || '-'}`;
+
+        const callBtn = document.getElementById('ren_modal_call_btn');
+        if (data.tenantPhone && data.tenantPhone !== '-') {
+            callBtn.href = `tel:${data.tenantPhone}`;
+            callBtn.classList.remove('hidden');
+        } else {
+            callBtn.classList.add('hidden');
+        }
+
+        document.getElementById('ren_modal_room_info').innerText = `ห้อง ${data.roomNumber || '-'}`;
+        document.getElementById('ren_modal_rent_price').innerText = `฿${parseFloat(data.rentPrice || 0).toLocaleString()} / ด.`;
+        document.getElementById('ren_modal_deposit').innerText = `฿${parseFloat(data.depositAmount || 0).toLocaleString()}`;
+        document.getElementById('ren_modal_start_date').innerText = fmtDate(data.startDate);
+        document.getElementById('ren_modal_current_end_date').innerText = fmtDate(data.currentEndDate);
+
+        // เอกสารสัญญาเช่า
+        const leaseBox = document.getElementById('ren_modal_lease_doc_box');
+        if (data.leaseImage && String(data.leaseImage).trim() !== '') {
+            leaseBox.innerHTML = `
+                <div class="relative group cursor-pointer w-full rounded-xl overflow-hidden border border-indigo-200 shadow-sm" onclick="openDocViewer('${data.leaseImage}', 'สัญญาเช่า - ห้อง ${data.roomNumber}')">
+                    <img src="${data.leaseImage}" class="w-full max-h-[160px] object-cover transition duration-300 group-hover:scale-105" alt="เอกสารสัญญา">
+                    <div class="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2 text-white font-bold text-xs backdrop-blur-2xs">
+                        <i data-lucide="zoom-in" class="w-4 h-4"></i> คลิกดูภาพขยาย
+                    </div>
+                </div>
+            `;
+        } else {
+            leaseBox.innerHTML = '<span class="text-xs text-slate-400 italic py-4">ไม่มีเอกสารสัญญาแนบในระบบ</span>';
+        }
+
+        // 🟩 กรอบที่ 2: ส่วนคำขอต่อสัญญา & นิติบุคคล
+        document.getElementById('ren_modal_ext_months').innerText = `+${data.extensionMonths} เดือน`;
+
+        // คำนวณวันสิ้นสุดสัญญาใหม่
+        let newEndFormatted = '-';
+        if (data.currentEndDate) {
+            const d = new Date(data.currentEndDate);
+            d.setMonth(d.getMonth() + parseInt(data.extensionMonths || 0));
+            newEndFormatted = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+        }
+        document.getElementById('ren_modal_new_end_date').innerText = newEndFormatted;
+        document.getElementById('ren_modal_created_at').innerText = fmtDate(data.created_at);
+
+        // หมายเหตุจากนิติบุคคล
+        const remarkWrap = document.getElementById('ren_modal_remark_wrap');
+        const remarkText = document.getElementById('ren_modal_remark_text');
+        if (data.adminRemark && String(data.adminRemark).trim() !== '') {
+            remarkWrap.classList.remove('hidden');
+            remarkText.innerText = data.adminRemark;
+        } else {
+            remarkWrap.classList.add('hidden');
+            remarkText.innerText = '-';
+        }
+
+        // Actions
+        const footerRight = document.getElementById('ren_modal_footer_right');
+        footerRight.innerHTML = '';
+        if (isPending) {
+            footerRight.innerHTML = `
+                <button type="button" onclick="closeRenewalDetailModal(); openRejectModal('${data.renewalId}', '${data.fullName}', '${data.roomNumber}')" class="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-2xl text-xs font-bold transition flex items-center gap-1 cursor-pointer">
+                    <i data-lucide="x" class="w-3.5 h-3.5"></i> ปฏิเสธ
+                </button>
+                <button type="button" onclick="closeRenewalDetailModal(); openApproveModal('${data.renewalId}', '${data.leaseId}', '${data.extensionMonths}', '${data.fullName}', '${data.roomNumber}', '${newEndFormatted}')" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-bold transition flex items-center gap-1.5 shadow-md cursor-pointer">
+                    <i data-lucide="check" class="w-4 h-4"></i> อนุมัติต่อสัญญา
+                </button>
+            `;
+        }
+
+        const modal = document.getElementById('renewalDetailModal');
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+        if (window.lucide) lucide.createIcons();
+    }
+
+    function closeRenewalDetailModal() {
+        const modal = document.getElementById('renewalDetailModal');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.style.display = 'none';
+        }
+        document.body.style.overflow = '';
+    }
+
+    // 🌟 ฟังก์ชันเปิด Modal ดูรายละเอียดคำขอย้ายห้องพัก (แบบ 2 กรอบ) 🌟
+    function openRoomChangeDetailModal(data) {
+        if (!data) return;
+
+        function fmtDate(d) {
+            if (!d) return '-';
+            const clean = d.split(' ')[0];
+            const parts = clean.split('-');
+            if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+            return d;
+        }
+
+        // Header Badges
+        document.getElementById('rc_modal_room_badge').innerText = `ห้อง ${data.currRoomNumber || '-'}`;
+        document.getElementById('rc_modal_id_badge').innerText = `#CHG-${String(data.requestId).padStart(4, '0')}`;
+
+        const statusBadge = document.getElementById('rc_modal_status_badge');
+        const isPending = (data.status === 'Pending');
+        const isApproved = (data.status === 'Approved');
+
+        if (isPending) {
+            statusBadge.className = 'text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 animate-pulse';
+            statusBadge.innerHTML = 'รออนุมัติจัดสรรห้อง';
+        } else if (isApproved) {
+            statusBadge.className = 'text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200';
+            statusBadge.innerHTML = 'อนุมัติย้ายห้องแล้ว';
+        } else {
+            statusBadge.className = 'text-xs font-bold px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200';
+            statusBadge.innerHTML = 'ปฏิเสธคำขอย้าย';
+        }
+
+        // 🟦 กรอบที่ 1: ข้อมูลผู้เช่า & ห้องปัจจุบัน
+        const tenantName = data.fullName || '-';
+        document.getElementById('rc_modal_tenant_name').innerText = tenantName;
+        document.getElementById('rc_modal_avatar').innerText = tenantName.charAt(0);
+        document.getElementById('rc_modal_tenant_phone').innerText = `📞 ${data.tenantPhone || '-'}`;
+
+        const callBtn = document.getElementById('rc_modal_call_btn');
+        if (data.tenantPhone && data.tenantPhone !== '-') {
+            callBtn.href = `tel:${data.tenantPhone}`;
+            callBtn.classList.remove('hidden');
+        } else {
+            callBtn.classList.add('hidden');
+        }
+
+        document.getElementById('rc_modal_curr_room').innerText = `ห้อง ${data.currRoomNumber || '-'}`;
+        document.getElementById('rc_modal_curr_type').innerText = `${data.currRoomType === 'Air' ? '❄️ ห้องแอร์' : '🌀 ห้องพัดลม'} (ชั้น ${data.currFloor || '-'})`;
+        document.getElementById('rc_modal_curr_rent').innerText = `฿${parseFloat(data.currRentPrice || 0).toLocaleString(undefined, {minimumFractionDigits: 0})}`;
+        
+        let leaseDatesText = '-';
+        if (data.leaseStartDate && data.leaseEndDate) {
+            leaseDatesText = `${fmtDate(data.leaseStartDate)} - ${fmtDate(data.leaseEndDate)}`;
+        }
+        document.getElementById('rc_modal_curr_lease_dates').innerText = leaseDatesText;
+
+        // สลิปค่าทำความสะอาด
+        const slipBox = document.getElementById('rc_modal_slip_box');
+        const slipBadge = document.getElementById('rc_modal_slip_badge');
+        if (data.paymentSlip && String(data.paymentSlip).trim() !== '') {
+            slipBadge.innerText = 'SLIP 500฿';
+            slipBadge.className = 'text-[10px] bg-emerald-100 text-emerald-900 font-extrabold px-2 py-0.5 rounded-lg border border-emerald-200';
+            slipBox.innerHTML = `
+                <div class="relative group cursor-pointer w-full rounded-xl overflow-hidden border border-emerald-200 shadow-sm" onclick="openDocViewer('${data.paymentSlip}', 'สลิปค่าทำความสะอาด - ห้อง ${data.currRoomNumber}')">
+                    <img src="${data.paymentSlip}" class="w-full max-h-[160px] object-cover transition duration-300 group-hover:scale-105" alt="สลิปค่าทำความสะอาด">
+                    <div class="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2 text-white font-bold text-xs backdrop-blur-2xs">
+                        <i data-lucide="zoom-in" class="w-4 h-4"></i> คลิกดูภาพขยาย
+                    </div>
+                </div>
+            `;
+        } else {
+            slipBadge.innerText = 'ไม่มีสลิป';
+            slipBadge.className = 'text-[10px] bg-slate-100 text-slate-500 font-bold px-2 py-0.5 rounded-lg border border-slate-200';
+            slipBox.innerHTML = '<span class="text-xs text-slate-400 italic py-4">ไม่มีการแนบสลิปค่าทำความสะอาด</span>';
+        }
+
+        // 🟩 กรอบที่ 2: ส่วนคำขอย้าย & นิติบุคคล
+        let targetTypeDesc = '-';
+        if (data.targetRoomType === 'Air') targetTypeDesc = '❄️ ขอเป็นห้องแอร์';
+        else if (data.targetRoomType === 'Fan') targetTypeDesc = '🌀 ขอเป็นห้องพัดลม';
+        else if (data.targetRoomType === 'Any') targetTypeDesc = '✨ ห้องใดก็ได้ (แอร์หรือพัดลม)';
+        else targetTypeDesc = data.targetRoomType || 'ไม่ระบุ';
+        document.getElementById('rc_modal_target_type').innerText = targetTypeDesc;
+
+        document.getElementById('rc_modal_target_date').innerText = fmtDate(data.preferredMoveDate);
+        document.getElementById('rc_modal_reason').innerText = data.reason || 'ไม่ได้ระบุเหตุผลเพิ่มเติม';
+
+        // ผลการพิจารณา & ห้องที่จัดสรร
+        const allocBox = document.getElementById('rc_modal_allocation_box');
+        allocBox.innerHTML = '';
+        if (isApproved) {
+            allocBox.innerHTML = `
+                <div class="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-900">
+                    <div class="font-bold flex items-center gap-1.5 mb-1 text-xs">
+                        <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600"></i> ย้ายเข้าห้องพักใหม่สำเร็จ
+                    </div>
+                    <div class="text-xs space-y-1">
+                        <div>ห้องเป้าหมายที่จัดสรร: <strong class="text-slate-900 font-mono text-sm">ห้อง ${data.targetRoomNumber || '-'}</strong> (${data.targetRoomTypeSpecific === 'Air' ? '❄️ แอร์' : '🌀 พัดลม'})</div>
+                        ${data.targetRentPrice ? `<div>ค่าเช่าห้องใหม่: <strong class="text-slate-900 font-mono">฿${parseFloat(data.targetRentPrice).toLocaleString()}</strong> / เดือน</div>` : ''}
+                        ${data.adminRemark ? `<div class="mt-2 pt-2 border-t border-emerald-200 text-slate-700">💬 หมายเหตุ: ${data.adminRemark}</div>` : ''}
+                    </div>
+                </div>
+            `;
+        } else if (data.status === 'Rejected') {
+            allocBox.innerHTML = `
+                <div class="p-3 bg-rose-50 rounded-xl border border-rose-200 text-rose-900">
+                    <div class="font-bold flex items-center gap-1.5 mb-1 text-xs">
+                        <i data-lucide="x-circle" class="w-4 h-4 text-rose-600"></i> คำขอย้ายห้องถูกปฏิเสธ
+                    </div>
+                    <div class="text-xs text-rose-800">
+                        ${data.adminRemark ? `💬 เหตุผล: ${data.adminRemark}` : 'ไม่มีการระบุเหตุผล'}
+                    </div>
+                </div>
+            `;
+        } else {
+            allocBox.innerHTML = `
+                <div class="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 text-xs space-y-1">
+                    <div class="font-bold flex items-center gap-1.5">
+                        <i data-lucide="clock" class="w-4 h-4 text-amber-600"></i> รอเจ้าหน้าที่ตรวจคำขอและจัดสรรห้อง
+                    </div>
+                    <p class="text-[11px] text-amber-800">เจ้าหน้าที่ต้องตรวจสอบสลิปค่าทำความสะอาด และเลือกห้องว่างที่พร้อมให้ย้าย</p>
+                </div>
+            `;
+        }
+
+        // Actions
+        const footerRight = document.getElementById('rc_modal_footer_right');
+        footerRight.innerHTML = '';
+
+        if (isPending) {
+            footerRight.innerHTML = `
+                <button type="button" onclick="closeRoomChangeDetailModal(); openRejectRoomChangeModal('${data.requestId}', '${data.fullName}', '${data.currRoomNumber}')" class="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-2xl text-xs font-bold transition flex items-center gap-1 cursor-pointer">
+                    <i data-lucide="x" class="w-3.5 h-3.5"></i> ปฏิเสธ
+                </button>
+                <button type="button" onclick="closeRoomChangeDetailModal(); openApproveRoomChangeModal('${data.requestId}', '${data.fullName}', '${data.currRoomNumber}', '${data.targetRoomType || ''}', '${data.targetRoomId || ''}', '${data.paymentSlip || ''}', '${data.leaseImage || ''}')" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-bold transition flex items-center gap-1.5 shadow-md cursor-pointer">
+                    <i data-lucide="clipboard-check" class="w-4 h-4"></i> ตรวจสอบ & จัดสรรห้อง
+                </button>
+            `;
+        }
+
+        const modal = document.getElementById('roomChangeDetailModal');
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+        if (window.lucide) lucide.createIcons();
+    }
+
+    function closeRoomChangeDetailModal() {
+        const modal = document.getElementById('roomChangeDetailModal');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.style.display = 'none';
+        }
+        document.body.style.overflow = '';
     }
 
 
@@ -5407,6 +6396,10 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
             closeApproveRoomChangeModal();
 
             closeRejectRoomChangeModal();
+
+            closeMoveOutModal();
+            closeRenewalDetailModal();
+            closeRoomChangeDetailModal();
 
             if (typeof closeDocModal === 'function') closeDocModal();
 

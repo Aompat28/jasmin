@@ -984,16 +984,7 @@ try {
           </div>
 
           <div>
-            <div class="flex items-center space-x-2">
-              <span class="font-display font-bold text-lg tracking-tight text-slate-800">หอพักจัสมิน</span>
-              <a href="profile.php" class="inline-flex items-center gap-1.5 text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-2.5 py-0.5 rounded-full border border-rose-200 transition shadow-2xs" title="โปรไฟล์ของฉัน">
-                <span><?php echo htmlspecialchars($headerTenantName ?? $sidebarTenantName ?? ($tenantName ?? 'ผู้เช่า')); ?></span>
-                <?php if(!empty($headerRoomNumber ?? $sidebarRoomNumber ?? ($myRoomNumber ?? ''))): ?>
-                  <span class="text-rose-400">•</span>
-                  <span>ห้อง <?php echo htmlspecialchars($headerRoomNumber ?? $sidebarRoomNumber ?? ($myRoomNumber ?? '')); ?></span>
-                <?php endif; ?>
-              </a>
-            </div>
+            <span class="font-display font-bold text-lg tracking-tight text-slate-800">หอพักจัสมิน</span>
             <p class="text-[11px] text-slate-400 font-medium hidden sm:block">ระบบจัดการลูกบ้าน</p>
           </div>
 
@@ -1032,36 +1023,15 @@ try {
 
 
 
-          <!-- ลิงก์โปรไฟล์ของผู้เช่า (ตรงชื่อ) -->
-
-          <a href="profile.php" class="flex items-center gap-2 p-1 sm:p-1.5 hover:bg-rose-50/70 rounded-xl transition border border-transparent hover:border-rose-200 group" title="โปรไฟล์ของฉัน">
-
-            <div class="w-8 h-8 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-xs border border-rose-200 shadow-2xs shrink-0">
-
+          <!-- ลิงก์โปรไฟล์ของผู้เช่า (ตรงรูปวงกลม + ชื่อและเลขห้อง) -->
+          <a href="profile.php" class="flex items-center gap-2 p-1 sm:p-1.5 sm:px-2.5 hover:bg-rose-50/70 rounded-full transition border border-transparent hover:border-rose-200 group" title="แก้ไขโปรไฟล์">
+            <div class="w-8 h-8 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-xs border border-rose-200 shadow-2xs shrink-0 group-hover:scale-105 transition">
               <?php echo $initials; ?>
-
             </div>
-
-            <div class="hidden sm:block text-left pr-0.5">
-
-              <div class="text-xs font-bold text-slate-800 group-hover:text-rose-600 transition truncate max-w-[130px] sm:max-w-[170px]"><?php echo htmlspecialchars($tenantName); ?></div>
-
-              <div class="text-[10px] text-rose-600 font-semibold truncate flex items-center gap-1">
-
-                <?php if(!empty($myRoomNumber)): ?>
-
-                  <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> ห้อง <?php echo htmlspecialchars($myRoomNumber); ?>
-
-                <?php else: ?>
-
-                  <span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span> ผู้เช่า
-
-                <?php endif; ?>
-
-              </div>
-
+            <div class="hidden sm:block text-left pr-1">
+              <div class="text-xs font-bold text-slate-800 group-hover:text-rose-600 transition truncate max-w-[140px] sm:max-w-[180px]"><?php echo htmlspecialchars($headerTenantName ?? $sidebarTenantName ?? ($tenantName ?? 'ผู้เช่า')); ?></div>
+              <div class="text-[10px] text-rose-600 font-bold"><?php echo !empty($headerRoomNumber ?? $sidebarRoomNumber ?? ($myRoomNumber ?? '')) ? "ห้อง " . htmlspecialchars($headerRoomNumber ?? $sidebarRoomNumber ?? ($myRoomNumber ?? '')) : 'ลูกบ้าน'; ?></div>
             </div>
-
           </a>
 
 
@@ -1362,7 +1332,7 @@ try {
 
 
 
-        <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-3">
 
           
 
@@ -1510,9 +1480,16 @@ try {
 
           </a>
 
+          <!-- 8. ขอเพิ่มรถ & ที่จอดรถ -->
+          <a href="tenant_parking.php" class="p-3.5 rounded-2xl bg-rose-50/40 hover:bg-cyan-50 border border-rose-100/80 hover:border-cyan-200 transition-all flex flex-col items-center text-center group cursor-pointer">
+            <div class="w-11 h-11 rounded-2xl bg-cyan-600/10 text-cyan-600 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+              <i data-lucide="car" class="w-5 h-5"></i>
+            </div>
+            <span class="text-xs font-bold text-slate-800 group-hover:text-cyan-700 transition">ขอเพิ่มรถ</span>
+            <span class="text-[10px] text-slate-400 mt-0.5">ที่จอดรถคันที่ 2+</span>
+          </a>
 
-
-          <!-- 8. รายงาน & โปรไฟล์ -->
+          <!-- 9. รายงาน & โปรไฟล์ -->
 
           <a href="profile.php" class="p-3.5 rounded-2xl bg-rose-50/40 hover:bg-slate-100 border border-rose-100/80 hover:border-slate-300 transition-all flex flex-col items-center text-center group">
 
@@ -2064,12 +2041,9 @@ try {
 
                 <span class="text-xs text-slate-500 font-medium">ประวัติการชำระเงินค่าห้องพักและค่าน้ำค่าไฟ</span>
 
-                <a href="view_invoices.php" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
-
-                  <i data-lucide="credit-card" class="w-3.5 h-3.5"></i>
-
-                  <span>ดูบิลทั้งหมด / แนบสลิป</span>
-
+                <a href="view_invoices.php?tab=history" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
+                  <i data-lucide="history" class="w-3.5 h-3.5"></i>
+                  <span>ดูประวัติบิลทั้งหมด</span>
                 </a>
 
               </div>

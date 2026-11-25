@@ -18,6 +18,112 @@ $previewData = [];
 // กำหนดแท็บเริ่มต้น (create หรือ list)
 $activeTab = $_GET['tab'] ?? 'list';
 
+/**
+ * คำนวณรอบบิลที่ถูกต้องตามลำดับสัญญาเช่า (ป้องกันการออกบิลข้ามเดือน หรือออกบิลย้อนหลัง)
+ */
+function getExpectedBillingMonthForRoom($conn, $roomId, $tenantId, $leaseStartDate) {
+    $thaiMonths = [
+        1 => 'มกราคม', 2 => 'กุมภาพันธ์', 3 => 'มีนาคม', 4 => 'เมษายน',
+        5 => 'พฤษภาคม', 6 => 'มิถุนายน', 7 => 'กรกฎาคม', 8 => 'สิงหาคม',
+        9 => 'กันยายน', 10 => 'ตุลาคม', 11 => 'พฤศจิกายน', 12 => 'ธันวาคม'
+    ];
+    $thaiMonthsMap = [
+        'มกราคม' => 1, 'กุมภาพันธ์' => 2, 'มีนาคม' => 3, 'เมษายน' => 4,
+        'พฤษภาคม' => 5, 'มิถุนายน' => 6, 'กรกฎาคม' => 7, 'สิงหาคม' => 8,
+        'กันยายน' => 9, 'ตุลาคม' => 10, 'พฤศจิกายน' => 11, 'ธันวาคม' => 12
+    ];
+
+    $stmt = $conn->prepare("
+        SELECT billingMonth, status, invoiceId 
+        FROM Invoices 
+        WHERE roomId = ? AND tenantId = ? 
+        ORDER BY invoiceId DESC 
+        LIMIT 1
+    ");
+    $stmt->execute([$roomId, $tenantId]);
+    $lastInv = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($lastInv && !empty($lastInv['billingMonth'])) {
+        $lastMonthStr = trim($lastInv['billingMonth']);
+        $year = null;
+        $month = null;
+
+        foreach ($thaiMonthsMap as $mName => $mNum) {
+            if (mb_strpos($lastMonthStr, $mName) !== false) {
+                $month = $mNum;
+                break;
+            }
+        }
+
+        if (preg_match('/\b(20\d\d|25\d\d)\b/', $lastMonthStr, $mYear)) {
+            $y = intval($mYear[1]);
+            if ($y > 2400) $y -= 543;
+            $year = $y;
+        }
+
+        if (preg_match('/^(\d{4})-(\d{2})$/', $lastMonthStr, $mYm)) {
+            $year = intval($mYm[1]);
+            $month = intval($mYm[2]);
+        }
+
+        if ($year && $month) {
+            $nextMonth = $month + 1;
+            $nextYear = $year;
+            if ($nextMonth > 12) {
+                $nextMonth = 1;
+                $nextYear += 1;
+            }
+            $nextYm = sprintf('%04d-%02d', $nextYear, $nextMonth);
+            $nextThai = $thaiMonths[$nextMonth] . ' ' . $nextYear;
+
+            $currentYm = sprintf('%04d-%02d', $year, $month);
+            $currentThai = $thaiMonths[$month] . ' ' . $year;
+
+            return [
+                'expectedYm' => $nextYm,
+                'expectedThai' => $nextThai,
+                'prevThai' => $lastMonthStr,
+                'isFirst' => false,
+                'lastStatus' => $lastInv['status'],
+                'currentUnpaidYm' => ($lastInv['status'] !== 'Paid') ? $currentYm : null,
+                'currentUnpaidThai' => ($lastInv['status'] !== 'Paid') ? $currentThai : null
+            ];
+        }
+    }
+
+    // กรณีบิลแรกของสัญญาเช่า (ยังไม่เคยมีบิลมาก่อนเลย)
+    if (!empty($leaseStartDate)) {
+        $ts = strtotime($leaseStartDate);
+        if ($ts) {
+            $year = intval(date('Y', $ts));
+            $month = intval(date('n', $ts));
+            $ym = sprintf('%04d-%02d', $year, $month);
+            $thai = $thaiMonths[$month] . ' ' . $year;
+            return [
+                'expectedYm' => $ym,
+                'expectedThai' => $thai,
+                'prevThai' => null,
+                'isFirst' => true,
+                'lastStatus' => null,
+                'currentUnpaidYm' => null,
+                'currentUnpaidThai' => null
+            ];
+        }
+    }
+
+    $curY = intval(date('Y'));
+    $curM = intval(date('n'));
+    return [
+        'expectedYm' => date('Y-m'),
+        'expectedThai' => $thaiMonths[$curM] . ' ' . $curY,
+        'prevThai' => null,
+        'isFirst' => true,
+        'lastStatus' => null,
+        'currentUnpaidYm' => null,
+        'currentUnpaidThai' => null
+    ];
+}
+
 // ขั้นตอนที่ 1: เมื่อแอดมินกดคำนวณเพื่อพรีวิวดูความถูกต้องก่อน
 if (isset($_POST['preview_invoice'])) {
     $activeTab = 'create';
@@ -25,12 +131,12 @@ if (isset($_POST['preview_invoice'])) {
     
     // แปลงวันที่จาก Calendar (YYYY-MM) เป็นภาษาไทย
     $rawMonth = trim($_POST['billingMonth']);
+    $thaiMonths = [
+        '01' => 'มกราคม', '02' => 'กุมภาพันธ์', '03' => 'มีนาคม', '04' => 'เมษายน',
+        '05' => 'พฤษภาคม', '06' => 'มิถุนายน', '07' => 'กรกฎาคม', '08' => 'สิงหาคม',
+        '09' => 'กันยายน', '10' => 'ตุลาคม', '11' => 'พฤศจิกายน', '12' => 'ธันวาคม'
+    ];
     if (preg_match('/^(\d{4})-(\d{2})$/', $rawMonth, $matches)) {
-        $thaiMonths = [
-            '01' => 'มกราคม', '02' => 'กุมภาพันธ์', '03' => 'มีนาคม', '04' => 'เมษายน',
-            '05' => 'พฤษภาคม', '06' => 'มิถุนายน', '07' => 'กรกฎาคม', '08' => 'สิงหาคม',
-            '09' => 'กันยายน', '10' => 'ตุลาคม', '11' => 'พฤศจิกายน', '12' => 'ธันวาคม'
-        ];
         $billingMonth = $thaiMonths[$matches[2]] . ' ' . $matches[1];
     } else {
         $billingMonth = $rawMonth; // กรณีพิมพ์เอง
@@ -46,7 +152,7 @@ if (isset($_POST['preview_invoice'])) {
 
     // ดึงข้อมูลห้องและผู้เช่า
     $stmtLease = $conn->prepare("
-        SELECT l.tenantId, r.roomNumber, r.rentPrice, u.fullName 
+        SELECT l.tenantId, l.startDate AS leaseStartDate, r.roomNumber, r.rentPrice, u.fullName 
         FROM Lease l 
         JOIN Room r ON l.roomId = r.roomId 
         JOIN User u ON l.tenantId = u.userId
@@ -57,37 +163,75 @@ if (isset($_POST['preview_invoice'])) {
     $lease = $stmtLease->fetch(PDO::FETCH_ASSOC);
 
     if ($lease) {
-        $waterUnits = max(0, $waterCurr - $waterPrev);
-        $waterTotal = $waterUnits * $waterRate;
+        // ตรวจสอบความถูกต้องของรอบบิลตามลำดับสัญญา (ห้ามออกข้ามเดือน / ห้ามออกย้อนหลัง)
+        $monthRule = getExpectedBillingMonthForRoom($conn, $roomId, $lease['tenantId'], $lease['leaseStartDate'] ?? null);
 
-        $electricUnits = max(0, $electricCurr - $electricPrev);
-        $electricTotal = $electricUnits * $electricRate;
+        $submittedYm = '';
+        if (preg_match('/^(\d{4})-(\d{2})$/', $rawMonth, $mMatch)) {
+            $submittedYm = $rawMonth;
+        } else {
+            foreach ($thaiMonths as $num => $name) {
+                if (mb_strpos($rawMonth, $name) !== false) {
+                    if (preg_match('/\b(20\d\d|25\d\d)\b/', $rawMonth, $yMatch)) {
+                        $y = intval($yMatch[1]);
+                        if ($y > 2400) $y -= 543;
+                        $submittedYm = sprintf('%04d-%02d', $y, intval($num));
+                        break;
+                    }
+                }
+            }
+        }
 
-        $totalAmount = $lease['rentPrice'] + $waterTotal + $electricTotal + $otherFee;
+        $isAllowed = false;
+        $isRetroactive = false;
+        if (!empty($submittedYm)) {
+            // อนุญาตให้ออกบิลย้อนหลังได้ตามคำขอผู้เช่า ($submittedYm <= expectedYm)
+            if ($submittedYm <= $monthRule['expectedYm']) {
+                $isAllowed = true;
+                $isRetroactive = ($submittedYm < $monthRule['expectedYm']);
+            } elseif (!empty($monthRule['currentUnpaidYm']) && $submittedYm === $monthRule['currentUnpaidYm']) {
+                // อนุญาตให้อัปเดตบิลของรอบปัจจุบันที่ยังไม่ได้ชำระเงิน
+                $isAllowed = true;
+            }
+        }
 
-        // เก็บข้อมูลไว้แสดงในหน้าพรีวิว
-        $previewData = [
-            'roomId' => $roomId,
-            'roomNumber' => $lease['roomNumber'],
-            'tenantId' => $lease['tenantId'],
-            'tenantName' => $lease['fullName'],
-            'billingMonth' => $billingMonth,
-            'rentPrice' => $lease['rentPrice'],
-            'waterPrev' => $waterPrev,
-            'waterCurr' => $waterCurr,
-            'waterUnits' => $waterUnits,
-            'waterRate' => $waterRate,
-            'waterTotal' => $waterTotal,
-            'electricPrev' => $electricPrev,
-            'electricCurr' => $electricCurr,
-            'electricUnits' => $electricUnits,
-            'electricRate' => $electricRate,
-            'electricTotal' => $electricTotal,
-            'otherFee' => $otherFee,
-            'otherFeeNote' => trim($_POST['otherFeeNote'] ?? ''),
-            'totalAmount' => $totalAmount
-        ];
-        $step = 2; // สลับไปหน้าพรีวิว
+        if (!$isAllowed) {
+            $message = "<div class='alert-box p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-800 rounded-2xl shadow-xs text-sm font-bold flex items-center gap-2 mb-6'><i data-lucide='alert-triangle' class='w-5 h-5 text-rose-600 shrink-0'></i> ❌ ไม่สามารถออกบิลข้ามเดือนล่วงหน้าได้! (คุณระบุเดือน <b>{$billingMonth}</b> แต่รอบบิลปัจจุบันของห้องนี้คือเดือน <b>{$monthRule['expectedThai']}</b> กรุณาออกบิลตามลำดับ ไม่สามารถข้ามเดือนไปในอนาคตได้)</div>";
+            $step = 1;
+        } else {
+            $waterUnits = max(0, $waterCurr - $waterPrev);
+            $waterTotal = $waterUnits * $waterRate;
+
+            $electricUnits = max(0, $electricCurr - $electricPrev);
+            $electricTotal = $electricUnits * $electricRate;
+
+            $totalAmount = $lease['rentPrice'] + $waterTotal + $electricTotal + $otherFee;
+
+            // เก็บข้อมูลไว้แสดงในหน้าพรีวิว
+            $previewData = [
+                'roomId' => $roomId,
+                'roomNumber' => $lease['roomNumber'],
+                'tenantId' => $lease['tenantId'],
+                'tenantName' => $lease['fullName'],
+                'billingMonth' => $billingMonth,
+                'isRetroactive' => $isRetroactive ? 1 : 0,
+                'rentPrice' => $lease['rentPrice'],
+                'waterPrev' => $waterPrev,
+                'waterCurr' => $waterCurr,
+                'waterUnits' => $waterUnits,
+                'waterRate' => $waterRate,
+                'waterTotal' => $waterTotal,
+                'electricPrev' => $electricPrev,
+                'electricCurr' => $electricCurr,
+                'electricUnits' => $electricUnits,
+                'electricRate' => $electricRate,
+                'electricTotal' => $electricTotal,
+                'otherFee' => $otherFee,
+                'otherFeeNote' => trim($_POST['otherFeeNote'] ?? ''),
+                'totalAmount' => $totalAmount
+            ];
+            $step = 2; // สลับไปหน้าพรีวิว
+        }
     } else {
         $message = "<div class='alert-box p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'>❌ ห้องนี้ยังไม่มีสัญญาเช่าที่เปิดใช้งานอยู่ ไม่สามารถออกบิลได้</div>";
     }
@@ -111,23 +255,70 @@ if (isset($_POST['confirm_invoice'])) {
     $totalAmount = floatval($_POST['totalAmount']);
 
     try {
-        // ตรวจสอบว่าเคยออกบิลรอบเดือนนี้สำหรับห้องนี้แล้วหรือไม่
-        $stmtCheck = $conn->prepare("SELECT invoiceId, status FROM Invoices WHERE roomId = ? AND billingMonth = ? ORDER BY invoiceId DESC LIMIT 1");
-        $stmtCheck->execute([$roomId, $billingMonth]);
-        $existingInvoice = $stmtCheck->fetch(PDO::FETCH_ASSOC);
+        // ตรวจสอบความถูกต้องของรอบบิลตามลำดับสัญญาเช่าอีกครั้งก่อนบันทึกจริง (ห้ามออกข้ามเดือน / ห้ามออกย้อนหลัง)
+        $stmtChkLease = $conn->prepare("SELECT startDate FROM Lease WHERE roomId = ? AND tenantId = ? AND status = 'Active' LIMIT 1");
+        $stmtChkLease->execute([$roomId, $tenantId]);
+        $leaseStart = $stmtChkLease->fetchColumn() ?: null;
 
-        // หากมีบิลอยู่แล้วและยังไม่ได้ชำระเงิน (Unpaid หรือ Pending Approval) ให้อัปเดตข้อมูลบิลนั้นได้
-        // แต่ถ้าบิลเดิมมีสถานะ 'Paid' (ชำระแล้ว) แล้ว จะต้องไม่เขียนทับสถานะชำระเงินเด็ดขาด! ให้สร้างบิลใหม่แทน เพื่อไม่ให้ตัวเลขบิลที่ชำระแล้วลดลง
-        if ($existingInvoice && $existingInvoice['status'] !== 'Paid') {
-            $stmt = $conn->prepare("UPDATE Invoices SET tenantId = ?, rentPrice = ?, waterPrev = ?, waterCurr = ?, waterUnitRate = ?, electricPrev = ?, electricCurr = ?, electricUnitRate = ?, otherFee = ?, otherFeeNote = ?, totalAmount = ?, status = 'Unpaid', slipImage = NULL WHERE invoiceId = ?");
-            $stmt->execute([$tenantId, $rentPrice, $waterPrev, $waterCurr, $waterRate, $electricPrev, $electricCurr, $electricRate, $otherFee, $otherFeeNote, $totalAmount, $existingInvoice['invoiceId']]);
-            $message = "<div class='alert-box p-4 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600'></i> อัปเดตข้อมูลใบแจ้งหนี้ประจำเดือน {$billingMonth} เรียบร้อยแล้ว!</div>";
+        $monthRule = getExpectedBillingMonthForRoom($conn, $roomId, $tenantId, $leaseStart);
+
+        $submittedYm = '';
+        if (preg_match('/^(\d{4})-(\d{2})$/', $billingMonth, $mMatch)) {
+            $submittedYm = $billingMonth;
         } else {
-            $stmt = $conn->prepare("INSERT INTO Invoices (roomId, tenantId, billingMonth, rentPrice, waterPrev, waterCurr, waterUnitRate, electricPrev, electricCurr, electricUnitRate, otherFee, otherFeeNote, totalAmount, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Unpaid')");
-            $stmt->execute([$roomId, $tenantId, $billingMonth, $rentPrice, $waterPrev, $waterCurr, $waterRate, $electricPrev, $electricCurr, $electricRate, $otherFee, $otherFeeNote, $totalAmount]);
-            $message = "<div class='alert-box p-4 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600'></i> ออกใบแจ้งหนี้ประจำเดือน {$billingMonth} ส่งให้ผู้เช่าสำเร็จเรียบร้อยแล้ว!</div>";
+            $thaiMonthsMap = [
+                'มกราคม' => '01', 'กุมภาพันธ์' => '02', 'มีนาคม' => '03', 'เมษายน' => '04',
+                'พฤษภาคม' => '05', 'มิถุนายน' => '06', 'กรกฎาคม' => '07', 'สิงหาคม' => '08',
+                'กันยายน' => '09', 'ตุลาคม' => '10', 'พฤศจิกายน' => '11', 'ธันวาคม' => '12'
+            ];
+            foreach ($thaiMonthsMap as $name => $num) {
+                if (mb_strpos($billingMonth, $name) !== false) {
+                    if (preg_match('/\b(20\d\d|25\d\d)\b/', $billingMonth, $yMatch)) {
+                        $y = intval($yMatch[1]);
+                        if ($y > 2400) $y -= 543;
+                        $submittedYm = sprintf('%04d-%02d', $y, intval($num));
+                        break;
+                    }
+                }
+            }
         }
-        $step = 1; // กลับสู่หน้าปกติ
+
+        $isAllowed = false;
+        $isRetroactive = false;
+        if (!empty($submittedYm)) {
+            // อนุญาตให้ออกบิลย้อนหลังได้ตามคำขอผู้เช่า ($submittedYm <= expectedYm)
+            if ($submittedYm <= $monthRule['expectedYm']) {
+                $isAllowed = true;
+                $isRetroactive = ($submittedYm < $monthRule['expectedYm']);
+            } elseif (!empty($monthRule['currentUnpaidYm']) && $submittedYm === $monthRule['currentUnpaidYm']) {
+                $isAllowed = true;
+            }
+        }
+
+        if (!$isAllowed) {
+            $message = "<div class='alert-box p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-800 rounded-2xl shadow-xs text-sm font-bold flex items-center gap-2 mb-6'><i data-lucide='alert-triangle' class='w-5 h-5 text-rose-600 shrink-0'></i> ❌ ไม่สามารถบันทึกบิลได้เนื่องจากรอบบิลข้ามเดือนไปในอนาคต (รอบบิลสูงสุดที่อนุญาตคือเดือน <b>{$monthRule['expectedThai']}</b> กรุณาออกบิลตามลำดับ ไม่สามารถข้ามเดือนได้)</div>";
+            $activeTab = 'create';
+            $step = 1;
+        } else {
+            // ตรวจสอบว่าเคยออกบิลรอบเดือนนี้สำหรับห้องนี้แล้วหรือไม่
+            $stmtCheck = $conn->prepare("SELECT invoiceId, status FROM Invoices WHERE roomId = ? AND billingMonth = ? ORDER BY invoiceId DESC LIMIT 1");
+            $stmtCheck->execute([$roomId, $billingMonth]);
+            $existingInvoice = $stmtCheck->fetch(PDO::FETCH_ASSOC);
+
+            // หากมีบิลอยู่แล้วและยังไม่ได้ชำระเงิน (Unpaid หรือ Pending Approval) ให้อัปเดตข้อมูลบิลนั้นได้
+            // แต่ถ้าบิลเดิมมีสถานะ 'Paid' (ชำระแล้ว) แล้ว จะต้องไม่เขียนทับสถานะชำระเงินเด็ดขาด! ให้สร้างบิลใหม่แทน เพื่อไม่ให้ตัวเลขบิลที่ชำระแล้วลดลง
+            if ($existingInvoice && $existingInvoice['status'] !== 'Paid') {
+                $stmt = $conn->prepare("UPDATE Invoices SET tenantId = ?, rentPrice = ?, waterPrev = ?, waterCurr = ?, waterUnitRate = ?, electricPrev = ?, electricCurr = ?, electricUnitRate = ?, otherFee = ?, otherFeeNote = ?, totalAmount = ?, status = 'Unpaid', slipImage = NULL WHERE invoiceId = ?");
+                $stmt->execute([$tenantId, $rentPrice, $waterPrev, $waterCurr, $waterRate, $electricPrev, $electricCurr, $electricRate, $otherFee, $otherFeeNote, $totalAmount, $existingInvoice['invoiceId']]);
+                $message = "<div class='alert-box p-4 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600'></i> อัปเดตข้อมูลใบแจ้งหนี้ประจำเดือน {$billingMonth} เรียบร้อยแล้ว!</div>";
+            } else {
+                $stmt = $conn->prepare("INSERT INTO Invoices (roomId, tenantId, billingMonth, rentPrice, waterPrev, waterCurr, waterUnitRate, electricPrev, electricCurr, electricUnitRate, otherFee, otherFeeNote, totalAmount, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Unpaid')");
+                $stmt->execute([$roomId, $tenantId, $billingMonth, $rentPrice, $waterPrev, $waterCurr, $waterRate, $electricPrev, $electricCurr, $electricRate, $otherFee, $otherFeeNote, $totalAmount]);
+                $retroTag = $isRetroactive ? " (ออกบิลย้อนหลังตามคำขอ)" : "";
+                $message = "<div class='alert-box p-4 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600'></i> ออกใบแจ้งหนี้ประจำเดือน {$billingMonth}{$retroTag} ส่งให้ผู้เช่าสำเร็จเรียบร้อยแล้ว!</div>";
+            }
+            $step = 1; // กลับสู่หน้าปกติ
+        }
 
         // แจ้งลูกบ้านว่ามีบิลใหม่
         $stmtTenant = $conn->prepare("
@@ -166,14 +357,55 @@ if (isset($_POST['update_payment_status'])) {
     $invoiceId = $_POST['invoiceId'];
     $newStatus = $_POST['update_payment_status']; 
 
-    $stmtStatus = $conn->prepare("UPDATE Invoices SET status = ? WHERE invoiceId = ?");
-    $stmtStatus->execute([$newStatus, $invoiceId]);
-    
-    $statusText = ($newStatus === 'Paid') ? 'อนุมัติการชำระเงินเรียบร้อยแล้ว' : 'เปลี่ยนสถานะกลับเป็นรอชำระเงินเรียบร้อยแล้ว';
-    $message = "<div class='alert-box p-4 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600'></i> {$statusText}</div>";
+    if ($newStatus === 'Paid') {
+        // ตรวจสอบว่าลูกบ้านแนบรูปสลิปแล้วหรือไม่ ก่อนจะอนุมัติได้
+        $stmtChkSlip = $conn->prepare("SELECT slipImage FROM Invoices WHERE invoiceId = ?");
+        $stmtChkSlip->execute([$invoiceId]);
+        $currSlip = $stmtChkSlip->fetchColumn();
 
-    // แจ้งผลอนุมัติ / ปฏิเสธสลิปผ่านทางอีเมล
-    if (in_array($newStatus, ['Paid', 'Unpaid'], true)) {
+        if (empty($currSlip)) {
+            $message = "<div class='alert-box p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-800 rounded-2xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='alert-circle' class='w-5 h-5 text-rose-600'></i> ❌ ไม่สามารถอนุมัติได้เนื่องจากลูกบ้านยังไม่ได้แนบรูปสลิปโอนเงิน กรุณารอลูกบ้านแนบรูปสลิปก่อน</div>";
+        } else {
+            $stmtStatus = $conn->prepare("UPDATE Invoices SET status = 'Paid' WHERE invoiceId = ?");
+            $stmtStatus->execute([$invoiceId]);
+            
+            $message = "<div class='alert-box p-4 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600'></i> อนุมัติการชำระเงินเรียบร้อยแล้ว</div>";
+
+            // แจ้งผลอนุมัติสลิปผ่านทางอีเมล
+            $stmtInv = $conn->prepare("
+                SELECT i.billingMonth, i.totalAmount, u.fullName, u.email, r.roomNumber
+                FROM Invoices i
+                JOIN User u ON i.tenantId = u.userId
+                LEFT JOIN Room r ON i.roomId = r.roomId
+                WHERE i.invoiceId = ?
+                LIMIT 1
+            ");
+            $stmtInv->execute([$invoiceId]);
+            $invInfo = $stmtInv->fetch(PDO::FETCH_ASSOC);
+            if ($invInfo && !empty($invInfo['email'])) {
+                $safeName = htmlspecialchars($invInfo['fullName'] ?? '', ENT_QUOTES, 'UTF-8');
+                $safeMonth = htmlspecialchars($invInfo['billingMonth'] ?? '', ENT_QUOTES, 'UTF-8');
+                $safeRoom = htmlspecialchars($invInfo['roomNumber'] ?? '', ENT_QUOTES, 'UTF-8');
+                $safeTotal = number_format((float)($invInfo['totalAmount'] ?? 0), 2);
+                sendMail(
+                    $invInfo['email'],
+                    "[หอพักจัสมิน] ยืนยันการชำระเงินบิล {$invInfo['billingMonth']} เรียบร้อยแล้ว",
+                    "<h2>สวัสดีคุณ {$safeName}</h2>
+                    <p>นิติบุคคลได้อนุมัติสลิปชำระเงินของท่านแล้ว</p>
+                    <p><b>ห้อง:</b> {$safeRoom}<br>
+                    <b>งวด:</b> {$safeMonth}<br>
+                    <b>ยอด:</b> {$safeTotal} บาท<br>
+                    <b>สถานะ:</b> ชำระแล้ว</p>"
+                );
+            }
+        }
+    } else {
+        $stmtStatus = $conn->prepare("UPDATE Invoices SET status = 'Unpaid' WHERE invoiceId = ?");
+        $stmtStatus->execute([$invoiceId]);
+        
+        $message = "<div class='alert-box p-4 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600'></i> เปลี่ยนสถานะกลับเป็นรอชำระเงินเรียบร้อยแล้ว</div>";
+
+        // แจ้งผลยกเลิกสถานะสลิปผ่านทางอีเมล
         $stmtInv = $conn->prepare("
             SELECT i.billingMonth, i.totalAmount, u.fullName, u.email, r.roomNumber
             FROM Invoices i
@@ -189,29 +421,16 @@ if (isset($_POST['update_payment_status'])) {
             $safeMonth = htmlspecialchars($invInfo['billingMonth'] ?? '', ENT_QUOTES, 'UTF-8');
             $safeRoom = htmlspecialchars($invInfo['roomNumber'] ?? '', ENT_QUOTES, 'UTF-8');
             $safeTotal = number_format((float)($invInfo['totalAmount'] ?? 0), 2);
-            if ($newStatus === 'Paid') {
-                sendMail(
-                    $invInfo['email'],
-                    "[หอพักจัสมิน] ยืนยันการชำระเงินบิล {$invInfo['billingMonth']} เรียบร้อยแล้ว",
-                    "<h2>สวัสดีคุณ {$safeName}</h2>
-                    <p>นิติบุคคลได้อนุมัติสลิปชำระเงินของท่านแล้ว</p>
-                    <p><b>ห้อง:</b> {$safeRoom}<br>
-                    <b>งวด:</b> {$safeMonth}<br>
-                    <b>ยอด:</b> {$safeTotal} บาท<br>
-                    <b>สถานะ:</b> ชำระแล้ว</p>"
-                );
-            } else {
-                sendMail(
-                    $invInfo['email'],
-                    "[หอพักจัสมิน] สลิปชำระเงินบิล {$invInfo['billingMonth']} ยังไม่ผ่านการอนุมัติ",
-                    "<h2>สวัสดีคุณ {$safeName}</h2>
-                    <p>สลิปชำระเงินของท่านยังไม่ผ่านการอนุมัติ หรือสถานะถูกตั้งกลับเป็นยังไม่ชำระ</p>
-                    <p><b>ห้อง:</b> {$safeRoom}<br>
-                    <b>งวด:</b> {$safeMonth}<br>
-                    <b>ยอด:</b> {$safeTotal} บาท</p>
-                    <p>กรุณาเข้าสู่ระบบเพื่อตรวจสอบและอัปโหลดสลิปใหม่หากจำเป็น</p>"
-                );
-            }
+            sendMail(
+                $invInfo['email'],
+                "[หอพักจัสมิน] สลิปชำระเงินบิล {$invInfo['billingMonth']} ยังไม่ผ่านการอนุมัติ",
+                "<h2>สวัสดีคุณ {$safeName}</h2>
+                <p>สลิปชำระเงินของท่านยังไม่ผ่านการอนุมัติ หรือสถานะถูกตั้งกลับเป็นยังไม่ชำระ</p>
+                <p><b>ห้อง:</b> {$safeRoom}<br>
+                <b>งวด:</b> {$safeMonth}<br>
+                <b>ยอด:</b> {$safeTotal} บาท</p>
+                <p>กรุณาเข้าสู่ระบบเพื่อตรวจสอบและอัปโหลดสลิปใหม่หากจำเป็น</p>"
+            );
         }
     }
 }
@@ -223,21 +442,33 @@ $rooms = $conn->query("
            latestInv.waterCurr AS lastWater,
            latestInv.electricCurr AS lastElectric,
            latestInv.billingMonth AS lastBillingMonth,
+           latestInv.status AS lastStatus,
            latestInv.invoiceId AS lastInvoiceId
     FROM Room r 
     JOIN Lease l ON r.roomId = l.roomId AND l.status = 'Active'
     JOIN User u ON l.tenantId = u.userId
     LEFT JOIN (
-        SELECT i1.roomId, i1.waterCurr, i1.electricCurr, i1.billingMonth, i1.invoiceId
+        SELECT i1.roomId, i1.tenantId, i1.waterCurr, i1.electricCurr, i1.billingMonth, i1.status, i1.invoiceId
         FROM Invoices i1
         JOIN (
-            SELECT roomId, MAX(invoiceId) AS maxId
+            SELECT roomId, tenantId, MAX(invoiceId) AS maxId
             FROM Invoices
-            GROUP BY roomId
+            GROUP BY roomId, tenantId
         ) i2 ON i1.invoiceId = i2.maxId
-    ) latestInv ON r.roomId = latestInv.roomId
+    ) latestInv ON r.roomId = latestInv.roomId AND l.tenantId = latestInv.tenantId
     ORDER BY r.roomNumber ASC
 ")->fetchAll(PDO::FETCH_ASSOC);
+
+foreach ($rooms as &$r) {
+    $rule = getExpectedBillingMonthForRoom($conn, $r['roomId'], $r['tenantId'], $r['leaseStartDate']);
+    $r['expectedYm'] = $rule['expectedYm'];
+    $r['expectedThai'] = $rule['expectedThai'];
+    $r['prevThai'] = $rule['prevThai'];
+    $r['isFirst'] = $rule['isFirst'];
+    $r['currentUnpaidYm'] = $rule['currentUnpaidYm'];
+    $r['currentUnpaidThai'] = $rule['currentUnpaidThai'];
+}
+unset($r);
 
 // ดึงประวัติเลขมิเตอร์ตามห้องและรอบเดือน เพื่อให้ระบบเปลี่ยนเลขมิเตอร์เก่าตามรอบเดือนที่เลือกได้แบบไดนามิก
 $roomMetersHistory = [];
@@ -672,19 +903,28 @@ if ($step === 2) {
                 <!-- จัดการ (ตรวจสอบบิล) -->
                 <td class="py-3.5 px-4 text-center">
                   <div class="flex items-center justify-center gap-1.5 flex-wrap">
-                    <!-- ฟอร์มเปลี่ยนสถานะ -->
-                    <form action="manage_invoice.php?tab=list" method="POST" class="inline-flex items-center justify-center gap-1.5 m-0" onsubmit="return handleStatusSubmit(event, this)">
-                      <input type="hidden" name="invoiceId" value="<?php echo $inv['invoiceId']; ?>">
-                      <?php if($inv['status'] !== 'Paid'): ?>
-                        <button type="submit" name="update_payment_status" value="Paid" onclick="event.stopPropagation()" class="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition cursor-pointer">
-                          <i data-lucide="check" class="w-3.5 h-3.5"></i> อนุมัติยอด
-                        </button>
-                      <?php else: ?>
-                        <button type="submit" name="update_payment_status" value="Unpaid" onclick="event.stopPropagation()" class="inline-flex items-center gap-1 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition cursor-pointer">
+                    <?php if($inv['status'] === 'Paid'): ?>
+                      <!-- ฟอร์มเปลี่ยนสถานะกลับเป็น Unpaid -->
+                      <form action="manage_invoice.php?tab=list" method="POST" class="inline-flex items-center justify-center gap-1.5 m-0" onsubmit="return handleStatusSubmit(event, this)">
+                        <input type="hidden" name="invoiceId" value="<?php echo $inv['invoiceId']; ?>">
+                        <button type="submit" name="update_payment_status" value="Unpaid" onclick="event.stopPropagation()" class="inline-flex items-center gap-1 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition cursor-pointer" title="เปลี่ยนสถานะกลับเป็นรอชำระ">
                           <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> ยกเลิกสถานะ
                         </button>
-                      <?php endif; ?>
-                    </form>
+                      </form>
+                    <?php elseif(!empty($inv['slipImage'])): ?>
+                      <!-- ลูกบ้านแนบรูปสลิปแล้ว: ขึ้นปุ่มให้อนุมัติ -->
+                      <form action="manage_invoice.php?tab=list" method="POST" class="inline-flex items-center justify-center gap-1.5 m-0" onsubmit="return handleStatusSubmit(event, this)">
+                        <input type="hidden" name="invoiceId" value="<?php echo $inv['invoiceId']; ?>">
+                        <button type="submit" name="update_payment_status" value="Paid" onclick="event.stopPropagation()" class="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition cursor-pointer" title="อนุมัติการชำระเงิน">
+                          <i data-lucide="check" class="w-3.5 h-3.5"></i> อนุมัติยอด
+                        </button>
+                      </form>
+                    <?php else: ?>
+                      <!-- ยังไม่แนบสลิป: ไม่ขึ้นปุ่มให้อนุมัติ ต้องรอให้ลูกบ้านแนบรูปมาก่อน -->
+                      <span class="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-50 border border-slate-200 text-slate-400 rounded-xl text-[11px] font-medium" title="รอลูกบ้านแนบรูปสลิปก่อน ปุ่มอนุมัติจึงจะปรากฏ">
+                        <i data-lucide="clock" class="w-3.5 h-3.5 text-slate-400"></i> รอลูกบ้านแนบสลิป
+                      </span>
+                    <?php endif; ?>
                   </div>
                 </td>
 
@@ -741,8 +981,19 @@ if ($step === 2) {
 
           <div>
             <div class="text-xs text-slate-500 font-medium">รอบเดือน (Billing Month)</div>
-            <div class="text-sm font-bold text-amber-600 flex items-center gap-1">
-              <i data-lucide="calendar" class="w-3.5 h-3.5"></i> <?php echo $previewData['billingMonth']; ?>
+            <div class="text-sm font-bold text-amber-600 flex items-center gap-2 flex-wrap">
+              <span class="flex items-center gap-1">
+                <i data-lucide="calendar" class="w-3.5 h-3.5"></i> <?php echo $previewData['billingMonth']; ?>
+              </span>
+              <?php if(!empty($previewData['isRetroactive'])): ?>
+                <span class="px-2 py-0.5 bg-amber-100 text-amber-800 border border-amber-300 rounded-md text-[10px] font-bold flex items-center gap-1">
+                  <i data-lucide="history" class="w-3 h-3 text-amber-700"></i> ออกบิลย้อนหลัง (ตามคำขอ)
+                </span>
+              <?php else: ?>
+                <span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-md text-[10px] font-bold flex items-center gap-1">
+                  <i data-lucide="check" class="w-3 h-3 text-emerald-700"></i> รอบบิลปัจจุบัน
+                </span>
+              <?php endif; ?>
             </div>
           </div>
         </div>
@@ -836,10 +1087,17 @@ if ($step === 2) {
                           data-water-prev="<?php echo $r['lastWater'] ?? ''; ?>"
                           data-electric-prev="<?php echo $r['lastElectric'] ?? ''; ?>"
                           data-last-month="<?php echo htmlspecialchars($r['lastBillingMonth'] ?? ''); ?>"
+                          data-last-status="<?php echo htmlspecialchars($r['lastStatus'] ?? ''); ?>"
+                          data-expected-ym="<?php echo $r['expectedYm']; ?>"
+                          data-expected-thai="<?php echo htmlspecialchars($r['expectedThai']); ?>"
+                          data-is-first="<?php echo $r['isFirst'] ? '1' : '0'; ?>"
+                          data-prev-thai="<?php echo htmlspecialchars($r['prevThai'] ?? ''); ?>"
+                          data-unpaid-ym="<?php echo htmlspecialchars($r['currentUnpaidYm'] ?? ''); ?>"
+                          data-unpaid-thai="<?php echo htmlspecialchars($r['currentUnpaidThai'] ?? ''); ?>"
                           data-initial-water="<?php echo $r['initialWaterMeter'] ?? '0'; ?>"
                           data-initial-electric="<?php echo $r['initialElectricMeter'] ?? '0'; ?>"
                           data-lease-start="<?php echo !empty($r['leaseStartDate']) ? date('d/m/Y', strtotime($r['leaseStartDate'])) : ''; ?>">
-                    ห้อง <?php echo $r['roomNumber']; ?> (<?php echo htmlspecialchars($r['fullName']); ?>) - ค่าเช่า ฿<?php echo number_format($r['rentPrice'], 2); ?>
+                    ห้อง <?php echo $r['roomNumber']; ?> (<?php echo htmlspecialchars($r['fullName']); ?>) - รอบบิล: <?php echo $r['expectedThai']; ?>
                   </option>
                 <?php endforeach; ?>
                 </select>
@@ -850,8 +1108,28 @@ if ($step === 2) {
             </div>
 
             <div>
-              <label class="block text-xs font-bold text-slate-700 mb-1.5">ประจำเดือน (รอบบิล): <span class="text-rose-500">*</span></label>
-              <input type="month" name="billingMonth" id="billingMonthInput" value="<?php echo date('Y-m'); ?>" required onchange="handleBillingMonthChange()" class="w-full px-4 py-3 bg-white border-2 border-stone-200 hover:border-rose-400 focus:border-rose-500 rounded-2xl text-xs sm:text-sm font-bold text-slate-800 shadow-xs outline-none transition">
+              <label class="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                <span>ประจำเดือน (รอบบิล): <span class="text-rose-500">*</span></span>
+                <div class="flex items-center gap-1.5">
+                  <span id="monthLockBadge" class="hidden text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-full font-bold items-center gap-1 shadow-2xs">
+                    <i data-lucide="check" class="w-3 h-3 text-emerald-600"></i> รอบปัจจุบัน
+                  </span>
+                  <button type="button" id="btnResetMonth" onclick="resetToExpectedMonth()" class="hidden text-[10px] text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-full font-bold items-center gap-1 transition cursor-pointer" title="รีเซ็ตกลับเป็นรอบบิลปัจจุบันตามลำดับ">
+                    <i data-lucide="rotate-ccw" class="w-3 h-3 text-blue-600"></i> รอบปัจจุบัน
+                  </button>
+                </div>
+              </label>
+              <div class="relative">
+                <input type="month" name="billingMonth" id="billingMonthInput" value="" required onchange="handleBillingMonthChange()" class="w-full px-4 py-3 bg-white border-2 border-stone-200 hover:border-rose-400 focus:border-rose-500 rounded-2xl text-xs sm:text-sm font-bold text-slate-800 shadow-xs outline-none transition cursor-pointer">
+                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400">
+                  <i data-lucide="calendar" class="w-4 h-4 text-slate-400"></i>
+                </div>
+              </div>
+              <div id="billingMonthInfoBox" class="mt-1.5">
+                <span class="text-[11px] text-slate-400 italic flex items-center gap-1">
+                  <i data-lucide="info" class="w-3.5 h-3.5 text-slate-400 shrink-0"></i> กรุณาเลือกห้องพักก่อน (สามารถเลือกเดือนย้อนหลังได้ตามคำขอผู้เช่า แต่ไม่อนุญาตให้ออกบิลข้ามเดือนไปในอนาคต)
+                </span>
+              </div>
             </div>
           </div>
 
@@ -860,7 +1138,6 @@ if ($step === 2) {
             <div class="flex items-center gap-2 mb-3">
               <i data-lucide="droplet" class="w-4 h-4 text-sky-600"></i>
               <span class="font-bold text-xs text-sky-900">มิเตอร์น้ำประปา</span>
-              <span id="waterRateBadge" class="text-[11px] text-sky-800 bg-sky-100 border border-sky-200/80 px-2.5 py-0.5 rounded-full ml-auto font-bold flex items-center gap-1 shadow-2xs"><i data-lucide="lock" class="w-3 h-3 text-sky-600"></i> ค่าน้ำต่อหน่วย: 18.00 บาท</span>
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
@@ -892,8 +1169,11 @@ if ($step === 2) {
                   <span id="waterCostPreview" class="text-[10px] text-sky-700 font-bold">฿0.00</span>
                 </label>
                 <div class="relative">
-                  <input type="text" id="waterUnitsUsed" readonly value="0 หน่วย (0.00 ฿)" class="w-full pl-3.5 pr-8 py-2.5 bg-sky-50/70 border border-sky-200/80 rounded-xl text-xs font-mono font-bold text-sky-950 outline-none select-none shadow-2xs">
+                  <input type="text" id="waterUnitsUsed" readonly value="0 หน่วย" class="w-full pl-3.5 pr-8 py-2.5 bg-sky-50/70 border border-sky-200/80 rounded-xl text-xs font-mono font-bold text-sky-950 outline-none select-none shadow-2xs">
                   <i data-lucide="calculator" class="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2"></i>
+                </div>
+                <div class="mt-1.5 flex justify-end">
+                  <span id="waterRateBadge" class="text-[11px] text-sky-800 bg-sky-100 border border-sky-200/80 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-2xs"><i data-lucide="lock" class="w-3 h-3 text-sky-600"></i> ค่าน้ำต่อหน่วย: 18.00 บาท</span>
                 </div>
                 <input type="hidden" name="waterRate" id="waterRate" value="18.00">
               </div>
@@ -905,7 +1185,6 @@ if ($step === 2) {
             <div class="flex items-center gap-2 mb-3">
               <i data-lucide="zap" class="w-4 h-4 text-amber-600"></i>
               <span class="font-bold text-xs text-amber-900">มิเตอร์ไฟฟ้า</span>
-              <span id="electricRateBadge" class="text-[11px] text-amber-800 bg-amber-100 border border-amber-200/80 px-2.5 py-0.5 rounded-full ml-auto font-bold flex items-center gap-1 shadow-2xs"><i data-lucide="lock" class="w-3 h-3 text-amber-600"></i> ค่าไฟต่อหน่วย: 8.00 บาท</span>
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
@@ -937,8 +1216,11 @@ if ($step === 2) {
                   <span id="electricCostPreview" class="text-[10px] text-amber-700 font-bold">฿0.00</span>
                 </label>
                 <div class="relative">
-                  <input type="text" id="electricUnitsUsed" readonly value="0 หน่วย (0.00 ฿)" class="w-full pl-3.5 pr-8 py-2.5 bg-sky-50/70 border border-sky-200/80 rounded-xl text-xs font-mono font-bold text-sky-950 outline-none select-none shadow-2xs">
+                  <input type="text" id="electricUnitsUsed" readonly value="0 หน่วย" class="w-full pl-3.5 pr-8 py-2.5 bg-amber-50/70 border border-amber-200/80 rounded-xl text-xs font-mono font-bold text-amber-950 outline-none select-none shadow-2xs">
                   <i data-lucide="calculator" class="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2"></i>
+                </div>
+                <div class="mt-1.5 flex justify-end">
+                  <span id="electricRateBadge" class="text-[11px] text-amber-800 bg-amber-100 border border-amber-200/80 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-2xs"><i data-lucide="lock" class="w-3 h-3 text-amber-600"></i> ค่าไฟต่อหน่วย: 8.00 บาท</span>
                 </div>
                 <input type="hidden" name="electricRate" id="electricRate" value="8.00">
               </div>
@@ -984,7 +1266,7 @@ if ($step === 2) {
                   <span class="text-[10px] text-slate-400 font-semibold">แก้ไขตัวเลขได้</span>
                 </label>
                 <div class="relative">
-                  <input type="number" step="0.01" name="otherFee" id="inputOtherFee" value="0.00" oninput="handleManualOtherFeeInput()" class="w-full pl-3 pr-8 py-2.5 bg-white border border-rose-200/80 rounded-xl text-xs font-mono font-bold text-slate-800 text-right focus:outline-none focus:ring-2 focus:ring-rose-500 transition shadow-2xs" placeholder="0.00" title="ยอดรวมค่าใช้จ่ายอื่นๆ (พิมพ์แก้ไขเองได้)">
+                  <input type="number" step="0.01" name="otherFee" id="inputOtherFee" value="120.00" oninput="handleManualOtherFeeInput()" class="w-full pl-3 pr-8 py-2.5 bg-white border border-rose-200/80 rounded-xl text-xs font-mono font-bold text-slate-800 text-right focus:outline-none focus:ring-2 focus:ring-rose-500 transition shadow-2xs" placeholder="0.00" title="ยอดรวมค่าใช้จ่ายอื่นๆ (พิมพ์แก้ไขเองได้)">
                   <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold select-none">฿</span>
                 </div>
               </div>
@@ -993,34 +1275,61 @@ if ($step === 2) {
             <!-- Floating Dropdown Checklist Card -->
             <div id="otherFeeMenu" class="absolute left-4 right-4 sm:left-5 sm:right-auto sm:w-[480px] top-[95px] bg-white border border-slate-200 rounded-2xl shadow-2xl p-4 z-40 hidden transition-all space-y-3">
               <div class="flex items-center justify-between pb-2 border-b border-slate-100">
-                <span class="text-xs font-bold text-white flex items-center gap-1.5">
+                <span class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                   <i data-lucide="check-square" class="w-3.5 h-3.5 text-blue-600"></i>
                   ติ๊กเลือกค่าใช้จ่ายส่วนต่าง
                 </span>
-                <button type="button" onclick="clearOtherFees()" class="text-[11px] text-rose-500 hover:text-rose-700 font-medium cursor-pointer">
-                  ล้างทั้งหมด
+                <button type="button" onclick="clearOtherFees()" class="text-[11px] text-rose-500 hover:text-rose-700 font-medium cursor-pointer" title="ล้างเฉพาะรายการที่เลือกเพิ่มเติม">
+                  ล้างรายการที่เลือกเพิ่ม
                 </button>
               </div>
 
               <!-- Checkbox List -->
               <div class="space-y-1.5 max-h-60 overflow-y-auto pr-1">
-                <!-- ค่าขยะ 20 บาท -->
-                <label class="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 cursor-pointer border border-transparent hover:border-slate-200 transition">
-                  <div class="flex items-center gap-2.5">
-                    <input type="checkbox" class="other-fee-checkbox w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer" data-name="ค่าขยะ" data-amount="20" onchange="recalculateOtherFees()">
-                    <span class="text-xs font-semibold text-slate-700">ค่าขยะ</span>
+                <!-- ค่าบริการประจำเดือน (ล็อกบังคับจ่ายทุกเดือน) -->
+                <div class="p-2.5 bg-amber-50/70 rounded-xl border border-amber-200/80 mb-2">
+                  <div class="flex items-center justify-between text-[11px] font-bold text-amber-900 mb-2">
+                    <span class="flex items-center gap-1.5">
+                      <i data-lucide="lock" class="w-3.5 h-3.5 text-amber-600 shrink-0"></i>
+                      <span>ค่าบริการประจำเดือน (ล็อกจ่ายทุกเดือน)</span>
+                    </span>
+                    <span class="text-[10px] text-amber-700 font-bold bg-amber-100/90 px-2 py-0.5 rounded-full border border-amber-200/60 shadow-2xs">บังคับรวมในบิล</span>
                   </div>
-                  <span class="text-xs font-mono font-bold text-white bg-sky-50 text-sky-700 border border-sky-100 px-2 py-0.5 rounded-md">+20 ฿</span>
-                </label>
 
-                <!-- ค่าส่วนกลาง 100 บาท -->
-                <label class="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 cursor-pointer border border-transparent hover:border-slate-200 transition">
-                  <div class="flex items-center gap-2.5">
-                    <input type="checkbox" class="other-fee-checkbox w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer" data-name="ค่าส่วนกลาง" data-amount="100" onchange="recalculateOtherFees()">
-                    <span class="text-xs font-semibold text-slate-700">ค่าส่วนกลาง</span>
+                  <div class="space-y-1.5">
+                    <!-- ค่าขยะ 20 บาท (ล็อก) -->
+                    <label class="flex items-center justify-between p-2 bg-white rounded-lg border border-amber-200/90 shadow-2xs select-none">
+                      <div class="flex items-center gap-2.5">
+                        <input type="checkbox" class="other-fee-checkbox w-4 h-4 rounded text-amber-600 border-amber-400 focus:ring-amber-500 cursor-not-allowed" data-name="ค่าขยะ" data-amount="20" data-locked="true" checked onclick="return false;" onchange="recalculateOtherFees()">
+                        <div class="flex items-center gap-1.5">
+                          <span class="text-xs font-bold text-slate-800">ค่าขยะ</span>
+                          <span class="inline-flex items-center gap-0.5 text-[9px] text-amber-800 bg-amber-100/90 font-bold px-1.5 py-0.5 rounded"><i data-lucide="lock" class="w-2.5 h-2.5 text-amber-600"></i> ล็อกจ่ายทุกเดือน</span>
+                        </div>
+                      </div>
+                      <span class="text-xs font-mono font-bold text-amber-900 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-md">+20 ฿</span>
+                    </label>
+
+                    <!-- ค่าส่วนกลาง 100 บาท (ล็อก) -->
+                    <label class="flex items-center justify-between p-2 bg-white rounded-lg border border-amber-200/90 shadow-2xs select-none">
+                      <div class="flex items-center gap-2.5">
+                        <input type="checkbox" class="other-fee-checkbox w-4 h-4 rounded text-amber-600 border-amber-400 focus:ring-amber-500 cursor-not-allowed" data-name="ค่าส่วนกลาง" data-amount="100" data-locked="true" checked onclick="return false;" onchange="recalculateOtherFees()">
+                        <div class="flex items-center gap-1.5">
+                          <span class="text-xs font-bold text-slate-800">ค่าส่วนกลาง</span>
+                          <span class="inline-flex items-center gap-0.5 text-[9px] text-amber-800 bg-amber-100/90 font-bold px-1.5 py-0.5 rounded"><i data-lucide="lock" class="w-2.5 h-2.5 text-amber-600"></i> ล็อกจ่ายทุกเดือน</span>
+                        </div>
+                      </div>
+                      <span class="text-xs font-mono font-bold text-amber-900 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-md">+100 ฿</span>
+                    </label>
                   </div>
-                  <span class="text-xs font-mono font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">+100 ฿</span>
-                </label>
+                </div>
+
+                <!-- ค่าบริการอื่นๆ เพิ่มเติม (เช็คลิสต์เลือกตามต้องการ ไม่ล็อก) -->
+                <div class="pt-1.5 pb-1 flex items-center justify-between px-1">
+                  <span class="text-[11px] font-bold text-slate-600 flex items-center gap-1.5">
+                    <i data-lucide="list-checks" class="w-3.5 h-3.5 text-blue-600 shrink-0"></i>
+                    ค่าบริการอื่นๆ (เลือกได้ตามต้องการ - ไม่ต้องจ่ายทุกเดือน)
+                  </span>
+                </div>
 
                 <!-- ค่าอินเทอร์เน็ต / Wi-Fi -->
                 <label class="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 cursor-pointer border border-transparent hover:border-slate-200 transition">
@@ -1611,7 +1920,17 @@ if ($step === 2) {
       // Admin Action Button
       const actionArea = document.getElementById('invDetailActionArea');
       if (actionArea) {
-        if (inv.status !== 'Paid') {
+        if (inv.status === 'Paid') {
+          actionArea.innerHTML = `
+            <form action="manage_invoice.php?tab=list" method="POST" class="m-0" onsubmit="return confirm('ต้องการยกเลิกสถานะบิล #INV-${inv.invoiceId} กลับเป็นยังไม่ชำระหรือไม่?');">
+              <input type="hidden" name="invoiceId" value="${inv.invoiceId}">
+              <button type="submit" name="update_payment_status" value="Unpaid" class="w-full py-3 px-4 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-2xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 cursor-pointer">
+                <i data-lucide="rotate-ccw" class="w-4 h-4"></i> ยกเลิกสถานะ (เปลี่ยนกลับเป็นรอชำระ)
+              </button>
+            </form>
+          `;
+        } else if (inv.slipImage && String(inv.slipImage).trim() !== '') {
+          // ลูกบ้านแนบรูปสลิปแล้ว: ขึ้นปุ่มให้อนุมัติ
           actionArea.innerHTML = `
             <form action="manage_invoice.php?tab=list" method="POST" class="m-0" onsubmit="return confirm('ยืนยันอนุมัติการชำระเงินสำหรับบิล #INV-${inv.invoiceId} หรือไม่?');">
               <input type="hidden" name="invoiceId" value="${inv.invoiceId}">
@@ -1621,13 +1940,11 @@ if ($step === 2) {
             </form>
           `;
         } else {
+          // ยังไม่มีสลิป: ไม่ขึ้นปุ่มอนุมัติ
           actionArea.innerHTML = `
-            <form action="manage_invoice.php?tab=list" method="POST" class="m-0" onsubmit="return confirm('ต้องการยกเลิกสถานะบิล #INV-${inv.invoiceId} กลับเป็นยังไม่ชำระหรือไม่?');">
-              <input type="hidden" name="invoiceId" value="${inv.invoiceId}">
-              <button type="submit" name="update_payment_status" value="Unpaid" class="w-full py-3 px-4 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-2xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 cursor-pointer">
-                <i data-lucide="rotate-ccw" class="w-4 h-4"></i> ยกเลิกสถานะ (เปลี่ยนกลับเป็นรอชำระ)
-              </button>
-            </form>
+            <div class="w-full py-3 px-4 bg-slate-50 text-slate-500 rounded-2xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 border border-slate-200">
+              <i data-lucide="clock" class="w-4 h-4 text-slate-400"></i> รอลูกบ้านแนบสลิปโอนเงิน (ปุ่มอนุมัติจะปรากฏเมื่อลูกบ้านแนบรูปสลิป)
+            </div>
           `;
         }
       }
@@ -1705,6 +2022,36 @@ if ($step === 2) {
       'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
     ];
 
+    function parseBillingMonthToYm(str) {
+      if (!str) return '';
+      if (/^\d{4}-\d{2}$/.test(str)) return str;
+      const map = {
+        'มกราคม': 1, 'กุมภาพันธ์': 2, 'มีนาคม': 3, 'เมษายน': 4,
+        'พฤษภาคม': 5, 'มิถุนายน': 6, 'กรกฎาคม': 7, 'สิงหาคม': 8,
+        'กันยายน': 9, 'ตุลาคม': 10, 'พฤศจิกายน': 11, 'ธันวาคม': 12
+      };
+      let m = 0;
+      for (const [name, num] of Object.entries(map)) {
+        if (str.includes(name)) { m = num; break; }
+      }
+      const ym = str.match(/\b(20\d\d|25\d\d)\b/);
+      if (m && ym) {
+        let y = parseInt(ym[1], 10);
+        if (y > 2400) y -= 543;
+        return `${y}-${String(m).padStart(2, '0')}`;
+      }
+      return '';
+    }
+
+    function formatYmToThai(yyyyMm) {
+      if (!yyyyMm || !yyyyMm.includes('-')) return yyyyMm || '';
+      const parts = yyyyMm.split('-');
+      const y = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10);
+      const thaiName = thaiMonthNames[m - 1] || '';
+      return `${thaiName} ${y}`;
+    }
+
     // คำนวณหาชื่อเดือนก่อนหน้า เช่น "2026-11" -> "ตุลาคม 2026"
     function getPrevMonthString(yyyyMm) {
       if (!yyyyMm || !yyyyMm.includes('-')) return '';
@@ -1719,64 +2066,88 @@ if ($step === 2) {
       return `${thaiMonthNames[month - 1]} ${year}`;
     }
 
-    // ฟังก์ชันค้นหามิเตอร์เก่าตามห้องและรอบเดือนที่เลือก
+    // ฟังก์ชันค้นหามิเตอร์เก่าตามห้องและรอบเดือนที่เลือก (รองรับทั้งรอบปกติและออกบิลย้อนหลัง)
     function getPrevMeterForRoom(roomId, selectedMonth) {
       const history = window.roomMetersHistory ? window.roomMetersHistory[roomId] : null;
       const opt = document.querySelector(`#roomSelect option[value="${roomId}"]`);
 
-      // กรณีห้องใหม่ หรือยังไม่มีประวัติการออกบิลมาก่อนเลย
-      if (!history || history.length === 0) {
-        if (opt) {
-          const initWater = opt.getAttribute('data-initial-water');
-          const initElectric = opt.getAttribute('data-initial-electric');
-          const leaseStart = opt.getAttribute('data-lease-start');
+      // 1. ถ้ามีประวัติบิลในระบบ และมีการระบุรอบเดือนที่เลือก
+      if (history && history.length > 0 && selectedMonth) {
+        const parts = selectedMonth.split('-');
+        let targetYear = parseInt(parts[0], 10);
+        let targetMonth = parseInt(parts[1], 10) - 1;
+        if (targetMonth < 1) { targetMonth = 12; targetYear -= 1; }
+        const prevTargetYm = `${targetYear}-${String(targetMonth).padStart(2, '0')}`;
 
-          // ถ้ามีข้อมูลมิเตอร์ตั้งต้นจากสัญญาเช่า (วันย้ายเข้า)
-          if (initWater !== null && initWater !== '' && initElectric !== null && initElectric !== '') {
-            return {
-              water: initWater,
-              electric: initElectric,
-              month: leaseStart ? `วันทำสัญญา (${leaseStart})` : 'สัญญาเริ่มต้น (วันย้ายเข้า)',
-              isInitial: true
-            };
-          }
-
-          // Fallback attribute เดิม
-          if (opt.getAttribute('data-water-prev') !== '' && opt.getAttribute('data-water-prev') !== null) {
-            return {
-              water: opt.getAttribute('data-water-prev'),
-              electric: opt.getAttribute('data-electric-prev'),
-              month: opt.getAttribute('data-last-month') || 'เดือนก่อน',
-              isInitial: false
-            };
-          }
-        }
-        return null;
-      }
-
-      const prevMonthName = getPrevMonthString(selectedMonth);
-
-      // 1. ลองค้นหาบิลของเดือนก่อนหน้ารอบบิลที่เลือกตรงๆ
-      if (prevMonthName) {
-        const matchPrev = history.find(item => item.billingMonth && item.billingMonth.includes(prevMonthName));
-        if (matchPrev) {
+        // 1.1 ค้นหาบิลของเดือนก่อนหน้าเป๊ะๆ
+        const matchExact = history.find(item => {
+          const itemYm = parseBillingMonthToYm(item.billingMonth);
+          return itemYm === prevTargetYm;
+        });
+        if (matchExact) {
           return {
-            water: matchPrev.waterCurr,
-            electric: matchPrev.electricCurr,
-            month: matchPrev.billingMonth,
+            water: matchExact.waterCurr,
+            electric: matchExact.electricCurr,
+            month: matchExact.billingMonth,
+            isInitial: false
+          };
+        }
+
+        // 1.2 ถ้าไม่พบคู่ตรงเดือนเป๊ะ หาบิลล่าสุดที่มีรอบเดือนน้อยกว่า selectedMonth
+        const priorBills = history
+          .map(item => ({ ...item, ym: parseBillingMonthToYm(item.billingMonth) }))
+          .filter(item => item.ym && item.ym < selectedMonth)
+          .sort((a, b) => b.ym.localeCompare(a.ym));
+
+        if (priorBills.length > 0) {
+          return {
+            water: priorBills[0].waterCurr,
+            electric: priorBills[0].electricCurr,
+            month: priorBills[0].billingMonth,
             isInitial: false
           };
         }
       }
 
-      // 2. ถ้าไม่พบคู่ตรงเดือน ให้ดึงบิลล่าสุดของห้องนั้น
-      const latest = history[0];
-      return {
-        water: latest.waterCurr,
-        electric: latest.electricCurr,
-        month: latest.billingMonth || 'เดือนก่อน',
-        isInitial: false
-      };
+      // 2. ถ้าไม่พบบิลที่มีรอบเดือนก่อนหน้า (เช่น เป็นบิลเดือนแรกของสัญญา หรือย้อนหลังไปถึงเดือนแรก) ให้ดึงเลขตั้งต้นจากสัญญา
+      if (opt) {
+        const initWater = opt.getAttribute('data-initial-water');
+        const initElectric = opt.getAttribute('data-initial-electric');
+        const leaseStart = opt.getAttribute('data-lease-start');
+
+        // ถ้ามีข้อมูลมิเตอร์ตั้งต้นจากสัญญาเช่า (วันย้ายเข้า)
+        if (initWater !== null && initWater !== '' && initElectric !== null && initElectric !== '') {
+          return {
+            water: initWater,
+            electric: initElectric,
+            month: leaseStart ? `วันทำสัญญา (${leaseStart})` : 'สัญญาเริ่มต้น (วันย้ายเข้า)',
+            isInitial: true
+          };
+        }
+
+        // Fallback attribute เดิม
+        if (opt.getAttribute('data-water-prev') !== '' && opt.getAttribute('data-water-prev') !== null) {
+          return {
+            water: opt.getAttribute('data-water-prev'),
+            electric: opt.getAttribute('data-electric-prev'),
+            month: opt.getAttribute('data-last-month') || 'เดือนก่อน',
+            isInitial: false
+          };
+        }
+      }
+
+      // 3. Fallback สุดท้าย: หากมีประวัติบิลให้ดึงรายการล่าสุด
+      if (history && history.length > 0) {
+        const latest = history[0];
+        return {
+          water: latest.waterCurr,
+          electric: latest.electricCurr,
+          month: latest.billingMonth || 'เดือนก่อน',
+          isInitial: false
+        };
+      }
+
+      return null;
     }
 
     // ฟังก์ชันดึงมิเตอร์เก่าใส่อัตโนมัติ
@@ -1882,14 +2253,20 @@ if ($step === 2) {
       checkboxes.forEach(cb => {
         const amt = parseFloat(cb.getAttribute('data-amount') || 0);
         const name = cb.getAttribute('data-name') || 'ส่วนต่าง';
+        const isLocked = cb.getAttribute('data-locked') === 'true';
         sum += amt;
         notes.push(`${name} (฿${amt.toFixed(2)})`);
 
         // Add visual pill
         if (pillsContainer) {
           const pill = document.createElement('span');
-          pill.className = 'inline-flex items-center gap-1 text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full font-medium';
-          pill.innerHTML = `<span>${name} ฿${amt.toFixed(0)}</span><button type="button" onclick="removeFeePill('${name}')" class="text-blue-400 hover:text-rose-600 cursor-pointer ml-0.5 font-bold">&times;</button>`;
+          if (isLocked) {
+            pill.className = 'inline-flex items-center gap-1.5 text-[10px] bg-amber-50 text-amber-900 border border-amber-200/90 px-2.5 py-0.5 rounded-full font-bold shadow-2xs select-none';
+            pill.innerHTML = `<i data-lucide="lock" class="w-3 h-3 text-amber-600 shrink-0"></i><span>${name} ฿${amt.toFixed(0)}</span><span class="text-[9px] text-amber-700 bg-amber-200/70 px-1.5 py-0.2 rounded-full font-semibold">ล็อก</span>`;
+          } else {
+            pill.className = 'inline-flex items-center gap-1.5 text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-0.5 rounded-full font-medium shadow-2xs';
+            pill.innerHTML = `<span>${name} ฿${amt.toFixed(0)}</span><button type="button" onclick="removeFeePill('${name}')" class="text-blue-400 hover:text-rose-600 cursor-pointer ml-0.5 font-bold text-xs" title="ลบรายการนี้">&times;</button>`;
+          }
           pillsContainer.appendChild(pill);
         }
       });
@@ -1904,8 +2281,8 @@ if ($step === 2) {
 
         if (pillsContainer) {
           const pill = document.createElement('span');
-          pill.className = 'inline-flex items-center gap-1 text-[10px] bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-full font-medium';
-          pill.innerHTML = `<span>${displayName} ฿${customAmt.toFixed(2)}</span><button type="button" onclick="clearCustomFee()" class="text-slate-400 hover:text-rose-600 cursor-pointer ml-0.5 font-bold">&times;</button>`;
+          pill.className = 'inline-flex items-center gap-1.5 text-[10px] bg-slate-100 text-slate-700 border border-slate-200 px-2.5 py-0.5 rounded-full font-medium shadow-2xs';
+          pill.innerHTML = `<span>${displayName} ฿${customAmt.toFixed(2)}</span><button type="button" onclick="clearCustomFee()" class="text-slate-400 hover:text-rose-600 cursor-pointer ml-0.5 font-bold text-xs" title="ลบรายการนี้">&times;</button>`;
           pillsContainer.appendChild(pill);
         }
       }
@@ -1935,7 +2312,7 @@ if ($step === 2) {
 
       if (btnDisplay) {
         if (totalCount === 0) {
-          btnDisplay.innerHTML = `<i data-lucide="list-checks" class="w-3.5 h-3.5 text-blue-600 shrink-0"></i><span class="truncate">เลือกค่าส่วนต่าง (เช่น ค่าขยะ 20.-)</span>`;
+          btnDisplay.innerHTML = `<i data-lucide="list-checks" class="w-3.5 h-3.5 text-blue-600 shrink-0"></i><span class="truncate">เลือกค่าส่วนต่าง (คลิกเลือกเพิ่มเติม)</span>`;
         } else if (totalCount === 1) {
           const singleItem = notes[0] || '1 รายการ';
           btnDisplay.innerHTML = `<i data-lucide="check-circle" class="w-3.5 h-3.5 text-emerald-600 shrink-0"></i><span class="truncate text-blue-700 font-bold">${singleItem}</span>`;
@@ -1964,7 +2341,7 @@ if ($step === 2) {
     function removeFeePill(feeName) {
       const cbs = document.querySelectorAll('.other-fee-checkbox');
       cbs.forEach(cb => {
-        if (cb.getAttribute('data-name') === feeName) {
+        if (cb.getAttribute('data-name') === feeName && cb.getAttribute('data-locked') !== 'true') {
           cb.checked = false;
         }
       });
@@ -1981,7 +2358,11 @@ if ($step === 2) {
 
     function clearOtherFees() {
       const cbs = document.querySelectorAll('.other-fee-checkbox');
-      cbs.forEach(cb => cb.checked = false);
+      cbs.forEach(cb => {
+        if (cb.getAttribute('data-locked') !== 'true') {
+          cb.checked = false;
+        }
+      });
       clearCustomFee();
     }
 
@@ -2042,20 +2423,179 @@ if ($step === 2) {
     function handleRoomChange() {
       const roomSelect = document.getElementById('roomSelect');
       const selectedOpt = roomSelect ? roomSelect.selectedOptions[0] : null;
+      const monthInput = document.getElementById('billingMonthInput');
+      const monthInfoBox = document.getElementById('billingMonthInfoBox');
+      const monthLockBadge = document.getElementById('monthLockBadge');
+      const btnResetMonth = document.getElementById('btnResetMonth');
+
       if (selectedOpt && selectedOpt.value) {
-        const lastMonth = selectedOpt.getAttribute('data-last-month');
-        if (lastMonth && lastMonth.trim() !== '') {
-          const nextMonth = getNextBillingMonth(lastMonth);
-          const monthInput = document.getElementById('billingMonthInput');
-          if (monthInput) {
-            monthInput.value = nextMonth;
-          }
+        const expectedYm = selectedOpt.getAttribute('data-expected-ym');
+
+        if (monthInput && expectedYm) {
+          monthInput.value = expectedYm;
+          monthInput.removeAttribute('min');
+          monthInput.setAttribute('max', expectedYm); // ห้ามออกบิลข้ามเดือนไปในอนาคต แต่เลือกย้อนหลังได้
+          monthInput.readOnly = false;
+          monthInput.classList.remove('bg-slate-100', 'cursor-not-allowed');
+          monthInput.classList.add('bg-white', 'cursor-pointer');
+        }
+
+        updateMonthUI();
+      } else {
+        if (monthInput) {
+          monthInput.value = '';
+          monthInput.removeAttribute('min');
+          monthInput.removeAttribute('max');
+          monthInput.readOnly = true;
+          monthInput.classList.add('bg-slate-100', 'cursor-not-allowed');
+          monthInput.classList.remove('bg-white', 'cursor-pointer');
+        }
+        if (monthLockBadge) monthLockBadge.classList.add('hidden');
+        if (btnResetMonth) btnResetMonth.classList.add('hidden');
+        if (monthInfoBox) {
+          monthInfoBox.innerHTML = `
+            <span class="text-[11px] text-slate-400 italic flex items-center gap-1">
+              <i data-lucide="info" class="w-3.5 h-3.5 text-slate-400 shrink-0"></i> กรุณาเลือกห้องพักก่อน (สามารถเลือกเดือนย้อนหลังได้ตามคำขอผู้เช่า แต่ไม่อนุญาตให้ออกบิลข้ามเดือนไปในอนาคต)
+            </span>
+          `;
+          if (window.lucide) lucide.createIcons();
         }
       }
       autoFillPreviousMeters(true);
     }
 
+    function updateMonthUI() {
+      const roomSelect = document.getElementById('roomSelect');
+      const selectedOpt = roomSelect ? roomSelect.selectedOptions[0] : null;
+      if (!selectedOpt || !selectedOpt.value) return;
+
+      const expectedYm = selectedOpt.getAttribute('data-expected-ym');
+      const expectedThai = selectedOpt.getAttribute('data-expected-thai');
+      const isFirst = selectedOpt.getAttribute('data-is-first') === '1';
+      const prevThai = selectedOpt.getAttribute('data-prev-thai');
+      const unpaidYm = selectedOpt.getAttribute('data-unpaid-ym');
+      const unpaidThai = selectedOpt.getAttribute('data-unpaid-thai');
+
+      const monthInput = document.getElementById('billingMonthInput');
+      const monthInfoBox = document.getElementById('billingMonthInfoBox');
+      const monthLockBadge = document.getElementById('monthLockBadge');
+      const btnResetMonth = document.getElementById('btnResetMonth');
+
+      const currentVal = monthInput ? monthInput.value : '';
+
+      if (currentVal && expectedYm) {
+        if (currentVal > expectedYm) {
+          alert(`❌ ไม่สามารถออกบิลข้ามเดือนล่วงหน้าได้!\nรอบบิลปัจจุบันสูงสุดของห้องนี้คือเดือน ${expectedThai}\nระบบจะปรับกลับเป็นรอบบิลปัจจุบันให้อัตโนมัติ`);
+          monthInput.value = expectedYm;
+          updateMonthUI();
+          return;
+        }
+
+        const isRetroactive = currentVal < expectedYm;
+
+        if (monthLockBadge) {
+          monthLockBadge.classList.remove('hidden');
+          if (isRetroactive) {
+            monthLockBadge.className = 'text-[10px] text-amber-800 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-2xs';
+            monthLockBadge.innerHTML = `<i data-lucide="history" class="w-3 h-3 text-amber-600"></i> ออกบิลย้อนหลัง`;
+          } else {
+            monthLockBadge.className = 'text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-2xs';
+            monthLockBadge.innerHTML = `<i data-lucide="check" class="w-3 h-3 text-emerald-600"></i> รอบปัจจุบัน`;
+          }
+        }
+
+        if (btnResetMonth) {
+          if (isRetroactive) {
+            btnResetMonth.classList.remove('hidden');
+            btnResetMonth.classList.add('inline-flex');
+          } else {
+            btnResetMonth.classList.add('hidden');
+            btnResetMonth.classList.remove('inline-flex');
+          }
+        }
+
+        if (monthInfoBox) {
+          const selectedThai = formatYmToThai(currentVal);
+          if (isRetroactive) {
+            monthInfoBox.innerHTML = `
+              <div class="p-2.5 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 shadow-2xs">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="flex items-start gap-2">
+                    <i data-lucide="history" class="w-4 h-4 text-amber-600 shrink-0 mt-0.5"></i>
+                    <div>
+                      <span class="font-bold text-amber-900">โหมดออกบิลย้อนหลัง (ตามคำขอผู้เช่า):</span> คุณกำลังออกบิลของเดือน <b>${selectedThai}</b> (ระบบดึงเลขมิเตอร์รอบก่อนหน้านั้นให้อัตโนมัติ)
+                    </div>
+                  </div>
+                  <button type="button" onclick="resetToExpectedMonth()" class="shrink-0 text-[11px] font-bold text-amber-800 hover:text-amber-950 underline cursor-pointer">
+                    กลับไปเดือน ${expectedThai}
+                  </button>
+                </div>
+              </div>
+            `;
+          } else if (isFirst) {
+            monthInfoBox.innerHTML = `
+              <div class="p-2.5 bg-cyan-50 border border-cyan-200/80 rounded-xl text-xs text-cyan-800 flex items-start gap-2 shadow-2xs">
+                <i data-lucide="info" class="w-4 h-4 text-cyan-600 shrink-0 mt-0.5"></i>
+                <div>
+                  <span class="font-bold text-cyan-900">รอบบิลแรกของสัญญา:</span> กำหนดเป็น <b>${expectedThai}</b> ตามวันเริ่มสัญญาเช่า (สามารถเลือกเดือนย้อนหลังได้ แต่ห้ามออกข้ามเดือนล่วงหน้า)
+                </div>
+              </div>
+            `;
+          } else {
+            let unpaidNotice = '';
+            if (unpaidYm && unpaidThai) {
+              unpaidNotice = `
+                <div class="mt-2 pt-2 border-t border-amber-200/60 flex items-center justify-between text-[11px] text-amber-900">
+                  <span>⚠️ มีบิลเดือน <b>${unpaidThai}</b> ที่ยังไม่ชำระเงิน</span>
+                  <button type="button" onclick="switchToUnpaidMonth('${unpaidYm}', '${unpaidThai}')" class="underline font-bold text-amber-700 hover:text-amber-900 cursor-pointer">
+                    คลิกเพื่อแก้ไขบิลเดือน ${unpaidThai}
+                  </button>
+                </div>
+              `;
+            }
+            monthInfoBox.innerHTML = `
+              <div class="p-2.5 bg-emerald-50 border border-emerald-200/80 rounded-xl text-xs text-emerald-800 shadow-2xs">
+                <div class="flex items-start gap-2">
+                  <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 shrink-0 mt-0.5"></i>
+                  <div>
+                    <span class="font-bold text-emerald-900">รอบบิลปัจจุบันตามลำดับ:</span> บิลล่าสุดคือ <b>${prevThai}</b> &rarr; รอบนี้คือ <b>${expectedThai}</b> (สามารถเลือกเดือนย้อนหลังได้หากผู้เช่าขอ แต่ไม่อนุญาตให้ออกบิลข้ามเดือนล่วงหน้า)
+                  </div>
+                </div>
+                ${unpaidNotice}
+              </div>
+            `;
+          }
+          if (window.lucide) lucide.createIcons();
+        }
+      }
+    }
+
+    function resetToExpectedMonth() {
+      const roomSelect = document.getElementById('roomSelect');
+      const selectedOpt = roomSelect ? roomSelect.selectedOptions[0] : null;
+      if (!selectedOpt || !selectedOpt.value) return;
+      const expectedYm = selectedOpt.getAttribute('data-expected-ym');
+      const monthInput = document.getElementById('billingMonthInput');
+      if (monthInput && expectedYm) {
+        monthInput.value = expectedYm;
+        handleBillingMonthChange();
+      }
+    }
+
+    function switchToUnpaidMonth(ym, thai) {
+      const monthInput = document.getElementById('billingMonthInput');
+      if (monthInput && ym) {
+        monthInput.value = ym;
+        handleBillingMonthChange();
+      }
+    }
+
+    function switchToNextMonth(expectedYm, expectedThai) {
+      handleRoomChange();
+    }
+
     function handleBillingMonthChange() {
+      updateMonthUI();
       autoFillPreviousMeters(false);
     }
 
@@ -2082,7 +2622,7 @@ if ($step === 2) {
           waterUnitsInput.classList.remove('bg-sky-50/70', 'text-sky-950');
           if (waterCostPreview) waterCostPreview.innerText = `ตรวจสอบเลข`;
         } else {
-          waterUnitsInput.value = `${waterUnits} หน่วย (${waterTotal.toFixed(2)} ฿)`;
+          waterUnitsInput.value = `${waterUnits} หน่วย`;
           waterUnitsInput.classList.remove('border-rose-300', 'bg-rose-50', 'text-rose-700');
           waterUnitsInput.classList.add('bg-sky-50/70', 'text-sky-950');
           if (waterCostPreview) waterCostPreview.innerText = `฿${waterTotal.toFixed(2)}`;
@@ -2104,7 +2644,7 @@ if ($step === 2) {
           electricUnitsInput.classList.remove('bg-amber-50/70', 'text-amber-950');
           if (electricCostPreview) electricCostPreview.innerText = `ตรวจสอบเลข`;
         } else {
-          electricUnitsInput.value = `${electricUnits} หน่วย (${electricTotal.toFixed(2)} ฿)`;
+          electricUnitsInput.value = `${electricUnits} หน่วย`;
           electricUnitsInput.classList.remove('border-rose-300', 'bg-rose-50', 'text-rose-700');
           electricUnitsInput.classList.add('bg-amber-50/70', 'text-amber-950');
           if (electricCostPreview) electricCostPreview.innerText = `฿${electricTotal.toFixed(2)}`;
@@ -2122,9 +2662,12 @@ if ($step === 2) {
 
     // ปิดการแจ้งเตือนอัตโนมัติ 4 วินาที และเรียก autoFill หากมีห้องถูกเลือกค้างไว้
     document.addEventListener("DOMContentLoaded", function() {
+      // โหลดและคำนวณค่าบริการประจำเดือน (ค่าขยะ, ค่าส่วนกลาง ที่ล็อกไว้) อัตโนมัติ
+      recalculateOtherFees();
+
       const roomSelect = document.getElementById('roomSelect');
       if (roomSelect && roomSelect.value) {
-        autoFillPreviousMeters(false);
+        handleRoomChange();
       }
 
       const alerts = document.querySelectorAll(".alert-box");

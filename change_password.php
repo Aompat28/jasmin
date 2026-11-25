@@ -82,18 +82,7 @@ if (isset($_POST['change_password'])) {
             <i data-lucide="key-round" class="w-5 h-5"></i>
           </div>
           <div>
-            <div class="flex items-center space-x-2">
-              <span class="font-display font-bold text-lg tracking-tight text-slate-800">หอพักจัสมิน</span>
-              <?php if ($userRole === 'Tenant'): ?>
-                <a href="profile.php" class="inline-flex items-center gap-1.5 text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-2.5 py-0.5 rounded-full border border-rose-200 transition shadow-2xs" title="โปรไฟล์ของฉัน">
-                  <span><?php echo htmlspecialchars($headerTenantName ?? $sidebarTenantName ?? ($userName ?? 'ผู้เช่า')); ?></span>
-                  <?php if(!empty($headerRoomNumber ?? $sidebarRoomNumber ?? ($myRoomNumber ?? ''))): ?>
-                    <span class="text-rose-400">•</span>
-                    <span>ห้อง <?php echo htmlspecialchars($headerRoomNumber ?? $sidebarRoomNumber ?? ($myRoomNumber ?? '')); ?></span>
-                  <?php endif; ?>
-                </a>
-              <?php endif; ?>
-            </div>
+            <span class="font-display font-bold text-lg tracking-tight text-slate-800">หอพักจัสมิน</span>
             <p class="text-[11px] text-slate-400 font-medium hidden sm:block">เปลี่ยนรหัสผ่าน</p>
           </div>
         </div>
@@ -105,10 +94,14 @@ if (isset($_POST['change_password'])) {
 
           <?php if ($userRole === 'Tenant'): ?>
             <div class="w-px h-6 bg-slate-200"></div>
-
-            <a href="profile.php" class="p-1 hover:bg-slate-100 rounded-xl transition" title="โปรไฟล์ของฉัน">
-            <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs border border-blue-200 shadow-2xs">
+<!-- ลิงก์โปรไฟล์ของผู้เช่า (ตรงรูปวงกลม + ชื่อและเลขห้อง) -->
+          <a href="profile.php" class="flex items-center gap-2 p-1 sm:p-1.5 sm:px-2.5 hover:bg-rose-50/70 rounded-full transition border border-transparent hover:border-rose-200 group" title="แก้ไขโปรไฟล์">
+            <div class="w-8 h-8 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-xs border border-rose-200 shadow-2xs shrink-0 group-hover:scale-105 transition">
               <?php echo $initials; ?>
+            </div>
+            <div class="hidden sm:block text-left pr-1">
+              <div class="text-xs font-bold text-slate-800 group-hover:text-rose-600 transition truncate max-w-[140px] sm:max-w-[180px]"><?php echo htmlspecialchars($headerTenantName ?? $sidebarTenantName ?? ($tenantName ?? 'ผู้เช่า')); ?></div>
+              <div class="text-[10px] text-rose-600 font-bold"><?php echo !empty($headerRoomNumber ?? $sidebarRoomNumber ?? ($myRoomNumber ?? '')) ? "ห้อง " . htmlspecialchars($headerRoomNumber ?? $sidebarRoomNumber ?? ($myRoomNumber ?? '')) : 'ลูกบ้าน'; ?></div>
             </div>
           </a>
           <?php endif; ?>

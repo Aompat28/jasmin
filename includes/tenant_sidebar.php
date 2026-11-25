@@ -98,6 +98,8 @@ $sidebarPendingCoresidents = 0;
 
 $sidebarPendingMoveOuts = 0;
 
+$sidebarPendingParking = 0;
+
 
 
 if (isset($conn) && $conn instanceof PDO) {
@@ -184,6 +186,13 @@ if (isset($conn) && $conn instanceof PDO) {
 
     } catch(Throwable $e) {}
 
+    // คำขอเพิ่มรถ / ที่จอดรถที่รอตรวจสอบ
+    try {
+        $stmt = $conn->prepare("SELECT COUNT(*) FROM parking_requests WHERE tenantId = ? AND status = 'Pending'");
+        $stmt->execute([$tenantId]);
+        $sidebarPendingParking = (int)$stmt->fetchColumn();
+    } catch(Throwable $e) {}
+
 }
 
 
@@ -225,6 +234,10 @@ if ($currentScript === 'tenant_dashboard.php') {
 } elseif ($currentScript === 'tenant_move_out.php') {
 
     $activeKey = 'move_out';
+
+} elseif ($currentScript === 'tenant_parking.php') {
+
+    $activeKey = 'parking';
 
 } elseif ($currentScript === 'profile.php' || $currentScript === 'change_password.php') {
 
@@ -395,6 +408,26 @@ $sidebarMenuItems = [
         'badge' => $sidebarPendingMoveOuts,
 
         'badgeColor' => 'bg-rose-500'
+
+    ],
+
+    [
+
+        'key' => 'parking',
+
+        'title' => 'ขอเพิ่มรถ & ที่จอดรถ',
+
+        'subtitle' => ($sidebarPendingParking > 0 ? "รออนุมัติ {$sidebarPendingParking} คำขอ" : 'ลงทะเบียนรถมากกว่า 1 คัน'),
+
+        'url' => 'tenant_parking.php',
+
+        'icon' => 'car',
+
+        'iconBg' => 'bg-cyan-50 text-cyan-600',
+
+        'badge' => $sidebarPendingParking,
+
+        'badgeColor' => 'bg-cyan-600'
 
     ]
 
@@ -638,13 +671,10 @@ $sidebarMenuItems = [
 
         <div class="flex items-center space-x-2">
 
-          <span class="font-display font-bold text-base tracking-tight text-slate-800">หอพักจัสมิน</span>
-
-          <span class="text-[10px] bg-rose-50 text-rose-700 font-bold px-2 py-0.5 rounded-full border border-rose-200">TENANT</span>
-
+          <span class="font-display font-bold text-lg tracking-tight text-slate-800">หอพักจัสมิน</span>
+          <span class="text-xs bg-rose-50 text-rose-700 font-bold px-2 py-0.5 rounded-full border border-rose-200">TENANT</span>
         </div>
-
-        <p class="text-[11px] text-slate-400 font-medium truncate">ระบบจัดการลูกบ้าน</p>
+        <p class="text-xs text-slate-500 font-medium truncate">ระบบจัดการลูกบ้าน</p>
 
       </div>
 
@@ -669,111 +699,58 @@ $sidebarMenuItems = [
     
 
     <div class="px-2 pt-1 pb-1">
-
-      <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">เมนูบริหารและบริการ</span>
-
+      <span class="text-xs font-bold uppercase tracking-wider text-slate-500">เมนูบริหารและบริการ</span>
     </div>
 
-
-
     <?php foreach($sidebarMenuItems as $item): 
-
       $isActive = ($item['key'] === $activeKey);
-
       $badgeCount = $item['badge'];
-
     ?>
-
       <?php if ($isActive): ?>
-
         <!-- 🌟 เมนูที่กำลังใช้งาน: กรอบไฮไลท์สีน้ำเงินเหมือนแอดมิน 🌟 -->
-
         <a href="<?php echo $item['url']; ?>" 
-
            class="relative flex items-center gap-3 px-3 py-2.5 rounded-2xl transition-all duration-200 group border border-rose-200/90 bg-rose-50/90 text-rose-950 font-bold shadow-[0_2px_12px_-2px_rgba(244,63,94,0.12)]" 
-
            title="<?php echo htmlspecialchars($item['title'] . ' - ' . $item['subtitle']); ?>">
-
           
-
           <span class="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-6 bg-rose-500 rounded-r-full shadow-xs"></span>
-
           
-
           <div class="w-9 h-9 rounded-xl bg-rose-500 text-white flex items-center justify-center shrink-0 shadow-xs ring-2 ring-rose-500/20">
-
             <i data-lucide="<?php echo $item['icon']; ?>" class="w-4 h-4"></i>
-
           </div>
-
-
 
           <div class="flex-1 min-w-0">
-
-            <div class="text-xs font-bold text-blue-900 truncate"><?php echo $item['title']; ?></div>
-
-            <div class="text-[10.5px] text-blue-700/80 font-medium truncate"><?php echo $item['subtitle']; ?></div>
-
+            <div class="text-sm font-bold text-blue-900 truncate"><?php echo $item['title']; ?></div>
+            <div class="text-xs text-blue-700/90 font-medium truncate"><?php echo $item['subtitle']; ?></div>
           </div>
 
-
-
           <?php if ($badgeCount > 0): ?>
-
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold text-white <?php echo $item['badgeColor'] ?: 'bg-rose-500'; ?> shrink-0 animate-pulse">
-
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-bold text-white <?php echo $item['badgeColor'] ?: 'bg-rose-500'; ?> shrink-0 animate-pulse">
               <?php echo $badgeCount; ?>
-
             </span>
-
           <?php endif; ?>
-
         </a>
-
       <?php else: ?>
-
         <!-- เมนูปกติ -->
-
         <a href="<?php echo $item['url']; ?>" 
-
            class="relative flex items-center gap-3 px-3 py-2.5 rounded-2xl transition-all duration-200 group border border-transparent text-stone-600 hover:text-rose-900 hover:bg-rose-50/50 hover:border-rose-200/60" 
-
            title="<?php echo htmlspecialchars($item['title'] . ' - ' . $item['subtitle']); ?>">
-
           
-
           <div class="w-9 h-9 rounded-xl <?php echo $item['iconBg']; ?> flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-
             <i data-lucide="<?php echo $item['icon']; ?>" class="w-4 h-4"></i>
-
           </div>
-
-
 
           <div class="flex-1 min-w-0">
-
-            <div class="text-xs font-bold text-slate-800 group-hover:text-rose-700 transition truncate"><?php echo $item['title']; ?></div>
-
-            <div class="text-[10.5px] text-slate-400 font-medium truncate"><?php echo $item['subtitle']; ?></div>
-
+            <div class="text-sm font-bold text-slate-800 group-hover:text-rose-700 transition truncate"><?php echo $item['title']; ?></div>
+            <div class="text-xs text-slate-500 font-medium truncate"><?php echo $item['subtitle']; ?></div>
           </div>
 
-
-
           <?php if ($badgeCount > 0): ?>
-
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold text-white <?php echo $item['badgeColor'] ?: 'bg-slate-500'; ?> shrink-0">
-
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-bold text-white <?php echo $item['badgeColor'] ?: 'bg-slate-500'; ?> shrink-0">
               <?php echo $badgeCount; ?>
-
             </span>
-
           <?php endif; ?>
-
         </a>
-
       <?php endif; ?>
-
     <?php endforeach; ?>
 
 
@@ -797,11 +774,11 @@ $sidebarMenuItems = [
 
     <!-- User Profile Link -->
 
-    <a href="profile.php" class="w-full flex items-center justify-between gap-2.5 p-2 rounded-xl hover:bg-white hover:shadow-xs border border-transparent hover:border-rose-200 transition group <?php echo ($activeKey === 'profile') ? 'bg-white border-rose-300 shadow-xs' : ''; ?>" title="โปรไฟล์ของฉัน">
+    <a href="profile.php" class="w-full flex items-center justify-between gap-2.5 p-2 rounded-xl hover:bg-white hover:shadow-xs border border-transparent hover:border-rose-200 transition group <?php echo ($activeKey === 'profile') ? 'bg-white border-rose-300 shadow-xs' : ''; ?>" title="แก้ไขโปรไฟล์">
 
       <div class="flex items-center gap-2.5 min-w-0">
 
-        <div class="w-8 h-8 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs border border-rose-200">
+        <div class="w-8 h-8 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs border border-rose-200 group-hover:scale-105 transition">
 
           <?php echo $sidebarInitials; ?>
 
@@ -809,21 +786,7 @@ $sidebarMenuItems = [
 
         <div class="min-w-0 text-left">
 
-          <div class="text-xs font-semibold text-slate-800 truncate group-hover:text-rose-600 transition"><?php echo htmlspecialchars($sidebarTenantName); ?></div>
-
-          <div class="text-[10px] text-rose-600 font-bold truncate flex items-center gap-1">
-
-            <?php if(!empty($sidebarRoomNumber)): ?>
-
-              <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> ห้อง <?php echo htmlspecialchars($sidebarRoomNumber); ?>
-
-            <?php else: ?>
-
-              <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span> ผู้เช่า (Tenant)
-
-            <?php endif; ?>
-
-          </div>
+          <div class="text-sm font-semibold text-slate-800 truncate group-hover:text-rose-600 transition"><?php echo htmlspecialchars($sidebarTenantName); ?></div>
 
         </div>
 

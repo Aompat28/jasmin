@@ -51,7 +51,7 @@ $stmt = $conn->prepare("
     FROM Lease l
     JOIN Room r ON l.roomId = r.roomId
     JOIN User u ON l.tenantId = u.userId
-    WHERE l.leaseId = ? AND l.status = 'Active'
+    WHERE l.leaseId = ?
 ");
 $stmt->execute([$leaseId]);
 $leaseData = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -59,6 +59,8 @@ $leaseData = $stmt->fetch(PDO::FETCH_ASSOC);
 if ($leaseData) {
     $leaseData['deposit'] = floatval($leaseData['depositAmount'] ?? 0);
 }
+
+$isCompleted = !empty($leaseData) && ((($leaseData['moveOutStatus'] ?? '') === 'Completed') || (($leaseData['status'] ?? '') === 'Inactive'));
 
 if (!$leaseData) {
     echo "<!DOCTYPE html>
@@ -645,19 +647,19 @@ if (isset($_POST['cancel_move_out_admin'])) {
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div>
                             <label class="text-xs font-bold text-slate-700 mb-1.5 block">ค่าทำความสะอาด / ล้างแอร์ (บาท)</label>
-                            <input type="number" name="cleaningFee" id="cleaningFee" value="500" step="50" oninput="calculateRefund()" class="w-full px-4 py-2.5 text-sm font-semibold font-mono text-slate-800 bg-[#FAF9F6] border border-stone-200 rounded-xl outline-none focus:bg-white focus:border-rose-400 shadow-2xs">
+                            <input type="number" name="cleaningFee" id="cleaningFee" value="<?php echo isset($leaseData['cleaningFee']) ? floatval($leaseData['cleaningFee']) : 500; ?>" step="50" oninput="calculateRefund()" class="w-full px-4 py-2.5 text-sm font-semibold font-mono text-slate-800 bg-[#FAF9F6] border border-stone-200 rounded-xl outline-none focus:bg-white focus:border-rose-400 shadow-2xs">
                         </div>
                         <div>
                             <label class="text-xs font-bold text-slate-700 mb-1.5 block">ค่าปรับไม่ครบสัญญา / ริบมัดจำ (บาท)</label>
-                            <input type="number" name="breachFee" id="breachFee" value="0" step="100" oninput="calculateRefund()" class="w-full px-4 py-2.5 text-sm font-semibold font-mono text-slate-800 bg-[#FAF9F6] border border-stone-200 rounded-xl outline-none focus:bg-white focus:border-rose-400 shadow-2xs">
+                            <input type="number" name="breachFee" id="breachFee" value="<?php echo isset($leaseData['breachFee']) ? floatval($leaseData['breachFee']) : 0; ?>" step="100" oninput="calculateRefund()" class="w-full px-4 py-2.5 text-sm font-semibold font-mono text-slate-800 bg-[#FAF9F6] border border-stone-200 rounded-xl outline-none focus:bg-white focus:border-rose-400 shadow-2xs">
                         </div>
                         <div>
                             <label class="text-xs font-bold text-slate-700 mb-1.5 block">ค่าปรับความเสียหายห้องพัก (บาท)</label>
-                            <input type="number" name="damageFee" id="damageFee" value="0" step="50" oninput="calculateRefund()" class="w-full px-4 py-2.5 text-sm font-semibold font-mono text-slate-800 bg-[#FAF9F6] border border-stone-200 rounded-xl outline-none focus:bg-white focus:border-rose-400 shadow-2xs">
+                            <input type="number" name="damageFee" id="damageFee" value="<?php echo isset($leaseData['damageFee']) ? floatval($leaseData['damageFee']) : 0; ?>" step="50" oninput="calculateRefund()" class="w-full px-4 py-2.5 text-sm font-semibold font-mono text-slate-800 bg-[#FAF9F6] border border-stone-200 rounded-xl outline-none focus:bg-white focus:border-rose-400 shadow-2xs">
                         </div>
                         <div class="sm:col-span-3">
                             <label class="text-xs font-bold text-slate-700 mb-1.5 block">รายละเอียดความเสียหาย (ถ้ามี)</label>
-                            <textarea name="damageDetail" id="damageDetail" rows="3" placeholder="เช่น กุญแจหาย, ผนังมีรอยเปื้อน, เตียงหัก..." class="w-full px-4 py-2.5 text-sm text-slate-800 bg-[#FAF9F6] border border-stone-200 rounded-xl outline-none focus:bg-white focus:border-rose-400 shadow-2xs transition"></textarea>
+                            <textarea name="damageDetail" id="damageDetail" rows="3" placeholder="เช่น กุญแจหาย, ผนังมีรอยเปื้อน, เตียงหัก..." class="w-full px-4 py-2.5 text-sm text-slate-800 bg-[#FAF9F6] border border-stone-200 rounded-xl outline-none focus:bg-white focus:border-rose-400 shadow-2xs transition"><?php echo htmlspecialchars($leaseData['damageDetail'] ?? ''); ?></textarea>
                         </div>
                     </div>
                 </div>
@@ -690,8 +692,34 @@ if (isset($_POST['cancel_move_out_admin'])) {
 
                     <div id="refundReceiptBox" class="border-t border-stone-100 pt-4">
                         <label class="block text-xs font-bold text-slate-700 mb-1">แนบรูปสลิป / ใบเสร็จหลักฐานการโอนเงินประกันคืนให้ผู้เช่า (Refund Receipt)</label>
-                        <input type="file" name="refundReceipt" accept="image/*,.pdf" class="w-full text-xs p-2.5 bg-stone-50 border border-stone-200 rounded-xl outline-none focus:border-rose-400">
-                        <span class="text-[11px] text-slate-400 mt-1 block">* รองรับไฟล์รูปภาพ (JPG, PNG) หรือ PDF (ผู้เช่าจะสามารถกดเปิดดูและดาวน์โหลดใบเสร็จนี้ได้ในระบบ)</span>
+                        <?php if(!$isCompleted): ?>
+                            <input type="file" name="refundReceipt" accept="image/*,.pdf" class="w-full text-xs p-2.5 bg-stone-50 border border-stone-200 rounded-xl outline-none focus:border-rose-400">
+                            <span class="text-[11px] text-slate-400 mt-1 block">* รองรับไฟล์รูปภาพ (JPG, PNG) หรือ PDF (ผู้เช่าจะสามารถกดเปิดดูและดาวน์โหลดใบเสร็จนี้ได้ในระบบ)</span>
+                        <?php endif; ?>
+
+                        <?php if(!empty($leaseData['refundReceipt'])): ?>
+                            <div class="mt-2.5 flex items-center justify-between p-3 bg-rose-50 border border-rose-200 rounded-xl">
+                                <div class="flex items-center gap-2">
+                                    <i data-lucide="receipt" class="w-4 h-4 text-rose-600"></i>
+                                    <span class="text-xs font-bold text-rose-900">มีสลิปหลักฐานโอนคืนเงินประกันในระบบ</span>
+                                </div>
+                                <button type="button" onclick="openDocModal('<?php echo htmlspecialchars($leaseData['refundReceipt'], ENT_QUOTES); ?>', 'หลักฐานการโอนคืนเงินประกัน - ห้อง <?php echo htmlspecialchars($leaseData['roomNumber']); ?>')" class="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shadow-xs">
+                                    <i data-lucide="eye" class="w-3.5 h-3.5"></i> ดูสลิปคืนเงิน
+                                </button>
+                            </div>
+                        <?php endif; ?>
+
+                        <?php if(!empty($leaseData['tenantPaymentSlip'])): ?>
+                            <div class="mt-2.5 flex items-center justify-between p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                                <div class="flex items-center gap-2">
+                                    <i data-lucide="receipt" class="w-4 h-4 text-emerald-600"></i>
+                                    <span class="text-xs font-bold text-emerald-900">มีสลิปชำระเงินส่วนต่างจากลูกบ้าน</span>
+                                </div>
+                                <button type="button" onclick="openDocModal('<?php echo htmlspecialchars($leaseData['tenantPaymentSlip'], ENT_QUOTES); ?>', 'สลิปชำระเงินส่วนต่าง - ห้อง <?php echo htmlspecialchars($leaseData['roomNumber']); ?>')" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shadow-xs">
+                                    <i data-lucide="eye" class="w-3.5 h-3.5"></i> ดูสลิปชำระเงิน
+                                </button>
+                            </div>
+                        <?php endif; ?>
                     </div>
 
                     <div id="noRefundNotice" class="hidden p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-3 text-rose-900 text-xs font-bold shadow-2xs">
@@ -764,7 +792,30 @@ if (isset($_POST['cancel_move_out_admin'])) {
 
                 <!-- ส่วนปุ่มกดส่งสรุปยอด / ยืนยันสลิป -->
                 <div class="pt-2 space-y-2.5">
-                    <?php if(($leaseData['moveOutStatus'] ?? '') === 'Pending_Payment'): ?>
+                    <?php if($isCompleted): ?>
+                        <div class="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs space-y-3">
+                            <div class="flex items-center gap-1.5 font-bold text-emerald-900 text-sm">
+                                <i data-lucide="check-circle-2" class="w-5 h-5 text-emerald-600"></i>
+                                <span>ย้ายออกเสร็จสมบูรณ์เรียบร้อยแล้ว</span>
+                            </div>
+                            <?php if(!empty($leaseData['settledAt'])): ?>
+                                <p class="text-slate-500 text-[11px]">วันที่เคลียร์ห้อง: <?php echo date("d/m/Y H:i น.", strtotime($leaseData['settledAt'])); ?></p>
+                            <?php endif; ?>
+                            <?php if(!empty($leaseData['refundReceipt'])): ?>
+                                <button type="button" onclick="openDocModal('<?php echo htmlspecialchars($leaseData['refundReceipt'], ENT_QUOTES); ?>', 'หลักฐานการโอนคืนเงินประกัน - ห้อง <?php echo htmlspecialchars($leaseData['roomNumber']); ?>')" class="w-full py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer">
+                                    <i data-lucide="receipt" class="w-3.5 h-3.5"></i> ดูสลิปคืนเงินประกัน
+                                </button>
+                            <?php endif; ?>
+                            <?php if(!empty($leaseData['tenantPaymentSlip'])): ?>
+                                <button type="button" onclick="openDocModal('<?php echo htmlspecialchars($leaseData['tenantPaymentSlip'], ENT_QUOTES); ?>', 'สลิปชำระเงินส่วนต่าง - ห้อง <?php echo htmlspecialchars($leaseData['roomNumber']); ?>')" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer">
+                                    <i data-lucide="receipt" class="w-3.5 h-3.5"></i> ดูสลิปชำระเงินจากลูกบ้าน
+                                </button>
+                            <?php endif; ?>
+                        </div>
+                        <a href="manage_room.php?tab=moveouts" class="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 block text-center">
+                            <i data-lucide="arrow-left" class="w-3.5 h-3.5 inline"></i> กลับหน้ารายการแจ้งย้ายออก
+                        </a>
+                    <?php elseif(($leaseData['moveOutStatus'] ?? '') === 'Pending_Payment'): ?>
                         <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs space-y-2">
                             <div class="flex items-center gap-1.5 font-bold text-amber-900">
                                 <i data-lucide="clock" class="w-4 h-4 text-amber-600"></i>

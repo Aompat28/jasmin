@@ -22,6 +22,7 @@ $sidebarPendingRenewals = 0;
 $sidebarPendingCoresidents = 0;
 $sidebarPendingRoomChanges = 0;
 $sidebarPendingMoveOuts = 0;
+$sidebarPendingParking = 0;
 $sidebarTotalRooms = 0;
 
 if (isset($conn) && $conn instanceof PDO) {
@@ -56,6 +57,11 @@ if (isset($conn) && $conn instanceof PDO) {
     } catch(Throwable $e) {}
 
     try {
+        $stmt = $conn->query("SELECT COUNT(*) FROM parking_requests WHERE status = 'Pending'");
+        if ($stmt) $sidebarPendingParking = (int)$stmt->fetchColumn();
+    } catch(Throwable $e) {}
+
+    try {
         $stmt = $conn->query("SELECT COUNT(*) FROM Room");
         if ($stmt) $sidebarTotalRooms = (int)$stmt->fetchColumn();
     } catch(Throwable $e) {}
@@ -80,6 +86,8 @@ if ($currentScript === 'admin_dashboard.php') {
     $activeKey = 'requests';
 } elseif ($currentScript === 'admin_coresidents.php') {
     $activeKey = 'coresidents';
+} elseif ($currentScript === 'admin_parking.php') {
+    $activeKey = 'parking';
 } elseif ($currentScript === 'admin_reports.php') {
     $activeKey = 'reports';
 } elseif ($currentScript === 'manage_announcements.php') {
@@ -159,6 +167,16 @@ $sidebarMenuItems = [
         'iconBg' => 'bg-purple-50 text-purple-700 border border-purple-200/50',
         'badge' => $sidebarPendingCoresidents,
         'badgeColor' => 'bg-purple-600 text-white'
+    ],
+    [
+        'key' => 'parking',
+        'title' => 'คำขอที่จอดรถ & ทะเบียนรถ',
+        'subtitle' => ($sidebarPendingParking > 0 ? "รออนุมัติ {$sidebarPendingParking} คำขอ" : 'จัดการสิทธิ์ที่จอดรถ'),
+        'url' => 'admin_parking.php',
+        'icon' => 'car',
+        'iconBg' => 'bg-cyan-50 text-cyan-700 border border-cyan-200/50',
+        'badge' => $sidebarPendingParking,
+        'badgeColor' => 'bg-amber-500 text-white'
     ],
     [
         'key' => 'reports',
@@ -307,8 +325,8 @@ $sidebarMenuItems = [
   <div class="flex-1 overflow-y-auto overflow-x-hidden p-3.5 space-y-1.5 scrollbar-thin">
 
     <div class="px-3 pt-2 pb-1 flex items-center justify-between">
-      <span class="text-[10.5px] font-bold uppercase tracking-wider text-stone-400">เมนูบริหารจัดการ</span>
-      <span class="text-[10px] text-stone-400 font-mono">Boutique</span>
+      <span class="text-xs font-bold uppercase tracking-wider text-stone-500">เมนูบริหารจัดการ</span>
+      <span class="text-xs text-stone-400 font-mono">Boutique</span>
     </div>
 
     <?php foreach($sidebarMenuItems as $item):
@@ -329,12 +347,12 @@ $sidebarMenuItems = [
           </div>
 
           <div class="flex-1 min-w-0">
-            <div class="text-[13px] font-bold text-rose-950 truncate tracking-tight"><?php echo $item['title']; ?></div>
-            <div class="text-[11px] text-rose-700/90 font-medium truncate"><?php echo $item['subtitle']; ?></div>
+            <div class="text-sm font-bold text-rose-950 truncate tracking-tight"><?php echo $item['title']; ?></div>
+            <div class="text-xs text-rose-700 font-medium truncate"><?php echo $item['subtitle']; ?></div>
           </div>
 
           <?php if ($badgeCount > 0): ?>
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold <?php echo $item['badgeColor'] ?: 'bg-rose-500 text-white'; ?> shrink-0 shadow-2xs animate-pulse">
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-bold <?php echo $item['badgeColor'] ?: 'bg-rose-500 text-white'; ?> shrink-0 shadow-2xs animate-pulse">
               <?php echo $badgeCount; ?>
             </span>
           <?php endif; ?>
@@ -351,12 +369,12 @@ $sidebarMenuItems = [
           </div>
 
           <div class="flex-1 min-w-0">
-            <div class="text-[13px] font-semibold text-stone-700 group-hover:text-stone-900 transition truncate"><?php echo $item['title']; ?></div>
-            <div class="text-[11px] text-stone-400 font-normal truncate"><?php echo $item['subtitle']; ?></div>
+            <div class="text-sm font-semibold text-stone-800 group-hover:text-stone-900 transition truncate"><?php echo $item['title']; ?></div>
+            <div class="text-xs text-stone-500 font-normal truncate"><?php echo $item['subtitle']; ?></div>
           </div>
 
           <?php if ($badgeCount > 0): ?>
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold <?php echo $item['badgeColor'] ?: 'bg-stone-500 text-white'; ?> shrink-0 shadow-2xs">
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-bold <?php echo $item['badgeColor'] ?: 'bg-stone-500 text-white'; ?> shrink-0 shadow-2xs">
               <?php echo $badgeCount; ?>
             </span>
           <?php endif; ?>
@@ -385,8 +403,8 @@ $sidebarMenuItems = [
           <?php echo $sidebarInitials; ?>
         </div>
         <div class="flex-1 min-w-0">
-          <div class="text-xs font-semibold text-stone-800 truncate group-hover:text-rose-600 transition"><?php echo htmlspecialchars($sidebarAdminName); ?></div>
-          <div class="text-[10px] text-emerald-600 font-medium flex items-center gap-1">
+          <div class="text-sm font-semibold text-stone-800 truncate group-hover:text-rose-600 transition"><?php echo htmlspecialchars($sidebarAdminName); ?></div>
+          <div class="text-xs text-emerald-600 font-medium flex items-center gap-1">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> แอดมิน (Admin)
           </div>
         </div>

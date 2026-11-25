@@ -27,34 +27,19 @@ $initials = strtoupper(mb_substr($tenantName, 0, 2, 'UTF-8'));
 
 
 // ดึงข้อมูลห้องพักปัจจุบันสำหรับแสดงใน Header
-
 $stmtHdrRoom = $conn->prepare("
-
-    SELECT r.roomNumber 
-
+    SELECT r.roomId, r.roomNumber 
     FROM Lease l 
-
     JOIN Room r ON l.roomId = r.roomId 
-
     WHERE l.tenantId = ? 
-
     ORDER BY CASE WHEN l.status = 'Active' THEN 1 ELSE 2 END, l.leaseId DESC 
-
     LIMIT 1
-
 ");
-
 $stmtHdrRoom->execute([$tenantId]);
-
-$myRoomNumber = $stmtHdrRoom->fetchColumn() ?: '';
-
+$hdrRoomData = $stmtHdrRoom->fetch(PDO::FETCH_ASSOC);
+$myRoomId = (int)($hdrRoomData['roomId'] ?? 0);
+$myRoomNumber = $hdrRoomData['roomNumber'] ?? '';
 $message = "";
-
-
-
-// รับค่าแท็บเริ่มต้นจาก URL (?tab=current หรือ ?tab=history)
-
-$activeTab = (isset($_GET['tab']) && $_GET['tab'] === 'history') ? 'history' : 'current';
 
 
 
@@ -139,111 +124,65 @@ if (isset($_POST['upload_slip'])) {
 $stmt = $conn->prepare("
 
     SELECT i.*, r.roomNumber 
-
     FROM Invoices i
-
     JOIN Room r ON i.roomId = r.roomId
-
-    WHERE i.tenantId = ?
-
+    WHERE i.tenantId = ? OR (i.roomId = ? AND ? > 0)
     ORDER BY i.invoiceId DESC
-
 ");
-
-$stmt->execute([$tenantId]);
-
+$stmt->execute([$tenantId, $myRoomId, $myRoomId]);
 $rawInvoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-
-
 // 🌟 1. ระบบตัดบิลซ้ำรอบเดือนเดียวกัน (Deduplication by billingMonth) 🌟
-
 // ป้องกันการแสดงผลบิลซ้ำซ้อนในเดือนเดียวกัน โดยเลือกรายการที่มีสลิปหรือสถานะที่ต้องดำเนินการก่อน
-
 $invoicesByMonth = [];
-
 foreach ($rawInvoices as $inv) {
-
     $m = trim($inv['billingMonth']);
-
     if (!isset($invoicesByMonth[$m])) {
-
         $invoicesByMonth[$m] = $inv;
-
     } else {
-
         $existing = $invoicesByMonth[$m];
-
-        // หากบิลเดิมมีสถานะ Paid แต่เจอบิลที่ยังต้องดำเนินการ (Unpaid / Pending) ให้แสดงบิลที่ต้องทำรายการ
-
+        // หากบิลเดิมมีสถานะ Paid แต่เจอบิลที่ยังต้องดำเนินการ (Unpaid / Pending Approval) ให้แสดงบิลที่ต้องทำรายการ
         if ($existing['status'] === 'Paid' && in_array($inv['status'], ['Unpaid', 'Pending Approval'])) {
-
             $invoicesByMonth[$m] = $inv;
-
         } elseif ($inv['status'] === $existing['status']) {
-
-            // ถ้าสถานะเหมือนกัน เลือกรายการที่มีสลิปแนบ หรือรายการที่มี invoiceId สูงกว่า (สร้างล่าสุด)
-
             if (!empty($inv['slipImage']) && empty($existing['slipImage'])) {
-
                 $invoicesByMonth[$m] = $inv;
-
             } elseif ($inv['invoiceId'] > $existing['invoiceId']) {
-
                 $invoicesByMonth[$m] = $inv;
-
             }
-
         }
-
     }
-
 }
-
 $dedupedInvoices = array_values($invoicesByMonth);
 
-
-
-// 🌟 2. คัดแยก: บิลรอบปัจจุบัน (Current Invoice) 🌟
-
-// ลำดับความสำคัญ: บิล Unpaid/Pending Approval > บิลรอบล่าสุด
-
-$currentInvoice = null;
-
-foreach ($dedupedInvoices as $inv) {
-
-    if (in_array($inv['status'], ['Unpaid', 'Pending Approval'])) {
-
-        $currentInvoice = $inv;
-
-        break;
-
-    }
-
-}
-
-if (!$currentInvoice && count($dedupedInvoices) > 0) {
-
-    $currentInvoice = $dedupedInvoices[0];
-
-}
-
-
-
-// 🌟 3. คัดแยก: ประวัติการชำระเงิน (Payment History) 🌟
-
-// นำบิลทั้งหมดที่มีสถานะ 'Paid' มาแสดงในประวัติเพื่อดูสลิปและดาวน์โหลดใบเสร็จรับเงิน
-
+// 🌟 2. คัดแยก 3 หมวดหมู่ชัดเจน: รอชำระ / รอตรวจสอบสลิป / ประวัติการชำระเงิน 🌟
+$unpaidInvoices = [];
+$pendingApprovalInvoices = [];
 $paymentHistory = [];
 
 foreach ($dedupedInvoices as $inv) {
-
-    if ($inv['status'] === 'Paid') {
-
+    if ($inv['status'] === 'Unpaid') {
+        $unpaidInvoices[] = $inv;
+    } elseif ($inv['status'] === 'Pending Approval') {
+        $pendingApprovalInvoices[] = $inv;
+    } elseif ($inv['status'] === 'Paid') {
         $paymentHistory[] = $inv;
-
     }
+}
+$pendingInvoices = array_merge($unpaidInvoices, $pendingApprovalInvoices);
 
+// รับค่าแท็บเริ่มต้นจาก URL (?tab=current, ?tab=pending หรือ ?tab=history)
+// หากไม่ได้ระบุมา: ตรวจสอบตามลำดับความสำคัญ (มีบิลรอชำระ -> current, มีบิลรอตรวจ -> pending, ไม่มีเลย -> history)
+if (isset($_GET['tab']) && in_array($_GET['tab'], ['current', 'pending', 'history'], true)) {
+    $activeTab = $_GET['tab'];
+} else {
+    if (!empty($unpaidInvoices)) {
+        $activeTab = 'current';
+    } elseif (!empty($pendingApprovalInvoices)) {
+        $activeTab = 'pending';
+    } else {
+        $activeTab = 'history';
+    }
 }
 
 // 🌟 รวบรวมข้อมูลใบแจ้งหนี้ทั้งหมดสำหรับ Tenant Invoice Detail Modal จอใหญ่ 🌟
@@ -385,17 +324,8 @@ foreach ($rawInvoices as $inv) {
           </div>
 
           <div>
-            <div class="flex items-center space-x-2">
-              <span class="font-display font-bold text-lg tracking-tight text-slate-800">หอพักจัสมิน</span>
-              <a href="profile.php" class="inline-flex items-center gap-1.5 text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-2.5 py-0.5 rounded-full border border-rose-200 transition shadow-2xs" title="โปรไฟล์ของฉัน">
-                <span><?php echo htmlspecialchars($headerTenantName ?? $sidebarTenantName ?? ($tenantName ?? 'ผู้เช่า')); ?></span>
-                <?php if(!empty($headerRoomNumber ?? $sidebarRoomNumber ?? ($myRoomNumber ?? ''))): ?>
-                  <span class="text-rose-400">•</span>
-                  <span>ห้อง <?php echo htmlspecialchars($headerRoomNumber ?? $sidebarRoomNumber ?? ($myRoomNumber ?? '')); ?></span>
-                <?php endif; ?>
-              </a>
-            </div>
-            <p class="text-[11px] text-slate-400">ระบบจัดการค่าเช่าและใบเสร็จ</p>
+            <span class="font-display font-bold text-lg tracking-tight text-slate-800">หอพักจัสมิน</span>
+            <p class="text-[11px] text-slate-400 font-medium hidden sm:block">ระบบจัดการค่าเช่าและใบเสร็จ</p>
           </div>
 
         </div>
@@ -403,40 +333,15 @@ foreach ($rawInvoices as $inv) {
         <div class="flex items-center space-x-2 sm:space-x-3">
           <?php include 'includes/theme_toggle.php'; ?>
 
-           
-
-
-
-           <!-- ลิงก์โปรไฟล์ของผู้เช่า (ตรงชื่อ) -->
-
-           <a href="profile.php" class="flex items-center gap-2 p-1 sm:p-1.5 hover:bg-rose-50/70 rounded-xl transition border border-transparent hover:border-rose-200 group" title="โปรไฟล์ของฉัน">
-
-            <div class="w-8 h-8 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-xs border border-rose-200 shadow-2xs shrink-0">
-
+          <!-- ลิงก์โปรไฟล์ของผู้เช่า (ตรงรูปวงกลม + ชื่อและเลขห้อง) -->
+          <a href="profile.php" class="flex items-center gap-2 p-1 sm:p-1.5 sm:px-2.5 hover:bg-rose-50/70 rounded-full transition border border-transparent hover:border-rose-200 group" title="แก้ไขโปรไฟล์">
+            <div class="w-8 h-8 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-xs border border-rose-200 shadow-2xs shrink-0 group-hover:scale-105 transition">
               <?php echo $initials; ?>
-
             </div>
-
-            <div class="hidden sm:block text-left pr-0.5">
-
-              <div class="text-xs font-bold text-slate-800 group-hover:text-rose-600 transition truncate max-w-[120px] sm:max-w-[160px]"><?php echo htmlspecialchars($tenantName); ?></div>
-
-              <div class="text-[10px] text-rose-600 font-semibold truncate flex items-center gap-1">
-
-                <?php if(!empty($myRoomNumber)): ?>
-
-                  <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> ห้อง <?php echo htmlspecialchars($myRoomNumber); ?>
-
-                <?php else: ?>
-
-                  <span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span> ผู้เช่า
-
-                <?php endif; ?>
-
-              </div>
-
+            <div class="hidden sm:block text-left pr-1">
+              <div class="text-xs font-bold text-slate-800 group-hover:text-rose-600 transition truncate max-w-[140px] sm:max-w-[180px]"><?php echo htmlspecialchars($headerTenantName ?? $sidebarTenantName ?? ($tenantName ?? 'ผู้เช่า')); ?></div>
+              <div class="text-[10px] text-rose-600 font-bold"><?php echo !empty($headerRoomNumber ?? $sidebarRoomNumber ?? ($myRoomNumber ?? '')) ? "ห้อง " . htmlspecialchars($headerRoomNumber ?? $sidebarRoomNumber ?? ($myRoomNumber ?? '')) : 'ลูกบ้าน'; ?></div>
             </div>
-
           </a>
 
 
@@ -509,568 +414,408 @@ foreach ($rawInvoices as $inv) {
 
 
 
-    <!-- 🌟 แท็บสลับหน้า: รอบบิลปัจจุบัน vs ประวัติการชำระเงิน 🌟 -->
-
+    <!-- 🌟 แท็บสลับหน้า: รอบบิลปัจจุบัน vs รอตรวจสอบสลิป vs ประวัติการชำระเงิน 🌟 -->
     <div class="mb-6 flex gap-2 border-b border-rose-100/80 pb-px overflow-x-auto hide-scrollbar">
-
-        <button onclick="switchTab('current')" id="tab-current" class="<?php echo ($activeTab === 'current') ? 'px-5 py-2.5 text-sm font-bold border-b-2 border-blue-600 text-rose-600 flex items-center gap-2 whitespace-nowrap transition cursor-pointer' : 'px-5 py-2.5 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer'; ?>">
-
-            <i data-lucide="receipt" class="w-4 h-4"></i> รอบบิลปัจจุบัน
-
-            <?php if($currentInvoice && in_array($currentInvoice['status'], ['Unpaid', 'Pending Approval'])): ?>
-
-                <span class="inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold bg-rose-500 text-white rounded-full">รอชำระ</span>
-
-            <?php elseif($currentInvoice && $currentInvoice['status'] === 'Paid'): ?>
-
-                <span class="inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-700 rounded-full">ชำระแล้ว</span>
-
+        <!-- แท็บ 1: รอบบิลปัจจุบัน (เฉพาะที่ยังไม่ชำระ) -->
+        <button onclick="switchTab('current')" id="tab-current" class="<?php echo ($activeTab === 'current') ? 'px-5 py-2.5 text-sm font-bold border-b-2 border-rose-600 text-rose-600 flex items-center gap-2 whitespace-nowrap transition cursor-pointer' : 'px-5 py-2.5 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer'; ?>">
+            <i data-lucide="receipt" class="w-4 h-4"></i>
+            <span>รอบบิลปัจจุบัน</span>
+            <?php if(!empty($unpaidInvoices)): ?>
+                <span class="inline-flex items-center justify-center px-2 py-0.5 text-[10px] font-bold bg-rose-500 text-white rounded-full">รอชำระ (<?php echo count($unpaidInvoices); ?>)</span>
+            <?php else: ?>
+                <span class="inline-flex items-center justify-center px-2 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-700 rounded-full">ไม่มีค้างชำระ</span>
             <?php endif; ?>
-
         </button>
 
-        <button onclick="switchTab('history')" id="tab-history" class="<?php echo ($activeTab === 'history') ? 'px-5 py-2.5 text-sm font-bold border-b-2 border-blue-600 text-rose-600 flex items-center gap-2 whitespace-nowrap transition cursor-pointer' : 'px-5 py-2.5 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer'; ?>">
-
-            <i data-lucide="history" class="w-4 h-4"></i> ประวัติการชำระเงิน (<?php echo count($paymentHistory); ?>)
-
+        <!-- แท็บ 2: รอตรวจสอบสลิป (เหมือนแถบตรวจสอบของแอดมิน) -->
+        <button onclick="switchTab('pending')" id="tab-pending" class="<?php echo ($activeTab === 'pending') ? 'px-5 py-2.5 text-sm font-bold border-b-2 border-amber-500 text-amber-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer' : 'px-5 py-2.5 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer'; ?>">
+            <i data-lucide="clock" class="w-4 h-4 text-amber-500"></i>
+            <span>รอตรวจสอบสลิป</span>
+            <?php if(!empty($pendingApprovalInvoices)): ?>
+                <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 shadow-2xs">
+                    <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                    <?php echo count($pendingApprovalInvoices); ?> รอตรวจ
+                </span>
+            <?php else: ?>
+                <span class="inline-flex items-center justify-center px-2 py-0.5 text-[10px] font-bold bg-slate-100 text-slate-500 rounded-full">0</span>
+            <?php endif; ?>
         </button>
 
+        <!-- แท็บ 3: ประวัติการชำระเงิน (ที่ชำระเสร็จสิ้นแล้วทั้งหมด) -->
+        <button onclick="switchTab('history')" id="tab-history" class="<?php echo ($activeTab === 'history') ? 'px-5 py-2.5 text-sm font-bold border-b-2 border-rose-600 text-rose-600 flex items-center gap-2 whitespace-nowrap transition cursor-pointer' : 'px-5 py-2.5 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer'; ?>">
+            <i data-lucide="history" class="w-4 h-4"></i>
+            <span>ประวัติการชำระเงิน</span>
+            <span class="inline-flex items-center justify-center px-2 py-0.5 text-[10px] font-bold bg-slate-100 text-slate-600 rounded-full"><?php echo count($paymentHistory); ?></span>
+        </button>
     </div>
 
 
 
-    <!-- ================= แท็บ 1: รอบบิลปัจจุบัน (Current Bill) ================= -->
-
+    <!-- ================= แท็บ 1: รอบบิลปัจจุบัน (Current Bill - Unpaid) ================= -->
     <div id="content-current" class="<?php echo ($activeTab === 'current') ? 'space-y-4' : 'space-y-4 hidden'; ?>">
-
-        <?php if($currentInvoice): 
-
-            $waterTotal = ($currentInvoice['waterCurr'] - $currentInvoice['waterPrev']) * $currentInvoice['waterUnitRate'];
-
-            $elecTotal = ($currentInvoice['electricCurr'] - $currentInvoice['electricPrev']) * $currentInvoice['electricUnitRate'];
-
-            
-
-            // สีและข้อความของสถานะ
-
-            if ($currentInvoice['status'] === 'Unpaid') {
-
-                $statusColor = "bg-rose-100 text-rose-700 border-rose-200";
-
-                $statusText = "รอชำระเงิน";
-
-                $statusIcon = "alert-circle";
-
-            } elseif ($currentInvoice['status'] === 'Pending Approval') {
-
-                $statusColor = "bg-amber-100 text-amber-700 border-amber-200";
-
-                $statusText = "รอแอดมินตรวจสลิป";
-
-                $statusIcon = "clock";
-
-            } elseif ($currentInvoice['status'] === 'Paid') {
-
-                $statusColor = "bg-emerald-100 text-emerald-700 border-emerald-200";
-
-                $statusText = "ชำระเงินเสร็จสิ้น";
-
-                $statusIcon = "check-circle-2";
-
-            }
-
-        ?>
-
-        
-
-        <!-- การ์ดรอบบิลปัจจุบัน (เด่นชัด สวยงาม) -->
-
+        <?php if(!empty($unpaidInvoices)): ?>
+            <?php foreach($unpaidInvoices as $currentInvoice): 
+                $waterTotal = ($currentInvoice['waterCurr'] - $currentInvoice['waterPrev']) * $currentInvoice['waterUnitRate'];
+                $elecTotal = ($currentInvoice['electricCurr'] - $currentInvoice['electricPrev']) * $currentInvoice['electricUnitRate'];
+            ?>
+        <!-- การ์ดรอบบิลปัจจุบัน (รอชำระ) -->
         <div class="bg-white rounded-3xl border border-rose-100/80 shadow-sm overflow-hidden transition hover:shadow-md">
-
-            
-
             <!-- Header การ์ด -->
-
-            <div class="px-6 py-5 border-b border-rose-100/60 flex flex-wrap justify-between items-center gap-3 bg-rose-50/30/70">
-
+            <div class="px-6 py-5 border-b border-rose-100/60 flex flex-wrap justify-between items-center gap-3 bg-rose-50/30">
                 <div class="flex items-center gap-3.5">
-
-                    <div class="w-11 h-11 rounded-2xl bg-blue-100 text-rose-600 flex items-center justify-center font-bold shadow-2xs">
-
+                    <div class="w-11 h-11 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center font-bold shadow-2xs">
                         <i data-lucide="calendar-check" class="w-5 h-5"></i>
-
                     </div>
-
                     <div>
-
                         <div class="flex items-center gap-2">
-
                             <h3 class="font-display font-bold text-slate-800 text-lg">รอบบิล: <?php echo htmlspecialchars($currentInvoice['billingMonth']); ?></h3>
-
                             <span class="text-xs font-mono font-bold px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600 border border-rose-100/80">
-
                                 ห้อง <?php echo htmlspecialchars($currentInvoice['roomNumber']); ?>
-
                             </span>
-
                         </div>
-
                         <p class="text-xs font-mono text-slate-400 mt-0.5">รหัสอ้างอิง: INV-<?php echo str_pad($currentInvoice['invoiceId'], 5, '0', STR_PAD_LEFT); ?></p>
-
                     </div>
-
                 </div>
-
-                <div class="px-3.5 py-1.5 rounded-full border text-xs font-bold flex items-center gap-1.5 <?php echo $statusColor; ?>">
-
-                    <i data-lucide="<?php echo $statusIcon; ?>" class="w-3.5 h-3.5"></i> <?php echo $statusText; ?>
-
+                <div class="px-3.5 py-1.5 rounded-full border text-xs font-bold flex items-center gap-1.5 bg-rose-100 text-rose-700 border-rose-200">
+                    <i data-lucide="alert-circle" class="w-3.5 h-3.5"></i> รอชำระเงิน
                 </div>
-
             </div>
-
-
 
             <div class="p-6">
-
                 <!-- แบนเนอร์แจ้งเตือนสถานะ -->
-
-                <?php if($currentInvoice['status'] === 'Unpaid'): ?>
-
-                    <div class="mb-5 p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center justify-between text-xs text-rose-800 font-medium">
-
-                        <span class="flex items-center gap-2">
-
-                            <i data-lucide="alert-circle" class="w-4 h-4 text-rose-600 shrink-0"></i>
-
-                            <span>มีรายการรอชำระเงิน กรุณาโอนเงินและแนบสลิปเพื่อยืนยัน</span>
-
-                        </span>
-
-                        <span class="font-bold font-mono text-rose-900 bg-white px-2 py-0.5 rounded border border-rose-200">Unpaid</span>
-
-                    </div>
-
-                <?php elseif($currentInvoice['status'] === 'Pending Approval'): ?>
-
-                    <div class="mb-5 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-between text-xs text-amber-800 font-medium">
-
-                        <span class="flex items-center gap-2">
-
-                            <i data-lucide="clock" class="w-4 h-4 text-amber-600 shrink-0"></i>
-
-                            <span>แนบสลิปเรียบร้อยแล้ว อยู่ระหว่างรอนิติบุคคลตรวจสอบความถูกต้อง</span>
-
-                        </span>
-
-                        <span class="font-bold text-amber-900 bg-white px-2 py-0.5 rounded border border-amber-200">ตรวจสอบสลิป</span>
-
-                    </div>
-
-                <?php elseif($currentInvoice['status'] === 'Paid'): ?>
-
-                    <div class="mb-5 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between text-xs text-emerald-800 font-medium">
-
-                        <span class="flex items-center gap-2">
-
-                            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600 shrink-0"></i>
-
-                            <span>ชำระเงินรอบนี้เสร็จสิ้นแล้ว ท่านสามารถดูหรือดาวน์โหลดใบเสร็จ (PDF) ได้ทันที</span>
-
-                        </span>
-
-                        <span class="font-bold text-emerald-900 bg-white px-2 py-0.5 rounded border border-emerald-200">ชำระแล้ว</span>
-
-                    </div>
-
-                <?php endif; ?>
-
-
-
-                <!-- รายการค่าใช้จ่าย -->
-
-                <div class="space-y-3 text-sm">
-
-                    <div class="flex justify-between items-center pb-2.5 border-b border-rose-100/60">
-
-                        <span class="text-slate-500">ค่าเช่าห้องพัก (ห้อง <?php echo htmlspecialchars($currentInvoice['roomNumber']); ?>)</span>
-
-                        <span class="font-semibold text-slate-800">฿<?php echo number_format($currentInvoice['rentPrice'], 2); ?></span>
-
-                    </div>
-
-                    <div class="flex justify-between items-center pb-2.5 border-b border-rose-100/60">
-
-                        <div>
-
-                            <span class="text-slate-500">ค่าน้ำประปา</span>
-
-                            <span class="text-xs text-slate-400 block sm:inline sm:ml-1">(มิเตอร์ <?php echo $currentInvoice['waterPrev']; ?> → <?php echo $currentInvoice['waterCurr']; ?> = <?php echo ($currentInvoice['waterCurr'] - $currentInvoice['waterPrev']); ?> หน่วย @ ฿<?php echo number_format($currentInvoice['waterUnitRate'], 2); ?>)</span>
-
-                        </div>
-
-                        <span class="font-semibold text-slate-800">฿<?php echo number_format($waterTotal, 2); ?></span>
-
-                    </div>
-
-                    <div class="flex justify-between items-center pb-2.5 border-b border-rose-100/60">
-
-                        <div>
-
-                            <span class="text-slate-500">ค่าไฟฟ้า</span>
-
-                            <span class="text-xs text-slate-400 block sm:inline sm:ml-1">(มิเตอร์ <?php echo $currentInvoice['electricPrev']; ?> → <?php echo $currentInvoice['electricCurr']; ?> = <?php echo ($currentInvoice['electricCurr'] - $currentInvoice['electricPrev']); ?> หน่วย @ ฿<?php echo number_format($currentInvoice['electricUnitRate'], 2); ?>)</span>
-
-                        </div>
-
-                        <span class="font-semibold text-slate-800">฿<?php echo number_format($elecTotal, 2); ?></span>
-
-                    </div>
-
-                    
-
-                    <?php if($currentInvoice['otherFee'] > 0): 
-                        $curOtherNote = !empty($currentInvoice['otherFeeNote']) ? $currentInvoice['otherFeeNote'] : (abs($currentInvoice['otherFee'] - 20) < 0.01 ? 'ค่าขยะ' : 'ค่าบริการส่วนกลาง');
-                    ?>
-                    <div class="flex justify-between items-start pb-2.5 border-b border-rose-100/60">
-                        <div>
-                            <span class="text-slate-500">ค่าบริการส่วนกลาง / อื่นๆ</span>
-                            <span class="block text-[11px] text-slate-400 mt-0.5">(<?php echo htmlspecialchars($curOtherNote); ?>)</span>
-                        </div>
-                        <span class="font-semibold text-slate-800">฿<?php echo number_format($currentInvoice['otherFee'], 2); ?></span>
-                    </div>
-                    <?php endif; ?>
-
+                <div class="mb-5 p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center justify-between text-xs text-rose-800 font-medium">
+                    <span class="flex items-center gap-2">
+                        <i data-lucide="alert-circle" class="w-4 h-4 text-rose-600 shrink-0"></i>
+                        <span>มีรายการรอชำระเงิน กรุณาโอนเงินและแนบสลิปเพื่อยืนยัน</span>
+                    </span>
+                    <span class="font-bold font-mono text-rose-900 bg-white px-2 py-0.5 rounded border border-rose-200">Unpaid</span>
                 </div>
 
-
+                <!-- แจกแจงค่าใช้จ่ายแบบการ์ด 4 ช่อง -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 py-3 text-xs text-slate-600">
+                    <div class="bg-rose-50/40 p-3 rounded-2xl border border-rose-100/70">
+                        <span class="text-slate-400 block text-[11px]">ค่าเช่าห้องพัก</span>
+                        <span class="font-bold text-slate-800 text-sm">฿<?php echo number_format($currentInvoice['rentPrice'], 2); ?></span>
+                    </div>
+                    <div class="bg-rose-50/40 p-3 rounded-2xl border border-rose-100/70">
+                        <span class="text-slate-400 block text-[11px]">ค่าน้ำ (<?php echo max(0, $currentInvoice['waterCurr'] - $currentInvoice['waterPrev']); ?> หน่วย)</span>
+                        <span class="font-bold text-slate-800 text-sm">฿<?php echo number_format($waterTotal, 2); ?></span>
+                    </div>
+                    <div class="bg-rose-50/40 p-3 rounded-2xl border border-rose-100/70">
+                        <span class="text-slate-400 block text-[11px]">ค่าไฟ (<?php echo max(0, $currentInvoice['electricCurr'] - $currentInvoice['electricPrev']); ?> หน่วย)</span>
+                        <span class="font-bold text-slate-800 text-sm">฿<?php echo number_format($elecTotal, 2); ?></span>
+                    </div>
+                    <div class="bg-rose-50/40 p-3 rounded-2xl border border-rose-100/70">
+                        <span class="text-slate-400 block text-[11px]">ค่าใช้จ่ายอื่นๆ</span>
+                        <span class="font-bold text-slate-800 text-sm">฿<?php echo number_format($currentInvoice['otherFee'], 2); ?></span>
+                    </div>
+                    <?php if(!empty($currentInvoice['otherFeeNote'])): ?>
+                    <div class="col-span-2 sm:col-span-4 bg-slate-50 p-2.5 rounded-xl border border-slate-200/60 text-slate-600 text-[11px] flex items-center gap-1.5">
+                        <i data-lucide="info" class="w-3.5 h-3.5 text-slate-400 shrink-0"></i>
+                        <span>หมายเหตุค่าใช้จ่ายอื่น: <strong><?php echo htmlspecialchars($currentInvoice['otherFeeNote']); ?></strong></span>
+                    </div>
+                    <?php endif; ?>
+                </div>
 
                 <!-- ยอดรวมทั้งสิ้น -->
-
                 <div class="mt-5 p-4 rounded-2xl bg-rose-50/30 flex items-center justify-between border border-rose-100/80">
-
                     <div>
-
                         <span class="text-xs font-bold text-slate-400 uppercase tracking-wider block">ยอดสุทธิที่ต้องชำระ</span>
-
                         <span class="text-xs text-slate-500">รวมค่าเช่าและสาธารณูปโภค</span>
-
                     </div>
-
                     <span class="text-2xl sm:text-3xl font-display font-bold text-rose-600">฿<?php echo number_format($currentInvoice['totalAmount'], 2); ?></span>
-
                 </div>
-
-
 
                 <!-- กล่องเลขบัญชี & QR Code ถ้ายังไม่ชำระ -->
-
-                <?php if($currentInvoice['status'] === 'Unpaid'): ?>
-
                 <div class="mt-5 p-4 bg-rose-50/60 rounded-2xl border border-blue-100 flex flex-col sm:flex-row items-center justify-between gap-4">
-
                     <div class="w-full sm:w-auto">
-
                         <div class="text-xs font-semibold text-slate-500 mb-1">ช่องทางโอนเงิน:</div>
-
                         <div class="font-bold text-base text-slate-800 font-mono tracking-wide">109-3-21573-3</div>
-
                         <div class="text-xs text-slate-500">บจก. หอพักจัสมิน (ธ.กสิกรไทย)</div>
-
                         <button type="button" onclick="copyAccountNumber('1093215733', this)" class="mt-2 inline-flex items-center gap-1.5 px-3 py-1 bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 rounded-xl text-xs font-bold transition shadow-2xs cursor-pointer">
-
                             <i data-lucide="copy" class="w-3.5 h-3.5"></i> <span>คัดลอกเลขบัญชี</span>
-
                         </button>
-
                     </div>
-
                     <div class="shrink-0 text-center flex flex-col items-center">
-
                         <img src="pay_me.png" alt="QR Code" onclick="openSlipPreview('pay_me.png')" class="w-20 h-20 object-contain border border-rose-100/80 rounded-xl p-1 bg-white shadow-xs cursor-pointer hover:scale-105 transition" title="คลิกดู QR Code ขนาดใหญ่">
-
                         <span class="text-[10px] text-rose-600 font-bold mt-1 cursor-pointer" onclick="openSlipPreview('pay_me.png')">แตะขยาย QR Code</span>
-
                     </div>
-
                 </div>
-
-                <?php endif; ?>
-
-
 
                 <!-- ปุ่ม Action สำหรับรอบบิลปัจจุบัน -->
-
                 <div class="mt-6 flex flex-wrap gap-3">
-
                     <button type="button" onclick="openTenantInvoiceModal(<?php echo $currentInvoice['invoiceId']; ?>)" class="px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-sm font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs">
-
                         <i data-lucide="eye" class="w-4 h-4 text-emerald-600"></i> ดูรายละเอียดบิล
-
                     </button>
-
-                    <?php if($currentInvoice['status'] === 'Unpaid'): ?>
-
-                        <button onclick="openUploadModal(<?php echo $currentInvoice['invoiceId']; ?>, '<?php echo htmlspecialchars($currentInvoice['billingMonth']); ?>', <?php echo $currentInvoice['totalAmount']; ?>)" class="w-full py-3 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 cursor-pointer">
-
-                            <i data-lucide="upload-cloud" class="w-4 h-4"></i> แจ้งโอนเงิน / อัปโหลดสลิป
-
-                        </button>
-
-                    <?php else: ?>
-
-                        <?php if($currentInvoice['status'] === 'Paid'): ?>
-
-                            <!-- 🌟 ปุ่มดาวน์โหลดใบเสร็จรับเงิน PDF สำหรับลูกบ้าน -->
-
-                            <a href="print_receipt.php?id=<?php echo $currentInvoice['invoiceId']; ?>" target="_blank" class="flex-1 min-w-[200px] py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold transition flex items-center justify-center gap-2 shadow-sm">
-
-                                <i data-lucide="file-check" class="w-4 h-4"></i> ดู / ดาวน์โหลดใบเสร็จ (PDF)
-
-                            </a>
-
-                        <?php endif; ?>
-
-
-
-                        <?php if(!empty($currentInvoice['slipImage'])): ?>
-
-                            <button type="button" onclick="openSlipPreview('<?php echo htmlspecialchars($currentInvoice['slipImage']); ?>')" class="<?php echo ($currentInvoice['status'] === 'Paid') ? 'px-4 py-3' : 'flex-1 py-3'; ?> bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-bold transition flex items-center justify-center gap-2 cursor-pointer">
-
-                                <i data-lucide="image" class="w-4 h-4"></i> ดูสลิปที่แนบ
-
-                            </button>
-
-                        <?php endif; ?>
-
-
-
-                        <?php if($currentInvoice['status'] === 'Pending Approval'): ?>
-
-                            <button type="button" onclick="openUploadModal(<?php echo $currentInvoice['invoiceId']; ?>, '<?php echo htmlspecialchars($currentInvoice['billingMonth']); ?>', <?php echo $currentInvoice['totalAmount']; ?>)" class="py-3 px-4 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer" title="อัปโหลดสลิปใหม่">
-
-                                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> ส่งสลิปใหม่
-
-                            </button>
-
-                        <?php endif; ?>
-
-                    <?php endif; ?>
-
-                </div>
-
-
-
-                <!-- ลิงก์ด่วนไปแท็บประวัติ -->
-
-                <div class="mt-6 pt-4 border-t border-rose-100/60 flex items-center justify-between text-xs">
-
-                    <span class="text-slate-400">ต้องการดูใบเสร็จย้อนหลัง?</span>
-
-                    <button type="button" onclick="switchTab('history')" class="font-bold text-rose-600 hover:text-blue-800 hover:underline flex items-center gap-1 cursor-pointer">
-
-                        <span>ดูประวัติการชำระเงินย้อนหลัง (<?php echo count($paymentHistory); ?> รายการ)</span>
-
-                        <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
-
+                    <button onclick="openUploadModal(<?php echo $currentInvoice['invoiceId']; ?>, '<?php echo htmlspecialchars($currentInvoice['billingMonth']); ?>', <?php echo $currentInvoice['totalAmount']; ?>)" class="flex-1 py-3 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 cursor-pointer">
+                        <i data-lucide="upload-cloud" class="w-4 h-4"></i> แจ้งโอนเงิน / อัปโหลดสลิป
                     </button>
-
                 </div>
-
-
-
             </div>
-
         </div>
-
-        
-
+        <?php endforeach; ?>
         <?php else: ?>
+        <!-- กรณีไม่มีรอบบิลค้างชำระ -->
+        <div class="text-center py-12 sm:py-16 px-6 bg-white rounded-3xl border border-emerald-100 shadow-sm relative overflow-hidden">
+            <div class="w-20 h-20 bg-emerald-50 text-emerald-600 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-sm border border-emerald-200/60">
+                <i data-lucide="shield-check" class="w-10 h-10 text-emerald-600"></i>
+            </div>
+            <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 mb-2">
+                <i data-lucide="check" class="w-3.5 h-3.5"></i> ไม่มีรายการค้างชำระ
+            </div>
+            <h3 class="text-xl sm:text-2xl font-bold text-slate-800 font-display">ไม่มีรอบบิลค้างชำระในปัจจุบัน</h3>
+            <p class="text-xs sm:text-sm text-slate-500 max-w-md mx-auto mt-2 leading-relaxed">
+                ยอดเยี่ยม! คุณไม่มีบิลค้างชำระในขณะนี้ เมื่อมีบิลรอบใหม่หรือต้องการดูประวัติย้อนหลังสามารถเลือกแถบด้านบนได้
+            </p>
+            <?php if(!empty($pendingApprovalInvoices)): ?>
+            <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+                <button type="button" onclick="switchTab('pending')" class="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-md hover:shadow-lg transition flex items-center gap-2 cursor-pointer">
+                    <span class="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+                    <i data-lucide="clock" class="w-4 h-4"></i>
+                    <span>มีบิลรอแอดมินตรวจสอบสลิป <?php echo count($pendingApprovalInvoices); ?> รายการ</span>
+                    <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                </button>
+            </div>
+            <?php elseif(count($paymentHistory) > 0): ?>
+            <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+                <button type="button" onclick="switchTab('history')" class="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-md hover:shadow-lg transition flex items-center gap-2 cursor-pointer">
+                    <i data-lucide="history" class="w-4 h-4"></i>
+                    <span>ดูประวัติและใบเสร็จรับเงินทั้งหมด (<?php echo count($paymentHistory); ?> รอบบิล)</span>
+                    <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                </button>
+            </div>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
+    </div>
 
-        <div class="text-center py-16 bg-white rounded-3xl border border-rose-100/80 shadow-sm">
-
-            <div class="w-16 h-16 bg-rose-50/30 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
-
-                <i data-lucide="receipt" class="w-8 h-8"></i>
-
+    <!-- ================= แท็บ 2: รอตรวจสอบสลิป (Pending Approval - แถบตรวจเหมือนแอดมิน) ================= -->
+    <div id="content-pending" class="<?php echo ($activeTab === 'pending') ? 'space-y-4' : 'space-y-4 hidden'; ?>">
+        <?php if(!empty($pendingApprovalInvoices)): ?>
+            <?php foreach($pendingApprovalInvoices as $currentInvoice): 
+                $waterTotal = ($currentInvoice['waterCurr'] - $currentInvoice['waterPrev']) * $currentInvoice['waterUnitRate'];
+                $elecTotal = ($currentInvoice['electricCurr'] - $currentInvoice['electricPrev']) * $currentInvoice['electricUnitRate'];
+            ?>
+        <div class="bg-white rounded-3xl border border-amber-200/90 shadow-sm overflow-hidden transition hover:shadow-md">
+            <div class="px-6 py-5 border-b border-amber-100 flex flex-wrap justify-between items-center gap-3 bg-amber-50/40">
+                <div class="flex items-center gap-3.5">
+                    <div class="w-11 h-11 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center font-bold shadow-2xs">
+                        <i data-lucide="clock" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h3 class="font-display font-bold text-slate-800 text-lg">รอบบิล: <?php echo htmlspecialchars($currentInvoice['billingMonth']); ?></h3>
+                            <span class="text-xs font-mono font-bold px-2 py-0.5 rounded-lg bg-amber-100 text-amber-800 border border-amber-200">
+                                ห้อง <?php echo htmlspecialchars($currentInvoice['roomNumber']); ?>
+                            </span>
+                        </div>
+                        <p class="text-xs font-mono text-slate-400 mt-0.5">รหัสอ้างอิง: INV-<?php echo str_pad($currentInvoice['invoiceId'], 5, '0', STR_PAD_LEFT); ?></p>
+                    </div>
+                </div>
+                <div class="px-3.5 py-1.5 rounded-full border text-xs font-bold flex items-center gap-1.5 bg-amber-100 text-amber-800 border-amber-300 shadow-2xs">
+                    <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                    <i data-lucide="clock" class="w-3.5 h-3.5"></i> รอแอดมินตรวจสลิป
+                </div>
             </div>
 
-            <h3 class="text-lg font-bold text-slate-700 font-display">ไม่มีรายการบิลในขณะนี้</h3>
+            <div class="p-6">
+                <!-- แบนเนอร์สถานะกำลังตรวจสอบสลิป -->
+                <div class="mb-5 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-amber-900 font-medium">
+                    <div class="flex items-center gap-2.5">
+                        <div class="w-6 h-6 rounded-full bg-amber-200 text-amber-800 flex items-center justify-center shrink-0">
+                            <i data-lucide="clock" class="w-3.5 h-3.5"></i>
+                        </div>
+                        <span>แนบสลิปเรียบร้อยแล้ว อยู่ระหว่างรอนิติบุคคลตรวจสอบความถูกต้อง เมื่ออนุมัติแล้วบิลจะย้ายไปที่ส่วนประวัติโดยอัตโนมัติ</span>
+                    </div>
+                    <span class="self-start sm:self-center font-bold font-mono text-amber-800 bg-white px-2.5 py-1 rounded-lg border border-amber-200 shrink-0">
+                        Pending Approval
+                    </span>
+                </div>
 
-            <p class="text-sm text-slate-500 mt-1">ขณะนี้ยังไม่มีใบแจ้งหนี้ที่ออกให้คุณครับ</p>
+                <!-- ค่าใช้จ่ายแจกแจง -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 py-3 text-xs text-slate-600">
+                    <div class="bg-amber-50/30 p-3 rounded-2xl border border-amber-100">
+                        <span class="text-slate-400 block text-[11px]">ค่าเช่าห้องพัก</span>
+                        <span class="font-bold text-slate-800 text-sm">฿<?php echo number_format($currentInvoice['rentPrice'], 2); ?></span>
+                    </div>
+                    <div class="bg-amber-50/30 p-3 rounded-2xl border border-amber-100">
+                        <span class="text-slate-400 block text-[11px]">ค่าน้ำ (<?php echo max(0, $currentInvoice['waterCurr'] - $currentInvoice['waterPrev']); ?> หน่วย)</span>
+                        <span class="font-bold text-slate-800 text-sm">฿<?php echo number_format($waterTotal, 2); ?></span>
+                    </div>
+                    <div class="bg-amber-50/30 p-3 rounded-2xl border border-amber-100">
+                        <span class="text-slate-400 block text-[11px]">ค่าไฟ (<?php echo max(0, $currentInvoice['electricCurr'] - $currentInvoice['electricPrev']); ?> หน่วย)</span>
+                        <span class="font-bold text-slate-800 text-sm">฿<?php echo number_format($elecTotal, 2); ?></span>
+                    </div>
+                    <div class="bg-amber-50/30 p-3 rounded-2xl border border-amber-100">
+                        <span class="text-slate-400 block text-[11px]">ค่าใช้จ่ายอื่นๆ</span>
+                        <span class="font-bold text-slate-800 text-sm">฿<?php echo number_format($currentInvoice['otherFee'], 2); ?></span>
+                    </div>
+                    <?php if(!empty($currentInvoice['otherFeeNote'])): ?>
+                    <div class="col-span-2 sm:col-span-4 bg-slate-50 p-2.5 rounded-xl border border-slate-200/60 text-slate-600 text-[11px] flex items-center gap-1.5">
+                        <i data-lucide="info" class="w-3.5 h-3.5 text-slate-400 shrink-0"></i>
+                        <span>หมายเหตุค่าใช้จ่ายอื่น: <strong><?php echo htmlspecialchars($currentInvoice['otherFeeNote']); ?></strong></span>
+                    </div>
+                    <?php endif; ?>
+                </div>
 
+                <!-- ยอดรวมทั้งสิ้น -->
+                <div class="mt-4 p-4 rounded-2xl bg-amber-50/60 flex items-center justify-between border border-amber-200">
+                    <div>
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider block">ยอดที่แนบสลิปชำระ</span>
+                        <span class="text-xs text-slate-500">รวมค่าเช่าและสาธารณูปโภค</span>
+                    </div>
+                    <span class="text-2xl sm:text-3xl font-display font-bold text-amber-700">฿<?php echo number_format($currentInvoice['totalAmount'], 2); ?></span>
+                </div>
+
+                <!-- ปุ่ม Action สำหรับแท็บรอตรวจสอบ -->
+                <div class="mt-6 flex flex-wrap gap-3">
+                    <button type="button" onclick="openTenantInvoiceModal(<?php echo $currentInvoice['invoiceId']; ?>)" class="px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-sm font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs">
+                        <i data-lucide="eye" class="w-4 h-4 text-emerald-600"></i> ดูรายละเอียดบิล
+                    </button>
+                    <?php if(!empty($currentInvoice['slipImage'])): ?>
+                        <button type="button" onclick="openSlipPreview('<?php echo htmlspecialchars($currentInvoice['slipImage']); ?>')" class="flex-1 py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 cursor-pointer">
+                            <i data-lucide="image" class="w-4 h-4"></i> ดูสลิปที่แนบ
+                        </button>
+                    <?php endif; ?>
+                    <button type="button" onclick="openUploadModal(<?php echo $currentInvoice['invoiceId']; ?>, '<?php echo htmlspecialchars($currentInvoice['billingMonth']); ?>', <?php echo $currentInvoice['totalAmount']; ?>)" class="py-3 px-4 bg-white hover:bg-amber-50 text-amber-700 border border-amber-300 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer" title="แก้ไข / แนบสลิปใหม่">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> แก้ไข/ส่งสลิปใหม่
+                    </button>
+                </div>
+            </div>
         </div>
-
+        <?php endforeach; ?>
+        <?php else: ?>
+        <!-- เมื่อไม่มีบิลที่รอตรวจสอบสลิป -->
+        <div class="text-center py-12 sm:py-16 px-6 bg-white rounded-3xl border border-amber-100 shadow-sm relative overflow-hidden">
+            <div class="w-20 h-20 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-200/70 shadow-sm">
+                <i data-lucide="check-check" class="w-10 h-10 text-amber-600"></i>
+            </div>
+            <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200 mb-2">
+                <i data-lucide="clock" class="w-3.5 h-3.5"></i> ไม่มีรายการรอตรวจ
+            </div>
+            <h3 class="text-xl sm:text-2xl font-bold text-slate-800 font-display">ไม่มีรายการที่รอตรวจสอบสลิป</h3>
+            <p class="text-xs sm:text-sm text-slate-500 max-w-md mx-auto mt-2 leading-relaxed">
+                เมื่อคุณโอนเงินและแนบสลิปในรอบบิลปัจจุบันแล้ว รายการจะเข้ามาแสดงที่แถบนี้เพื่อรอนิติบุคคลตรวจสอบความถูกต้อง
+            </p>
+        </div>
         <?php endif; ?>
-
     </div>
 
 
 
     <!-- ================= แท็บ 2: ประวัติการชำระเงิน (Payment History) ================= -->
-
     <div id="content-history" class="<?php echo ($activeTab === 'history') ? 'space-y-4' : 'space-y-4 hidden'; ?>">
-
         <?php if(count($paymentHistory) > 0): ?>
-
-            <div class="flex items-center justify-between mb-2">
-
-                <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">รายการใบเสร็จรับเงินที่ชำระแล้ว</span>
-
-                <span class="text-xs text-emerald-700 font-bold bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-
-                    ทั้งหมด <?php echo count($paymentHistory); ?> รายการ
-
-                </span>
-
+            <!-- Filter & Search Bar สำหรับดูบิลของหลายๆ เดือน -->
+            <div class="bg-white rounded-2xl border border-rose-100/80 p-3 sm:p-4 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div class="relative flex-1 max-w-md">
+                    <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                    <input type="text" id="historySearchInput" oninput="filterHistoryBills()" placeholder="ค้นหารอบเดือน, ปี หรือเลขที่ใบเสร็จ..." class="w-full pl-10 pr-4 py-2 bg-slate-50 hover:bg-white focus:bg-white rounded-xl border border-slate-200 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 focus:border-rose-400 transition placeholder:text-slate-400">
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                    <span class="text-xs text-emerald-700 font-bold bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200 flex items-center gap-1.5 shadow-2xs">
+                        <i data-lucide="receipt" class="w-3.5 h-3.5 text-emerald-600"></i>
+                        <span id="historyCountText">ทั้งหมด <?php echo count($paymentHistory); ?> รายการ</span>
+                    </span>
+                </div>
             </div>
 
-
-
-            <?php foreach($paymentHistory as $hist): 
-
-                $hWater = ($hist['waterCurr'] - $hist['waterPrev']) * $hist['waterUnitRate'];
-
-                $hElec = ($hist['electricCurr'] - $hist['electricPrev']) * $hist['electricUnitRate'];
-
-            ?>
-
-            <div class="bg-white rounded-3xl border border-rose-100/80 shadow-sm p-5 sm:p-6 hover:shadow-md transition">
-
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-rose-100/60">
-
-                    <div class="flex items-center gap-3.5">
-
-                        <div class="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold shadow-2xs shrink-0">
-
-                            <i data-lucide="file-check-2" class="w-5 h-5"></i>
-
-                        </div>
-
-                        <div>
-
-                            <div class="flex items-center gap-2 flex-wrap">
-
-                                <h3 class="font-display font-bold text-slate-800 text-base sm:text-lg">รอบบิล: <?php echo htmlspecialchars($hist['billingMonth']); ?></h3>
-
-                                <span class="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-
-                                    <i data-lucide="check" class="w-3 h-3"></i> ชำระเงินแล้ว
-
-                                </span>
-
-                            </div>
-
-                            <p class="text-xs font-mono text-slate-400 mt-0.5">ใบเสร็จเลขที่: REC-<?php echo str_pad($hist['invoiceId'], 5, '0', STR_PAD_LEFT); ?> • ห้อง <?php echo htmlspecialchars($hist['roomNumber']); ?></p>
-
-                        </div>
-
-                    </div>
-
-                    <div class="text-left sm:text-right">
-
-                        <div class="text-[11px] text-slate-400 font-medium uppercase">ยอดชำระสุทธิ</div>
-
-                        <div class="text-xl sm:text-2xl font-display font-bold text-emerald-700">฿<?php echo number_format($hist['totalAmount'], 2); ?></div>
-
-                    </div>
-
+            <!-- กล่องแจ้งเมื่อค้นหาไม่พบ -->
+            <div id="historySearchEmpty" class="hidden text-center py-10 bg-white rounded-3xl border border-rose-100/80 shadow-sm">
+                <div class="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-2 text-slate-400">
+                    <i data-lucide="search-x" class="w-6 h-6"></i>
                 </div>
+                <p class="text-sm font-bold text-slate-700">ไม่พบรายการบิลตามคำค้นหา</p>
+                <p class="text-xs text-slate-400 mt-0.5">ลองค้นหาด้วยชื่อเดือน เช่น "พฤศจิกายน" หรือปี พ.ศ./ค.ศ.</p>
+            </div>
 
-
+            <div id="historyBillsList" class="space-y-4">
+            <?php foreach($paymentHistory as $hist): 
+                $hWater = ($hist['waterCurr'] - $hist['waterPrev']) * $hist['waterUnitRate'];
+                $hElec = ($hist['electricCurr'] - $hist['electricPrev']) * $hist['electricUnitRate'];
+            ?>
+            <div onclick="openTenantInvoiceModal(<?php echo $hist['invoiceId']; ?>)" class="history-bill-card bg-white rounded-3xl border border-rose-100/80 shadow-sm p-5 sm:p-6 hover:shadow-md hover:border-emerald-300 transition cursor-pointer group" data-search="<?php echo htmlspecialchars($hist['billingMonth'] . ' ' . $hist['invoiceId'] . ' ' . ($hist['roomNumber'] ?? '') . ' REC-' . str_pad($hist['invoiceId'], 5, '0', STR_PAD_LEFT)); ?>" title="คลิกเพื่อดูรายละเอียดบิลแบบเต็ม">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-rose-100/60">
+                    <div class="flex items-center gap-3.5">
+                        <div class="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold shadow-2xs shrink-0 group-hover:scale-105 transition">
+                            <i data-lucide="file-check-2" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <h3 class="font-display font-bold text-slate-800 text-base sm:text-lg group-hover:text-emerald-700 transition">รอบบิล: <?php echo htmlspecialchars($hist['billingMonth']); ?></h3>
+                                <span class="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                                    <i data-lucide="check" class="w-3 h-3"></i> ชำระเงินแล้ว
+                                </span>
+                            </div>
+                            <div class="flex items-center gap-2 flex-wrap text-xs text-slate-400 mt-0.5 font-mono">
+                                <span>ใบเสร็จเลขที่: REC-<?php echo str_pad($hist['invoiceId'], 5, '0', STR_PAD_LEFT); ?></span>
+                                <span>•</span>
+                                <span>ห้อง <?php echo htmlspecialchars($hist['roomNumber'] ?? ($myRoomNumber ?: '-')); ?></span>
+                                <?php if(!empty($hist['paidAt'])): ?>
+                                    <span>•</span>
+                                    <span class="text-emerald-600">ชำระเมื่อ: <?php echo date('d/m/Y H:i', strtotime($hist['paidAt'])); ?> น.</span>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-left sm:text-right">
+                        <div class="text-[11px] text-slate-400 font-medium uppercase">ยอดชำระสุทธิ</div>
+                        <div class="text-xl sm:text-2xl font-display font-bold text-emerald-700 font-mono">฿<?php echo number_format($hist['totalAmount'], 2); ?></div>
+                    </div>
+                </div>
 
                 <!-- รายละเอียดค่าใช้จ่ายย่อส่วน -->
-
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 py-3 text-xs text-slate-600">
-
                     <div class="bg-rose-50/30 p-2.5 rounded-xl border border-rose-100/60">
-
                         <span class="text-slate-400 block text-[11px]">ค่าเช่าห้องพัก</span>
-
                         <span class="font-bold text-slate-700">฿<?php echo number_format($hist['rentPrice'], 2); ?></span>
-
                     </div>
-
                     <div class="bg-rose-50/30 p-2.5 rounded-xl border border-rose-100/60">
-
-                        <span class="text-slate-400 block text-[11px]">ค่าน้ำ (<?php echo ($hist['waterCurr'] - $hist['waterPrev']); ?> หน่วย)</span>
-
+                        <span class="text-slate-400 block text-[11px]">ค่าน้ำ (<?php echo max(0, $hist['waterCurr'] - $hist['waterPrev']); ?> หน่วย)</span>
                         <span class="font-bold text-slate-700">฿<?php echo number_format($hWater, 2); ?></span>
-
                     </div>
-
                     <div class="bg-rose-50/30 p-2.5 rounded-xl border border-rose-100/60">
-
-                        <span class="text-slate-400 block text-[11px]">ค่าไฟ (<?php echo ($hist['electricCurr'] - $hist['electricPrev']); ?> หน่วย)</span>
-
+                        <span class="text-slate-400 block text-[11px]">ค่าไฟ (<?php echo max(0, $hist['electricCurr'] - $hist['electricPrev']); ?> หน่วย)</span>
                         <span class="font-bold text-slate-700">฿<?php echo number_format($hElec, 2); ?></span>
-
                     </div>
-
                     <div class="bg-rose-50/30 p-2.5 rounded-xl border border-rose-100/60">
-
                         <span class="text-slate-400 block text-[11px]">ค่าใช้จ่ายอื่นๆ</span>
-
                         <span class="font-bold text-slate-700">฿<?php echo number_format($hist['otherFee'], 2); ?></span>
-
                     </div>
-
                 </div>
-
-
 
                 <!-- ปุ่มดาวน์โหลดใบเสร็จ & ดูสลิป -->
-
-                <div class="pt-3 border-t border-rose-100/60 flex flex-wrap gap-2.5 items-center justify-end">
-
-                    <button type="button" onclick="openTenantInvoiceModal(<?php echo $hist['invoiceId']; ?>)" class="px-3.5 py-2 bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border border-slate-200 hover:border-emerald-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs">
-
-                        <i data-lucide="eye" class="w-3.5 h-3.5 text-emerald-600"></i> ดูรายละเอียดบิล
-
-                    </button>
-
-                    <?php if(!empty($hist['slipImage'])): ?>
-
-                        <button type="button" onclick="openSlipPreview('<?php echo htmlspecialchars($hist['slipImage']); ?>')" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer">
-
-                            <i data-lucide="image" class="w-3.5 h-3.5"></i> ดูหลักฐานสลิป
-
+                <div class="pt-3 border-t border-rose-100/60 flex flex-wrap gap-2.5 items-center justify-between">
+                    <div class="text-[11px] text-slate-400 flex items-center gap-1">
+                        <i data-lucide="info" class="w-3.5 h-3.5 text-slate-400"></i>
+                        <span>คลิกที่การ์ดเพื่อดูรายละเอียดบิลแบบเต็ม</span>
+                    </div>
+                    <div class="flex flex-wrap gap-2 items-center">
+                        <button type="button" onclick="event.stopPropagation(); openTenantInvoiceModal(<?php echo $hist['invoiceId']; ?>)" class="px-3.5 py-2 bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border border-slate-200 hover:border-emerald-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs">
+                            <i data-lucide="eye" class="w-3.5 h-3.5 text-emerald-600"></i> ดูรายละเอียดบิล
                         </button>
-
-                    <?php endif; ?>
-
-                    <a href="print_receipt.php?id=<?php echo $hist['invoiceId']; ?>" target="_blank" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
-
-                        <i data-lucide="file-check" class="w-3.5 h-3.5"></i> ดู / ดาวน์โหลดใบเสร็จ (PDF)
-
-                    </a>
-
+                        <?php if(!empty($hist['slipImage'])): ?>
+                            <button type="button" onclick="event.stopPropagation(); openSlipPreview('<?php echo htmlspecialchars($hist['slipImage']); ?>')" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer">
+                                <i data-lucide="image" class="w-3.5 h-3.5"></i> ดูหลักฐานสลิป
+                            </button>
+                        <?php endif; ?>
+                        <a href="print_receipt.php?id=<?php echo $hist['invoiceId']; ?>" target="_blank" onclick="event.stopPropagation()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
+                            <i data-lucide="file-check" class="w-3.5 h-3.5"></i> ดู / ดาวน์โหลดใบเสร็จ (PDF)
+                        </a>
+                    </div>
                 </div>
-
             </div>
-
             <?php endforeach; ?>
-
-
-
-        <?php else: ?>
-
-        <div class="text-center py-16 bg-white rounded-3xl border border-rose-100/80 shadow-sm">
-
-            <div class="w-16 h-16 bg-rose-50/30 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
-
-                <i data-lucide="history" class="w-8 h-8"></i>
-
             </div>
-
-            <h3 class="text-lg font-bold text-slate-700 font-display">ยังไม่มีประวัติการชำระเงิน</h3>
-
-            <p class="text-sm text-slate-500 mt-1">เมื่อท่านชำระเงินและนิติบุคคลอนุมัติแล้ว ประวัติการชำระเงินและใบเสร็จจะแสดงที่นี่ครับ</p>
-
-        </div>
-
+        <?php else: ?>
+            <div class="text-center py-16 bg-white rounded-3xl border border-rose-100/80 shadow-sm">
+                <div class="w-16 h-16 bg-rose-50/30 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
+                    <i data-lucide="history" class="w-8 h-8"></i>
+                </div>
+                <h3 class="text-lg font-bold text-slate-700 font-display">ยังไม่มีประวัติการชำระเงิน</h3>
+                <p class="text-sm text-slate-500 mt-1">เมื่อท่านชำระเงินและนิติบุคคลอนุมัติแล้ว ประวัติการชำระเงินและใบเสร็จจะแสดงที่นี่ครับ</p>
+            </div>
         <?php endif; ?>
-
     </div>
 
 
@@ -1469,30 +1214,59 @@ foreach ($rawInvoices as $inv) {
 
 
 
-    // ระบบสลับแท็บ (รอบบิลปัจจุบัน / ประวัติการชำระเงิน)
-
+    // ระบบสลับแท็บ (รอบบิลปัจจุบัน / รอตรวจสอบสลิป / ประวัติการชำระเงิน)
     function switchTab(tabId) {
+        ['current', 'pending', 'history'].forEach(function(t) {
+            var el = document.getElementById('content-' + t);
+            if (el) el.classList.add('hidden');
+            var btn = document.getElementById('tab-' + t);
+            if (btn) {
+                btn.className = "px-5 py-2.5 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer";
+            }
+        });
 
-        document.getElementById('content-current').classList.add('hidden');
+        var targetContent = document.getElementById('content-' + tabId);
+        if (targetContent) targetContent.classList.remove('hidden');
 
-        document.getElementById('content-history').classList.add('hidden');
+        var targetBtn = document.getElementById('tab-' + tabId);
+        if (targetBtn) {
+            if (tabId === 'pending') {
+                targetBtn.className = "px-5 py-2.5 text-sm font-bold border-b-2 border-amber-500 text-amber-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer";
+            } else {
+                targetBtn.className = "px-5 py-2.5 text-sm font-bold border-b-2 border-rose-600 text-rose-600 flex items-center gap-2 whitespace-nowrap transition cursor-pointer";
+            }
+        }
+        if (window.lucide) lucide.createIcons();
+    }
 
-        document.getElementById('content-' + tabId).classList.remove('hidden');
-
-
-
-        // Reset styling
-
-        document.getElementById('tab-current').className = "px-5 py-2.5 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer";
-
-        document.getElementById('tab-history').className = "px-5 py-2.5 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer";
-
-
-
-        // Active styling
-
-        document.getElementById('tab-' + tabId).className = "px-5 py-2.5 text-sm font-bold border-b-2 border-blue-600 text-rose-600 flex items-center gap-2 whitespace-nowrap transition cursor-pointer";
-
+    // ฟังก์ชันค้นหาและกรองบิลในประวัติหลายๆ เดือน
+    function filterHistoryBills() {
+        const input = document.getElementById('historySearchInput');
+        if (!input) return;
+        const query = (input.value || '').toLowerCase().trim();
+        const cards = document.querySelectorAll('.history-bill-card');
+        let visibleCount = 0;
+        cards.forEach(card => {
+            const text = (card.getAttribute('data-search') || card.textContent).toLowerCase();
+            if (!query || text.includes(query)) {
+                card.classList.remove('hidden');
+                visibleCount++;
+            } else {
+                card.classList.add('hidden');
+            }
+        });
+        const emptyEl = document.getElementById('historySearchEmpty');
+        if (emptyEl) {
+            if (visibleCount === 0 && cards.length > 0) {
+                emptyEl.classList.remove('hidden');
+            } else {
+                emptyEl.classList.add('hidden');
+            }
+        }
+        const countText = document.getElementById('historyCountText');
+        if (countText) {
+            countText.textContent = query ? `พบ ${visibleCount} จาก ${cards.length} รายการ` : `ทั้งหมด ${cards.length} รายการ`;
+        }
     }
 
 

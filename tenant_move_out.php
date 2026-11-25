@@ -910,16 +910,7 @@ if ($myLease && !empty($myLease['settledAt'])) {
           </div>
 
           <div>
-            <div class="flex items-center space-x-2">
-              <span class="font-display font-bold text-lg tracking-tight text-slate-800">หอพักจัสมิน</span>
-              <a href="profile.php" class="inline-flex items-center gap-1.5 text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-2.5 py-0.5 rounded-full border border-rose-200 transition shadow-2xs" title="โปรไฟล์ของฉัน">
-                <span><?php echo htmlspecialchars($headerTenantName ?? $sidebarTenantName ?? ($tenantName ?? 'ผู้เช่า')); ?></span>
-                <?php if(!empty($headerRoomNumber ?? $sidebarRoomNumber ?? ($myRoomNumber ?? ''))): ?>
-                  <span class="text-rose-400">•</span>
-                  <span>ห้อง <?php echo htmlspecialchars($headerRoomNumber ?? $sidebarRoomNumber ?? ($myRoomNumber ?? '')); ?></span>
-                <?php endif; ?>
-              </a>
-            </div>
+            <span class="font-display font-bold text-lg tracking-tight text-slate-800">หอพักจัสมิน</span>
             <p class="text-[11px] text-slate-400 font-medium hidden sm:block">คำขอยกเลิกสัญญาและย้ายออก</p>
           </div>
 
@@ -930,36 +921,15 @@ if ($myLease && !empty($myLease['settledAt'])) {
         <div class="flex items-center space-x-2 sm:space-x-3">
           <?php include 'includes/theme_toggle.php'; ?>
 
-          <!-- ลิงก์โปรไฟล์ของผู้เช่า (ตรงชื่อ) -->
-
-          <a href="profile.php" class="flex items-center gap-2 p-1 sm:p-1.5 hover:bg-rose-50/70 rounded-xl transition border border-transparent hover:border-rose-200 group" title="โปรไฟล์ของฉัน">
-
-            <div class="w-8 h-8 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-xs border border-rose-200 shadow-2xs shrink-0">
-
+          <!-- ลิงก์โปรไฟล์ของผู้เช่า (ตรงรูปวงกลม + ชื่อและเลขห้อง) -->
+          <a href="profile.php" class="flex items-center gap-2 p-1 sm:p-1.5 sm:px-2.5 hover:bg-rose-50/70 rounded-full transition border border-transparent hover:border-rose-200 group" title="แก้ไขโปรไฟล์">
+            <div class="w-8 h-8 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-xs border border-rose-200 shadow-2xs shrink-0 group-hover:scale-105 transition">
               <?php echo $initials; ?>
-
             </div>
-
-            <div class="hidden sm:block text-left pr-0.5">
-
-              <div class="text-xs font-bold text-slate-800 group-hover:text-rose-600 transition truncate max-w-[120px] sm:max-w-[160px]"><?php echo htmlspecialchars($tenantName); ?></div>
-
-              <div class="text-[10px] text-rose-600 font-semibold truncate flex items-center gap-1">
-
-                <?php if(!empty($myRoomNumber)): ?>
-
-                  <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> ห้อง <?php echo htmlspecialchars($myRoomNumber); ?>
-
-                <?php else: ?>
-
-                  <span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span> ผู้เช่า
-
-                <?php endif; ?>
-
-              </div>
-
+            <div class="hidden sm:block text-left pr-1">
+              <div class="text-xs font-bold text-slate-800 group-hover:text-rose-600 transition truncate max-w-[140px] sm:max-w-[180px]"><?php echo htmlspecialchars($headerTenantName ?? $sidebarTenantName ?? ($tenantName ?? 'ผู้เช่า')); ?></div>
+              <div class="text-[10px] text-rose-600 font-bold"><?php echo !empty($headerRoomNumber ?? $sidebarRoomNumber ?? ($myRoomNumber ?? '')) ? "ห้อง " . htmlspecialchars($headerRoomNumber ?? $sidebarRoomNumber ?? ($myRoomNumber ?? '')) : 'ลูกบ้าน'; ?></div>
             </div>
-
           </a>
 
 

@@ -141,36 +141,61 @@ if (isset($_POST['submit_request'])) {
 
 
         $preferredDate = !empty($_POST['preferredDate']) ? $_POST['preferredDate'] : null;
-
-
-
         $preferredTime = !empty($_POST['preferredTime']) ? mb_substr(trim($_POST['preferredTime']), 0, 250, 'UTF-8') : null;
-
+        $preferredPeriod = !empty($_POST['preferred_period']) ? trim($_POST['preferred_period']) : '';
+        $preferredStartTime = !empty($_POST['preferredStartTime']) ? trim($_POST['preferredStartTime']) : '';
+        $preferredEndTime = !empty($_POST['preferredEndTime']) ? trim($_POST['preferredEndTime']) : '';
         $estimatedHours = isset($_POST['estimated_hours']) ? max(1, min(4, intval($_POST['estimated_hours']))) : 2;
-
         $allowEntry = !empty($_POST['allowEntry']) ? 1 : 0;
-
         $requestImage = null;
+
+        // ดึงเวลาเริ่มต้นและสิ้นสุด
+        $checkStartTime = $preferredStartTime;
+        $checkEndTime = $preferredEndTime;
+        if (empty($checkStartTime) && $preferredTime && preg_match('/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/', $preferredTime, $tm)) {
+            $checkStartTime = $tm[1];
+            $checkEndTime = $tm[2];
+        } elseif (empty($checkStartTime) && $preferredTime && preg_match('/(\d{1,2}:\d{2})/', $preferredTime, $tm)) {
+            $checkStartTime = $tm[1];
+        }
+
+        // ประกอบค่า preferredTime หากมีเวลาเริ่มต้น-สิ้นสุด
+        if ($checkStartTime && $checkEndTime) {
+            $pName = ($preferredPeriod === 'morning') ? 'ช่วงเช้า' : 'ช่วงบ่าย-เย็น';
+            $preferredTime = "{$pName} (เวลา {$checkStartTime} - {$checkEndTime} น.)";
+        }
 
         // ตรวจสอบไม่ให้เลือกเวลาที่ผ่านมาแล้ว
         $todayStr = date('Y-m-d');
         $currentTimeStr = date('H:i');
         $isPastTime = false;
+        $invalidPeriodTime = false;
+        $periodErrMsg = '';
 
         if ($preferredDate < $todayStr) {
             $isPastTime = true;
-        } elseif ($preferredDate === $todayStr && $preferredTime) {
-            if (preg_match('/(\d{1,2}:\d{2})/', $preferredTime, $timeMatch)) {
-                $timeParts = explode(':', $timeMatch[1]);
-                $startTime = sprintf('%02d:%02d', intval($timeParts[0]), intval($timeParts[1]));
-                if ($startTime <= $currentTimeStr) {
-                    $isPastTime = true;
-                }
-            }
+        } elseif ($preferredDate === $todayStr && $checkStartTime && $checkStartTime <= $currentTimeStr) {
+            $isPastTime = true;
+        }
+
+        // ข้อกำหนด: ตรวจสอบลำดับเวลาเริ่มต้น-สิ้นสุด
+        if ($checkStartTime && $checkEndTime && $checkEndTime <= $checkStartTime) {
+            $invalidPeriodTime = true;
+            $periodErrMsg = "เวลาสิ้นสุดต้องมากกว่าเวลาเริ่มต้น (ตัวอย่างเช่น 09:00 - 11:30 น.)";
+        }
+        // ข้อกำหนด: หากผู้เช่าทำการเลือกช่วงเช้าจะไม่สามารถเลือกเวลาของช่วงบ่าย-เย็นได้
+        elseif ($preferredPeriod === 'morning' && (($checkStartTime && $checkStartTime >= '12:00') || ($checkEndTime && $checkEndTime >= '12:00'))) {
+            $invalidPeriodTime = true;
+            $periodErrMsg = "คุณเลือกช่วงเช้า ไม่สามารถเลือกเวลาของช่วงบ่าย-เย็นได้ (กรุณาระบุเวลาช่วง 08:00 - 11:59 น.)";
+        } elseif ($preferredPeriod === 'afternoon' && (($checkStartTime && $checkStartTime < '12:00') || ($checkEndTime && $checkEndTime < '12:00'))) {
+            $invalidPeriodTime = true;
+            $periodErrMsg = "คุณเลือกช่วงบ่าย-เย็น ไม่สามารถเลือกเวลาของช่วงเช้าได้ (กรุณาระบุเวลาช่วง 12:00 - 18:00 น.)";
         }
 
         if ($isPastTime) {
             $message = "<div class='alert-box p-4 mb-6 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-2xl shadow-sm text-sm font-bold flex items-center gap-2'><i data-lucide='alert-circle' class='w-5 h-5 shrink-0'></i> ไม่สามารถเลือกเวลาที่ผ่านมาแล้วได้ กรุณาเลือกเวลาปัจจุบันหรือเวลาหลังจากนี้เท่านั้น</div>";
+        } elseif ($invalidPeriodTime) {
+            $message = "<div class='alert-box p-4 mb-6 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-2xl shadow-sm text-sm font-bold flex items-center gap-2'><i data-lucide='alert-circle' class='w-5 h-5 shrink-0'></i> {$periodErrMsg}</div>";
         } else {
 
         // ตรวจสอบการอัปโหลดรูปภาพปัญหา (ถ้ามี)
@@ -257,7 +282,7 @@ if (isset($_POST['submit_request'])) {
 
 
 
-                            เวลานัดหมาย: <strong class='text-emerald-900'>{$prefDisplay}</strong> ({$timeDisplay}) • กำหนดเวลา: <strong class='text-emerald-900'>{$estimatedHours} ชั่วโมง</strong>
+                            เวลานัดหมาย: <strong class='text-emerald-900'>{$prefDisplay}</strong> ({$timeDisplay})
 
 
 
@@ -515,16 +540,7 @@ if (isset($_POST['submit_request'])) {
 
 
           <div>
-            <div class="flex items-center space-x-2">
-              <span class="font-display font-bold text-lg tracking-tight text-slate-800">หอพักจัสมิน</span>
-              <a href="profile.php" class="inline-flex items-center gap-1.5 text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-2.5 py-0.5 rounded-full border border-rose-200 transition shadow-2xs" title="โปรไฟล์ของฉัน">
-                <span><?php echo htmlspecialchars($headerTenantName ?? $sidebarTenantName ?? ($tenantName ?? 'ผู้เช่า')); ?></span>
-                <?php if(!empty($headerRoomNumber ?? $sidebarRoomNumber ?? ($myRoomNumber ?? ''))): ?>
-                  <span class="text-rose-400">•</span>
-                  <span>ห้อง <?php echo htmlspecialchars($headerRoomNumber ?? $sidebarRoomNumber ?? ($myRoomNumber ?? '')); ?></span>
-                <?php endif; ?>
-              </a>
-            </div>
+            <span class="font-display font-bold text-lg tracking-tight text-slate-800">หอพักจัสมิน</span>
             <p class="text-[11px] text-slate-400">ระบบแจ้งซ่อมและนัดหมายเวลาปฏิบัติงาน</p>
           </div>
 
@@ -537,96 +553,23 @@ if (isset($_POST['submit_request'])) {
         <div class="flex items-center space-x-2 sm:space-x-3">
           <?php include 'includes/theme_toggle.php'; ?>
 
-
-
-           <a href="tenant_request_history.php" class="px-3.5 py-1.5 rounded-xl border border-rose-100/80 text-slate-700 hover:bg-slate-100 text-xs sm:text-sm font-semibold transition flex items-center gap-1.5">
-
-
-
-              <i data-lucide="history" class="w-4 h-4 text-rose-500"></i> <span class="hidden sm:inline">ประวัติการแจ้งซ่อม</span><span class="sm:hidden">ประวัติ</span>
-
-
-
-           </a>
-
-
-
            <a href="tenant_dashboard.php" class="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs sm:text-sm font-semibold transition flex items-center gap-1.5">
-
-
-
               <i data-lucide="arrow-left" class="w-4 h-4"></i> <span class="hidden sm:inline">กลับหน้าหลัก</span><span class="sm:hidden">กลับ</span>
-
-
-
            </a>
-
-
 
            <div class="w-px h-6 bg-slate-200"></div>
 
 
 
-           <!-- ลิงก์โปรไฟล์ของผู้เช่า (ตรงชื่อ) -->
-
-
-
-           <a href="profile.php" class="flex items-center gap-2 p-1 sm:p-1.5 hover:bg-rose-50/70 rounded-xl transition border border-transparent hover:border-rose-200 group" title="โปรไฟล์ของฉัน">
-
-
-
-            <div class="w-8 h-8 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-xs border border-rose-200 shadow-2xs shrink-0">
-
-
-
+           <!-- ลิงก์โปรไฟล์ของผู้เช่า (ตรงรูปวงกลม + ชื่อและเลขห้อง) -->
+          <a href="profile.php" class="flex items-center gap-2 p-1 sm:p-1.5 sm:px-2.5 hover:bg-rose-50/70 rounded-full transition border border-transparent hover:border-rose-200 group" title="แก้ไขโปรไฟล์">
+            <div class="w-8 h-8 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-xs border border-rose-200 shadow-2xs shrink-0 group-hover:scale-105 transition">
               <?php echo $initials; ?>
-
-
-
             </div>
-
-
-
-            <div class="hidden sm:block text-left pr-0.5">
-
-
-
-              <div class="text-xs font-bold text-slate-800 group-hover:text-rose-600 transition truncate max-w-[120px] sm:max-w-[160px]"><?php echo htmlspecialchars($tenantName); ?></div>
-
-
-
-              <div class="text-[10px] text-rose-600 font-semibold truncate flex items-center gap-1">
-
-
-
-                <?php if(!empty($roomNumber)): ?>
-
-
-
-                  <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> ห้อง <?php echo htmlspecialchars($roomNumber); ?>
-
-
-
-                <?php else: ?>
-
-
-
-                  <span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span> ผู้เช่า
-
-
-
-                <?php endif; ?>
-
-
-
-              </div>
-
-
-
+            <div class="hidden sm:block text-left pr-1">
+              <div class="text-xs font-bold text-slate-800 group-hover:text-rose-600 transition truncate max-w-[140px] sm:max-w-[180px]"><?php echo htmlspecialchars($headerTenantName ?? $sidebarTenantName ?? ($tenantName ?? 'ผู้เช่า')); ?></div>
+              <div class="text-[10px] text-rose-600 font-bold"><?php echo !empty($headerRoomNumber ?? $sidebarRoomNumber ?? ($myRoomNumber ?? '')) ? "ห้อง " . htmlspecialchars($headerRoomNumber ?? $sidebarRoomNumber ?? ($myRoomNumber ?? '')) : 'ลูกบ้าน'; ?></div>
             </div>
-
-
-
           </a>
 
 
@@ -751,7 +694,7 @@ if (isset($_POST['submit_request'])) {
 
 
 
-            <!-- 1. ประเภทงาน / ปัญหาและกำหนดเวลาปฏิบัติงาน -->
+            <!-- 1. ประเภทงาน / ปัญหาที่พบ -->
 
 
 
@@ -771,7 +714,7 @@ if (isset($_POST['submit_request'])) {
 
 
 
-                        <span>ประเภทงาน / ปัญหาที่พบ (พร้อมกำหนดเวลาทำงาน)</span>
+                        <span>ประเภทงาน / ปัญหาที่พบ </span>
 
 
 
@@ -783,7 +726,7 @@ if (isset($_POST['submit_request'])) {
 
 
 
-                    <span class="text-[11px] text-slate-400 font-normal">จำกัดเวลาตามขนาดงาน 1-4 ชม.</span>
+                    
 
 
 
@@ -818,15 +761,13 @@ if (isset($_POST['submit_request'])) {
 
                                 <div id="catTriggerTitle" class="text-xs sm:text-sm font-bold text-slate-900 truncate">ประปา / ท่อน้ำรั่วซึม / สุขภัณฑ์ / ชักโครก</div>
 
-                                <div id="catTriggerSubtitle" class="text-[11px] text-blue-600 font-semibold truncate">งานปานกลาง / ทั่วไป (จำกัดเวลา 2 ชั่วโมง)</div>
+                                <div id="catTriggerSubtitle" class="text-[11px] text-slate-500 font-medium truncate">หมวดหมู่ปัญหา</div>
 
                             </div>
 
                         </div>
 
                         <div class="flex items-center gap-2 shrink-0">
-
-                            <span id="catTriggerBadge" class="text-[10px] px-2.5 py-0.5 rounded-full font-bold bg-blue-50 text-blue-700 border border-blue-200">2 ชม.</span>
 
                             <i data-lucide="chevron-down" id="catTriggerChevron" class="w-4 h-4 text-rose-500 transition-transform duration-200"></i>
 
@@ -848,13 +789,13 @@ if (isset($_POST['submit_request'])) {
 
                             <div class="text-[10px] font-bold text-emerald-700 uppercase tracking-wider px-2 mb-1 flex items-center gap-1.5">
 
-                                <span class="w-2 h-2 rounded-full bg-emerald-500"></span> งานขนาดเล็ก (จำกัดเวลา 1 ชั่วโมง)
+                                <span class="w-2 h-2 rounded-full bg-emerald-500"></span> งานทั่วไป / ไฟฟ้า / ประตู
 
                             </div>
 
                             <div class="space-y-1">
 
-                                <div onclick="selectCategoryOption('ไฟฟ้า/หลอดไฟ', 1, '💡', 'ไฟฟ้า / หลอดไฟ / ปลั๊กไฟ', 'งานขนาดเล็ก (จำกัดเวลา 1 ชั่วโมง)', 'bg-emerald-50 text-emerald-700 border-emerald-200', event)"
+                                <div onclick="selectCategoryOption('ไฟฟ้า/หลอดไฟ', 1, '💡', 'ไฟฟ้า / หลอดไฟ / ปลั๊กไฟ', 'งานทั่วไป / ไฟฟ้า / ประตู', 'bg-emerald-50 text-emerald-700 border-emerald-200', event)"
 
                                      class="cat-option-item rounded-xl p-2.5 flex items-center justify-between cursor-pointer transition hover:bg-emerald-50/70 border border-transparent hover:border-emerald-200/60"
 
@@ -868,11 +809,11 @@ if (isset($_POST['submit_request'])) {
 
                                     </div>
 
-                                    <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">1 ชม.</span>
+                                    
 
                                 </div>
 
-                                <div onclick="selectCategoryOption('ลูกบิดประตู/ก๊อกน้ำ', 1, '🚪', 'ลูกบิดประตู / ก๊อกน้ำ / ขันน็อต', 'งานขนาดเล็ก (จำกัดเวลา 1 ชั่วโมง)', 'bg-emerald-50 text-emerald-700 border-emerald-200', event)"
+                                <div onclick="selectCategoryOption('ลูกบิดประตู/ก๊อกน้ำ', 1, '🚪', 'ลูกบิดประตู / ก๊อกน้ำ / ขันน็อต', 'งานทั่วไป / ไฟฟ้า / ประตู', 'bg-emerald-50 text-emerald-700 border-emerald-200', event)"
 
                                      class="cat-option-item rounded-xl p-2.5 flex items-center justify-between cursor-pointer transition hover:bg-emerald-50/70 border border-transparent hover:border-emerald-200/60"
 
@@ -886,11 +827,11 @@ if (isset($_POST['submit_request'])) {
 
                                     </div>
 
-                                    <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">1 ชม.</span>
+                                    
 
                                 </div>
 
-                                <div onclick="selectCategoryOption('เก็บขยะ/สิ่งปฏิกูล', 1, '🗑️', 'เก็บขยะ / สิ่งปฏิกูล', 'งานขนาดเล็ก (จำกัดเวลา 1 ชั่วโมง)', 'bg-emerald-50 text-emerald-700 border-emerald-200', event)"
+                                <div onclick="selectCategoryOption('เก็บขยะ/สิ่งปฏิกูล', 1, '🗑️', 'เก็บขยะ / สิ่งปฏิกูล', 'งานทั่วไป / ไฟฟ้า / ประตู', 'bg-emerald-50 text-emerald-700 border-emerald-200', event)"
 
                                      class="cat-option-item rounded-xl p-2.5 flex items-center justify-between cursor-pointer transition hover:bg-emerald-50/70 border border-transparent hover:border-emerald-200/60"
 
@@ -904,7 +845,7 @@ if (isset($_POST['submit_request'])) {
 
                                     </div>
 
-                                    <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">1 ชม.</span>
+                                    
 
                                 </div>
 
@@ -920,13 +861,13 @@ if (isset($_POST['submit_request'])) {
 
                             <div class="text-[10px] font-bold text-blue-700 uppercase tracking-wider px-2 mb-1 flex items-center gap-1.5">
 
-                                <span class="w-2 h-2 rounded-full bg-blue-500"></span> งานปานกลาง / งานทั่วไป (จำกัดเวลา 2 ชั่วโมง)
+                                <span class="w-2 h-2 rounded-full bg-blue-500"></span> งานประปา / ห้องพัก
 
                             </div>
 
                             <div class="space-y-1">
 
-                                <div onclick="selectCategoryOption('ประปา/ห้องน้ำ', 2, '🚿', 'ประปา / ท่อน้ำรั่วซึม / สุขภัณฑ์ / ชักโครก', 'งานปานกลาง / ทั่วไป (จำกัดเวลา 2 ชั่วโมง)', 'bg-blue-50 text-blue-700 border-blue-200', event)"
+                                <div onclick="selectCategoryOption('ประปา/ห้องน้ำ', 2, '🚿', 'ประปา / ท่อน้ำรั่วซึม / สุขภัณฑ์ / ชักโครก', 'งานประปา / ห้องพัก', 'bg-blue-50 text-blue-700 border-blue-200', event)"
 
                                      class="cat-option-item rounded-xl p-2.5 flex items-center justify-between cursor-pointer transition bg-blue-50/70 border border-blue-200/80"
 
@@ -940,11 +881,11 @@ if (isset($_POST['submit_request'])) {
 
                                     </div>
 
-                                    <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-50 text-blue-700 border border-blue-200">2 ชม.</span>
+                                    
 
                                 </div>
 
-                                <div onclick="selectCategoryOption('เฟอร์นิเจอร์/ประตู/หน้าต่าง', 2, '🪑', 'เฟอร์นิเจอร์ / ประตู / หน้าต่าง / บานพับ', 'งานปานกลาง / ทั่วไป (จำกัดเวลา 2 ชั่วโมง)', 'bg-blue-50 text-blue-700 border-blue-200', event)"
+                                <div onclick="selectCategoryOption('เฟอร์นิเจอร์/ประตู/หน้าต่าง', 2, '🪑', 'เฟอร์นิเจอร์ / ประตู / หน้าต่าง / บานพับ', 'งานประปา / ห้องพัก', 'bg-blue-50 text-blue-700 border-blue-200', event)"
 
                                      class="cat-option-item rounded-xl p-2.5 flex items-center justify-between cursor-pointer transition hover:bg-blue-50/70 border border-transparent hover:border-blue-200/60"
 
@@ -958,11 +899,11 @@ if (isset($_POST['submit_request'])) {
 
                                     </div>
 
-                                    <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-50 text-blue-700 border border-blue-200">2 ชม.</span>
+                                    
 
                                 </div>
 
-                                <div onclick="selectCategoryOption('ทำความสะอาดห้องพัก', 2, '🧹', 'ทำความสะอาดห้องพัก', 'งานปานกลาง / ทั่วไป (จำกัดเวลา 2 ชั่วโมง)', 'bg-blue-50 text-blue-700 border-blue-200', event)"
+                                <div onclick="selectCategoryOption('ทำความสะอาดห้องพัก', 2, '🧹', 'ทำความสะอาดห้องพัก', 'งานประปา / ห้องพัก', 'bg-blue-50 text-blue-700 border-blue-200', event)"
 
                                      class="cat-option-item rounded-xl p-2.5 flex items-center justify-between cursor-pointer transition hover:bg-blue-50/70 border border-transparent hover:border-blue-200/60"
 
@@ -976,7 +917,7 @@ if (isset($_POST['submit_request'])) {
 
                                     </div>
 
-                                    <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-50 text-blue-700 border border-blue-200">2 ชม.</span>
+                                    
 
                                 </div>
 
@@ -992,13 +933,13 @@ if (isset($_POST['submit_request'])) {
 
                             <div class="text-[10px] font-bold text-purple-700 uppercase tracking-wider px-2 mb-1 flex items-center gap-1.5">
 
-                                <span class="w-2 h-2 rounded-full bg-purple-500"></span> งานขนาดใหญ่ (จำกัดเวลา 3 ชั่วโมง)
+                                <span class="w-2 h-2 rounded-full bg-purple-500"></span> งานระบบไฟฟ้าหลัก
 
                             </div>
 
                             <div class="space-y-1">
 
-                                <div onclick="selectCategoryOption('ระบบไฟหลัก/ตู้เบรกเกอร์', 3, '⚡', 'ซ่อมระบบไฟหลัก / ตู้เบรกเกอร์', 'งานขนาดใหญ่ (จำกัดเวลา 3 ชั่วโมง)', 'bg-purple-50 text-purple-700 border-purple-200', event)"
+                                <div onclick="selectCategoryOption('ระบบไฟหลัก/ตู้เบรกเกอร์', 3, '⚡', 'ซ่อมระบบไฟหลัก / ตู้เบรกเกอร์', 'งานระบบไฟฟ้าหลัก', 'bg-purple-50 text-purple-700 border-purple-200', event)"
 
                                      class="cat-option-item rounded-xl p-2.5 flex items-center justify-between cursor-pointer transition hover:bg-purple-50/70 border border-transparent hover:border-purple-200/60"
 
@@ -1012,7 +953,7 @@ if (isset($_POST['submit_request'])) {
 
                                     </div>
 
-                                    <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-50 text-purple-700 border border-purple-200">3 ชม.</span>
+                                    
 
                                 </div>
 
@@ -1028,13 +969,13 @@ if (isset($_POST['submit_request'])) {
 
                             <div class="text-[10px] font-bold text-rose-700 uppercase tracking-wider px-2 mb-1 flex items-center gap-1.5">
 
-                                <span class="w-2 h-2 rounded-full bg-rose-500"></span> งานซ่อมหนัก (จำกัดเวลา 4 ชั่วโมง)
+                                <span class="w-2 h-2 rounded-full bg-rose-500"></span> งานโครงสร้างและอื่นๆ
 
                             </div>
 
                             <div class="space-y-1">
 
-                                <div onclick="selectCategoryOption('รื้อท่อประปา/ฝ้าเพดาน/ยาแนว', 4, '🛠️', 'รื้อซ่อมท่อประปา / ซ่อมฝ้าเพดาน / ยาแนวห้องน้ำ', 'งานซ่อมหนัก (จำกัดเวลา 4 ชั่วโมง)', 'bg-rose-50 text-rose-700 border-rose-200', event)"
+                                <div onclick="selectCategoryOption('รื้อท่อประปา/ฝ้าเพดาน/ยาแนว', 4, '🛠️', 'รื้อซ่อมท่อประปา / ซ่อมฝ้าเพดาน / ยาแนวห้องน้ำ', 'งานโครงสร้างและอื่นๆ', 'bg-rose-50 text-rose-700 border-rose-200', event)"
 
                                      class="cat-option-item rounded-xl p-2.5 flex items-center justify-between cursor-pointer transition hover:bg-rose-50/70 border border-transparent hover:border-rose-200/60"
 
@@ -1048,11 +989,11 @@ if (isset($_POST['submit_request'])) {
 
                                     </div>
 
-                                    <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-rose-50 text-rose-700 border border-rose-200">4 ชม.</span>
+                                    
 
                                 </div>
 
-                                <div onclick="selectCategoryOption('อื่นๆ', 2, '📦', 'อื่นๆ (ระบุในรายละเอียดปัญหา)', 'งานทั่วไป (กำหนดเวลา 2 ชั่วโมง)', 'bg-slate-100 text-slate-700 border-slate-200', event)"
+                                <div onclick="selectCategoryOption('อื่นๆ', 2, '📦', 'อื่นๆ (ระบุในรายละเอียดปัญหา)', 'งานทั่วไป', 'bg-slate-100 text-slate-700 border-slate-200', event)"
 
                                      class="cat-option-item rounded-xl p-2.5 flex items-center justify-between cursor-pointer transition hover:bg-slate-50 border border-transparent hover:border-slate-200"
 
@@ -1066,7 +1007,7 @@ if (isset($_POST['submit_request'])) {
 
                                     </div>
 
-                                    <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-slate-100 text-slate-700 border border-slate-200">2 ชม.</span>
+                                    
 
                                 </div>
 
@@ -1082,395 +1023,69 @@ if (isset($_POST['submit_request'])) {
 
 
 
-                <!-- ป้ายแสดงขนาดงานและกำหนดเวลาที่เลือกแบบ Realtime -->
-
-
-
-                <div id="category-duration-badge" class="mt-2.5 flex items-center justify-between p-3 rounded-2xl bg-amber-50/90 border border-amber-200/90 text-xs">
-
-
-
-                    <div class="flex items-center gap-2">
-
-
-
-                        <div class="w-7 h-7 rounded-lg bg-amber-500 text-white flex items-center justify-center shrink-0">
-
-
-
-                            <i data-lucide="timer" class="w-4 h-4"></i>
-
-
-
-                        </div>
-
-
-
-                        <div>
-
-
-
-                            <span class="text-slate-500 text-[11px] block">ขนาดของงานและกำหนดเวลาปฏิบัติงาน:</span>
-
-
-
-                            <span id="category-duration-text" class="font-bold text-slate-900 text-xs sm:text-sm">งานปานกลาง (กำหนดเวลา 2 ชั่วโมง)</span>
-
-
-
-                        </div>
-
-
-
-                    </div>
-
-
-
-                    <span id="category-hours-pill" class="px-2.5 py-1 bg-white text-amber-800 font-bold font-mono rounded-xl border border-amber-200 text-xs shadow-2xs">
-
-
-
-                        ⏱️ 2 ชม.
-
-
-
-                    </span>
-
-
-
-                </div>
-
-
-
-            </div>
-
-
-
-            <!-- 2. รายละเอียดปัญหา -->
-
-
-
-            <div>
-
-
-
-                <label class="block text-sm font-bold text-slate-700 mb-1.5">
-
-
-
-                    รายละเอียดปัญหา <span class="text-rose-500">*</span>
-
-
-
-                </label>
-
-
-
-                <textarea name="description" required rows="3" placeholder="อธิบายปัญหาที่พบ เช่น หลอดไฟห้องน้ำขาด, ก๊อกอ่างล้างหน้าน้ำหยดตลอดเวลา เพื่อให้นิติบุคคลเตรียมอุปกรณ์ได้ถูกต้อง..." class="w-full px-4 py-3 text-sm bg-white text-slate-800 placeholder-slate-400 border border-stone-200 focus:border-rose-500 focus:ring-2 focus:ring-rose-200/50 rounded-xl outline-none transition leading-relaxed shadow-2xs"></textarea>
-
-            </div>
-
-            <!-- 3. รูปถ่ายหน้างาน -->
-
-            <div>
-
-                <label class="block text-sm font-bold text-slate-700 mb-1.5">
-
-                    รูปถ่ายปัญหาหน้างาน <span class="text-slate-400 font-normal text-xs">(ถ้ามี จะช่วยให้นิติวินิจฉัยและเตรียมอะไหล่ได้เร็วขึ้น)</span>
-
-                </label>
-
-                <input type="file" name="request_image" accept="image/*" class="w-full text-sm text-slate-600 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-stone-100 file:text-slate-700 hover:file:bg-stone-200 bg-white border border-stone-200 rounded-xl transition cursor-pointer shadow-2xs">
-
-
-
-            </div>
-
-
-
-            <!-- ======================================================== -->
-
-
-
-            <!-- 🌟 5. วันและช่วงเวลาที่สะดวก<!-- ======================================================== -->
-
-
-
-            <!-- 🌟 5. วันและช่วงเวลาที่สะดวก (แบ่งช่วงเช้า - เย็น) 🌟       -->
-
-
-
-            <!-- ======================================================== -->
-
-
-
-            <div class="pt-4 border-t border-rose-100/60 space-y-4">
-
-
-
-                <div class="flex items-center justify-between">
-
-
-
-                    <label class="text-sm font-bold text-slate-800 flex items-center gap-2">
-
-
-
-                        <i data-lucide="calendar" class="w-4 h-4 text-rose-600"></i>
-
-
-
-                        <span>ระบุวันและช่วงเวลาที่สะดวกให้ช่างเข้าทำงาน</span>
-
-
-
-                        <span class="text-rose-500">*</span>
-
-
-
-                    </label>
-
-
-
-                    <span class="text-[11px] text-rose-700 bg-rose-50 px-2.5 py-0.5 rounded-full font-bold border border-rose-200 flex items-center gap-1 shadow-2xs">
-
-
-
-                        <span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
-
-
-
-                        จำเป็นต้องเลือก
-
-
-
-                    </span>
-
-
-
-                </div>
-
-
-
-                <!-- 5.1 วันที่สะดวก -->
-
-
-
-                <div>
-
-
-
-                    <label class="block text-xs font-bold text-slate-700 mb-1">
-
-
-
-                        วันที่สะดวกเข้าห้อง <span class="text-rose-500 font-bold">* (จำเป็นต้องเลือก)</span>
-
-
-
-                    </label>
-
-
-
-                    <input type="date" name="preferredDate" id="preferredDateInput" required min="<?php echo (date('H:i') >= '16:00') ? date('Y-m-d', strtotime('+1 day')) : date('Y-m-d'); ?>" onchange="handleDateChange()" class="w-full px-4 py-2.5 text-sm bg-white text-slate-800 border border-stone-200 rounded-xl outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-200/50 transition cursor-pointer shadow-2xs">
-
-
-
-                    <p class="text-[11px] text-slate-400 mt-1">โปรดระบุวันที่ที่ท่านสะดวกให้ช่างหรือแม่บ้านเข้าดำเนินการ</p>
-
-
-
-                </div>
-
-
-
-                <!-- 5.2 ช่วงเวลา (เช้า vs บ่าย-เย็น) -->
-
-
-
-                <div>
-
-
-
-                    <label class="block text-xs font-bold text-slate-700 mb-2">เลือกช่วงเวลาที่สะดวก (เช้า - บ่าย/เย็น) <span class="text-rose-500 font-bold">* (จำเป็นต้องเลือก)</span></label>
-
-
-
-                    <div class="grid grid-cols-2 gap-3">
-
-
-
-                        
-
-
-
-                        <!-- ช่วงเช้า -->
-
-
-
-                        <label class="cursor-pointer">
-
-
-
-                            <input type="radio" name="preferred_period" value="morning" checked onchange="updateTimeSlots()" class="peer sr-only">
-
-
-
-                            <div class="p-3.5 rounded-2xl border-2 border-rose-100/80 bg-white peer-checked:border-blue-600 peer-checked:bg-rose-50/50 hover:bg-rose-50/30 transition flex items-center gap-3 shadow-2xs">
-
-
-
-                                <div class="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
-
-
-
-                                    <i data-lucide="sun" class="w-5 h-5"></i>
-
-
-
-                                </div>
-
-
-
-                                <div>
-
-
-
-                                    <div class="text-xs font-bold text-slate-800">☀️ ช่วงเช้า</div>
-
-
-
-                                    <div class="text-[11px] text-slate-500 font-mono">09:00 - 12:00 น.</div>
-
-
-
-                                </div>
-
-
-
-                            </div>
-
-
-
+                
                         </label>
-
-
 
                         <!-- ช่วงบ่าย - เย็น -->
-
-
-
                         <label class="cursor-pointer">
-
-
-
                             <input type="radio" name="preferred_period" value="afternoon" onchange="updateTimeSlots()" class="peer sr-only">
-
-
-
                             <div class="p-3.5 rounded-2xl border-2 border-rose-100/80 bg-white peer-checked:border-blue-600 peer-checked:bg-rose-50/50 hover:bg-rose-50/30 transition flex items-center gap-3 shadow-2xs">
-
-
-
                                 <div class="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center shrink-0">
-
-
-
                                     <i data-lucide="sunset" class="w-5 h-5"></i>
-
-
-
                                 </div>
-
-
-
                                 <div>
-
-
-
-                                    <div class="text-xs font-bold text-slate-800">⛅ ช่วงบ่าย - เย็น</div>
-
-
-
-                                    <div class="text-[11px] text-slate-500 font-mono">13:00 - 17:00 น.</div>
-
-
-
+                                    <div class="text-sm font-bold text-slate-800">⛅ ช่วงบ่าย - เย็น</div>
                                 </div>
-
-
-
                             </div>
-
-
-
                         </label>
-
-
-
                     </div>
-
-
-
                 </div>
 
-
-
-                <!-- 5.3 สล็อตเวลาเจาะจง (Dynamic ตามชั่วโมง 1-4 ชม. และช่วงเช้า/เย็น) -->
-
-
-
+                <!-- 5.3 ระบุเวลาที่สะดวก (ตั้งแต่เวลา - ถึงเวลา) -->
                 <div>
-
-
-
                     <div class="flex items-center justify-between mb-2">
-
-
-
                         <label class="block text-xs font-bold text-slate-700">
-
-
-
-                            เวลาเข้าทำงานที่เจาะจง <span class="text-rose-500 font-bold">* (จำเป็นต้องเลือก)</span> <span class="text-slate-400 font-normal">(คำนวณตามกำหนดเวลา <span id="current-hours-label" class="font-bold text-amber-600 font-mono">2 ชม.</span>)</span>
-
-
-
+                            ระบุเวลาที่สะดวก (ตั้งแต่เวลา - ถึงเวลา) <span class="text-rose-500 font-bold">*</span>
                         </label>
-
-
-
                     </div>
-
-
 
                     <!-- Hidden input to submit with the form -->
+                    <input type="hidden" name="preferredTime" id="preferredTime" value="ช่วงเช้า (เวลา 09:00 - 11:30 น.)">
 
+                    <div class="space-y-2">
+                        <!-- ช่องระบุเวลา: ตั้งแต่เวลา - ถึงเวลา -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-[11px] font-bold text-slate-600 mb-1 flex items-center gap-1.5">
+                                    <i data-lucide="clock" class="w-3.5 h-3.5 text-rose-500"></i>
+                                    <span>ตั้งแต่เวลา</span>
+                                    <span class="text-rose-500">*</span>
+                                </label>
+                                <input type="time" name="preferredStartTime" id="preferredStartTime" required
+                                       value="09:00"
+                                       onchange="handleTimeRangeChange()"
+                                       class="w-full px-4 py-2.5 bg-white border-2 border-stone-200 rounded-xl text-slate-800 text-sm font-bold font-mono focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-200/50 transition shadow-2xs">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold text-slate-600 mb-1 flex items-center gap-1.5">
+                                    <i data-lucide="clock-arrow-up" class="w-3.5 h-3.5 text-rose-500"></i>
+                                    <span>ถึงเวลา</span>
+                                    <span class="text-rose-500">*</span>
+                                </label>
+                                <input type="time" name="preferredEndTime" id="preferredEndTime" required
+                                       value="11:30"
+                                       onchange="handleTimeRangeChange()"
+                                       class="w-full px-4 py-2.5 bg-white border-2 border-stone-200 rounded-xl text-slate-800 text-sm font-bold font-mono focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-200/50 transition shadow-2xs">
+                            </div>
+                        </div>
 
-
-                    <input type="hidden" name="preferredTime" id="preferredTime" value="ช่วงเช้า: 09:00 - 11:00 น.">
-
-
-
-                    <!-- Time Slots Buttons Grid -->
-
-
-
-                    <div id="time-slots-container" class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-
-
-
-                        <!-- Dynamic via JavaScript -->
-
-
-
+                        <!-- คำแนะนำการระบุเวลา -->
+                        <div id="time-restriction-hint" class="text-[11px] text-slate-500 flex items-center gap-1.5 pt-1">
+                            <i data-lucide="info" class="w-3.5 h-3.5 text-blue-500 shrink-0"></i>
+                            <span id="time-restriction-text">ผู้เช่าสามารถระบุเวลาเริ่มต้นและเวลาสิ้นสุดที่สะดวกได้ตามต้องการ</span>
+                        </div>
                     </div>
-
-
-
                 </div>
-
-
 
                 <!-- 5.4 กล่องสรุปเวลานัดหมายแบบเรียลไทม์ (Live Preview) -->
 
@@ -1516,7 +1131,7 @@ if (isset($_POST['submit_request'])) {
 
 
 
-                                <span id="preview-time" class="text-rose-700">ช่วงเช้า: 09:00 - 11:00 น.</span>
+                                <span id="preview-time" class="text-rose-700">ช่วงเช้า (เวลา 09:00 - 11:30 น.)</span>
 
 
 
@@ -1532,27 +1147,7 @@ if (isset($_POST['submit_request'])) {
 
 
 
-                    <div class="self-end sm:self-center">
-
-
-
-                        <span class="inline-flex items-center gap-1 bg-white text-rose-700 font-bold px-2.5 py-1 rounded-xl border border-rose-200 font-mono text-[11px] shadow-2xs">
-
-
-
-                            <i data-lucide="clock" class="w-3 h-3 text-blue-500"></i>
-
-
-
-                            <span id="preview-hours">2</span> ชั่วโมง
-
-
-
-                        </span>
-
-
-
-                    </div>
+                    
 
 
 
@@ -1593,32 +1188,6 @@ if (isset($_POST['submit_request'])) {
 
 
     </div>
-
-
-
-    <!-- ลิงก์ประวัติการแจ้งซ่อมที่ด้านล่าง -->
-
-
-
-    <div class="mt-6 text-center">
-
-
-
-        <a href="tenant_request_history.php" class="text-xs text-slate-500 hover:text-rose-600 font-semibold inline-flex items-center gap-1.5 transition">
-
-
-
-            <i data-lucide="history" class="w-4 h-4"></i> ต้องการดูประวัติและติดตามสถานะงานซ่อมที่ส่งไปแล้ว? คลิกที่นี่
-
-
-
-        </a>
-
-
-
-    </div>
-
-
 
   </main>
 
@@ -1723,93 +1292,37 @@ if (isset($_POST['submit_request'])) {
 
 
     function selectCategoryOption(val, hours, icon, title, subtitle, badgeClass, e) {
-
         if (e) e.stopPropagation();
 
+        const catInp = document.getElementById('categoryInput');
+        const estInp = document.getElementById('estimatedHoursInput');
+        if (catInp) catInp.value = val;
+        if (estInp) estInp.value = hours;
 
-
-        document.getElementById('categoryInput').value = val;
-
-        document.getElementById('estimatedHoursInput').value = hours;
-
-
-
-        document.getElementById('catTriggerIcon').innerHTML = icon;
-
-        document.getElementById('catTriggerTitle').innerText = title;
-
-        document.getElementById('catTriggerSubtitle').innerText = subtitle;
-
-        
-
-        const badge = document.getElementById('catTriggerBadge');
-
-        if (badge) {
-
-            badge.innerText = hours + ' ชม.';
-
-            badge.className = 'text-[10px] px-2.5 py-0.5 rounded-full font-bold border ' + badgeClass;
-
-        }
-
-
+        const iconEl = document.getElementById('catTriggerIcon');
+        const titleEl = document.getElementById('catTriggerTitle');
+        const subEl = document.getElementById('catTriggerSubtitle');
+        if (iconEl) iconEl.innerHTML = icon;
+        if (titleEl) titleEl.innerText = title;
+        if (subEl) subEl.innerText = subtitle;
 
         // อัปเดตไฮไลท์ในตัวเลือก
-
         document.querySelectorAll('.cat-option-item').forEach(item => {
-
             const itemVal = item.getAttribute('data-val');
-
             if (itemVal === val) {
-
                 item.className = 'cat-option-item rounded-xl p-2.5 flex items-center justify-between cursor-pointer transition bg-blue-50/70 border border-blue-200/80';
-
             } else {
-
                 item.className = 'cat-option-item rounded-xl p-2.5 flex items-center justify-between cursor-pointer transition hover:bg-slate-50 border border-transparent hover:border-slate-200';
-
             }
-
         });
 
-
-
-        // อัปเดตป้ายเตือนขนาดงาน
-
-        const durationBadge = document.getElementById('category-duration-badge');
-
-        const durationText = document.getElementById('category-duration-text');
-
-        const hoursPill = document.getElementById('category-hours-pill');
-
-        if (durationBadge) durationBadge.classList.remove('hidden');
-
-        if (durationText) durationText.innerText = subtitle;
-
-        if (hoursPill) hoursPill.innerText = hours + ' ชม.';
-
-
-
         // ปิดเมนู
-
         const menu = document.getElementById('categoryDropdownMenu');
-
         const chevron = document.getElementById('catTriggerChevron');
-
         if (menu) menu.classList.add('hidden');
-
         if (chevron) chevron.classList.remove('rotate-180');
 
-
-
-        if (typeof calculateSuggestedSlots === 'function') {
-
-            calculateSuggestedSlots();
-
-        }
-
         if (window.lucide) lucide.createIcons();
-
     }
 
 
@@ -1836,163 +1349,32 @@ if (isset($_POST['submit_request'])) {
 
 
 
-    function handleCategoryChange(selectEl) {
-
-
-
-        if (!selectEl) return;
-
-
-
-        const selectedOpt = selectEl.options[selectEl.selectedIndex];
-
-
-
-        const hours = parseInt(selectedOpt.getAttribute('data-hours') || '2');
-
-
-
-        const badge = document.getElementById('category-duration-badge');
-
-
-
-        const badgeText = document.getElementById('category-duration-text');
-
-
-
-        const hoursPill = document.getElementById('category-hours-pill');
-
-
-
-        const hiddenEstHours = document.getElementById('estimatedHoursInput');
-
-
-
-        
-
-
-
-        if (selectEl.value) {
-
-
-
-            hiddenEstHours.value = hours;
-
-
-
-            
-
-
-
-            let desc = 'งานขนาดเล็ก (กำหนดเวลา 1 ชั่วโมง)';
-
-
-
-            if (hours === 2) desc = 'งานปานกลาง / ทั่วไป (กำหนดเวลา 2 ชั่วโมง)';
-
-
-
-            else if (hours === 3) desc = 'งานขนาดใหญ่ (กำหนดเวลา 3 ชั่วโมง)';
-
-
-
-            else if (hours === 4) desc = 'งานซ่อมหนัก (กำหนดเวลา 4 ชั่วโมง)';
-
-
-
-            
-
-
-
-            badgeText.textContent = desc;
-
-
-
-            hoursPill.textContent = '⏱️ ' + hours + ' ชม.';
-
-
-
-            badge.classList.remove('hidden');
-
-
-
-            
-
-
-
-            const currentHoursLabel = document.getElementById('current-hours-label');
-
-
-
-            if (currentHoursLabel) currentHoursLabel.textContent = hours + ' ชม.';
-
-
-
-            const previewHours = document.getElementById('preview-hours');
-
-
-
-            if (previewHours) previewHours.textContent = hours;
-
-
-
-            
-
-
-
-            updateTimeSlots();
-
-
-
-        } else {
-
-
-
-            badge.classList.add('hidden');
-
-
-
-        }
-
-
-
-    }
-
-
-
-    // Dynamic Time Slot Generator (ช่วงเช้า 09:00 - 12:00 / ช่วงบ่าย-เย็น 13:00 - 17:00)
-
-
-
-    function handleDateChange() {
-        updateTimeSlots();
-        updateSummaryPreview();
-    }
-
+    
     function updateTimeSlots() {
-        const hours = parseInt(document.getElementById('estimatedHoursInput')?.value || '2');
-        const container = document.getElementById('time-slots-container');
-        const hiddenPreferredTime = document.getElementById('preferredTime');
-        const dateInputEl = document.getElementById('preferredDateInput');
+        const startInput = document.getElementById("preferredStartTime");
+        const endInput = document.getElementById("preferredEndTime");
+        const hintText = document.getElementById("time-restriction-text");
+        const dateInputEl = document.getElementById("preferredDateInput");
 
         // คำนวณวันและเวลาปัจจุบัน
         const now = new Date();
-        const pad = n => String(n).padStart(2, '0');
+        const pad = n => String(n).padStart(2, "0");
         const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
         const currentTimeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-        const selectedDate = dateInputEl ? dateInputEl.value : '';
+        const selectedDate = dateInputEl ? dateInputEl.value : "";
         const isToday = (!selectedDate || selectedDate === todayStr);
 
         // ตรวจสอบช่วงเช้า (ถ้าเป็นวันนี้และเวลา >= 12:00 ช่วงเช้าจะถูกปิดและสลับไปบ่ายโดยอัตโนมัติ)
         const morningRadio = document.querySelector('input[name="preferred_period"][value="morning"]');
         const afternoonRadio = document.querySelector('input[name="preferred_period"][value="afternoon"]');
-        const morningLabel = morningRadio ? morningRadio.closest('label') : null;
+        const morningLabel = morningRadio ? morningRadio.closest("label") : null;
 
-        if (isToday && currentTimeStr >= '12:00') {
+        if (isToday && currentTimeStr >= "12:00") {
             if (morningRadio) {
                 morningRadio.disabled = true;
                 if (morningLabel) {
-                    morningLabel.classList.add('opacity-40', 'cursor-not-allowed', 'pointer-events-none');
+                    morningLabel.classList.add("opacity-40", "cursor-not-allowed", "pointer-events-none");
+                    morningLabel.setAttribute("title", "ช่วงเช้าของวันนี้ผ่านไปแล้ว");
                 }
                 if (morningRadio.checked && afternoonRadio) {
                     afternoonRadio.checked = true;
@@ -2002,173 +1384,123 @@ if (isset($_POST['submit_request'])) {
             if (morningRadio) {
                 morningRadio.disabled = false;
                 if (morningLabel) {
-                    morningLabel.classList.remove('opacity-40', 'cursor-not-allowed', 'pointer-events-none');
+                    morningLabel.classList.remove("opacity-40", "cursor-not-allowed", "pointer-events-none");
+                    morningLabel.removeAttribute("title");
                 }
             }
         }
 
-        const period = document.querySelector('input[name="preferred_period"]:checked')?.value || 'morning';
+        const period = document.querySelector('input[name="preferred_period"]:checked')?.value || "morning";
 
-        container.innerHTML = '';
-        let slots = [];
-
-        if (period === 'morning') {
-            if (hours === 1) {
-                slots = [
-                    { val: 'ช่วงเช้า: 09:00 - 10:00 น.', label: '09:00 - 10:00 น.', desc: 'เช้าตรู่ (1 ชม.)', start: '09:00' },
-                    { val: 'ช่วงเช้า: 10:00 - 11:00 น.', label: '10:00 - 11:00 น.', desc: 'สายๆ (1 ชม.)', start: '10:00' },
-                    { val: 'ช่วงเช้า: 11:00 - 12:00 น.', label: '11:00 - 12:00 น.', desc: 'ก่อนเที่ยง (1 ชม.)', start: '11:00' },
-                    { val: 'ช่วงเช้า (09:00 - 12:00 น. ตามคิวช่าง)', label: 'สะดวกตลอดช่วงเช้า', desc: '09:00 - 12:00 น.', start: '09:00' }
-                ];
-            } else if (hours === 2) {
-                slots = [
-                    { val: 'ช่วงเช้า: 09:00 - 11:00 น.', label: '09:00 - 11:00 น.', desc: 'เช้าถึงสาย (2 ชม.)', start: '09:00' },
-                    { val: 'ช่วงเช้า: 10:00 - 12:00 น.', label: '10:00 - 12:00 น.', desc: 'สายถึงเที่ยง (2 ชม.)', start: '10:00' },
-                    { val: 'ช่วงเช้า (09:00 - 12:00 น. ตามคิวช่าง)', label: 'สะดวกตลอดช่วงเช้า', desc: '09:00 - 12:00 น.', start: '09:00' }
-                ];
-            } else if (hours === 3) {
-                slots = [
-                    { val: 'ช่วงเช้า: 09:00 - 12:00 น. (เต็มช่วงเช้า)', label: '09:00 - 12:00 น.', desc: 'เต็มช่วงเช้า (3 ชม.)', start: '09:00' },
-                    { val: 'ช่วงเช้า (09:00 - 12:00 น. ตามคิวช่าง)', label: 'สะดวกตลอดช่วงเช้า', desc: 'ตามการจัดคิว', start: '09:00' }
-                ];
-            } else if (hours === 4) {
-                slots = [
-                    { val: 'ช่วงเช้า-บ่าย: 09:00 - 13:00 น. (4 ชม.)', label: '09:00 - 13:00 น.', desc: 'เช้าถึงบ่ายต้น (4 ชม.)', start: '09:00' },
-                    { val: 'ช่วงเช้า (เริ่ม 09:00 น.)', label: 'เริ่มเช้า 09:00 น.', desc: 'ทำต่อเนื่องจนเสร็จ', start: '09:00' }
-                ];
+        // เมื่อสลับช่วงเวลา ปรับคำแนะนำและตั้งค่าเริ่มต้นถ้าค่าเดิมอยู่นอกช่วง
+        if (period === "morning") {
+            if (hintText) {
+                hintText.textContent = "ช่วงเช้า: กรุณาระบุเวลาในช่วงเช้า (ก่อน 12:00 น.)";
+            }
+            if (startInput && startInput.value >= "12:00") {
+                startInput.value = "09:00";
+            }
+            if (endInput && endInput.value >= "12:00") {
+                endInput.value = "11:30";
             }
         } else {
-            if (hours === 1) {
-                slots = [
-                    { val: 'ช่วงบ่าย-เย็น: 13:00 - 14:00 น.', label: '13:00 - 14:00 น.', desc: 'บ่ายต้น (1 ชม.)', start: '13:00' },
-                    { val: 'ช่วงบ่าย-เย็น: 14:00 - 15:00 น.', label: '14:00 - 15:00 น.', desc: 'บ่ายสอง (1 ชม.)', start: '14:00' },
-                    { val: 'ช่วงบ่าย-เย็น: 15:00 - 16:00 น.', label: '15:00 - 16:00 น.', desc: 'บ่ายสาม (1 ชม.)', start: '15:00' },
-                    { val: 'ช่วงบ่าย-เย็น: 16:00 - 17:00 น.', label: '16:00 - 17:00 น.', desc: 'ช่วงเย็น (1 ชม.)', start: '16:00' },
-                    { val: 'ช่วงบ่าย-เย็น (13:00 - 17:00 น. ตามคิวช่าง)', label: 'สะดวกตลอดช่วงบ่าย-เย็น', desc: '13:00 - 17:00 น.', start: '13:00' }
-                ];
-            } else if (hours === 2) {
-                slots = [
-                    { val: 'ช่วงบ่าย-เย็น: 13:00 - 15:00 น.', label: '13:00 - 15:00 น.', desc: 'บ่ายต้น (2 ชม.)', start: '13:00' },
-                    { val: 'ช่วงบ่าย-เย็น: 14:00 - 16:00 น.', label: '14:00 - 16:00 น.', desc: 'บ่ายกลาง (2 ชม.)', start: '14:00' },
-                    { val: 'ช่วงบ่าย-เย็น: 15:00 - 17:00 น.', label: '15:00 - 17:00 น.', desc: 'บ่ายถึงเย็น (2 ชม.)', start: '15:00' },
-                    { val: 'ช่วงบ่าย-เย็น (13:00 - 17:00 น. ตามคิวช่าง)', label: 'สะดวกตลอดช่วงบ่าย-เย็น', desc: '13:00 - 17:00 น.', start: '13:00' }
-                ];
-            } else if (hours === 3) {
-                slots = [
-                    { val: 'ช่วงบ่าย-เย็น: 13:00 - 16:00 น.', label: '13:00 - 16:00 น.', desc: 'บ่ายต้นถึงสี่โมง (3 ชม.)', start: '13:00' },
-                    { val: 'ช่วงบ่าย-เย็น: 14:00 - 17:00 น.', label: '14:00 - 17:00 น.', desc: 'บ่ายสองถึงห้าโมง (3 ชม.)', start: '14:00' },
-                    { val: 'ช่วงบ่าย-เย็น (13:00 - 17:00 น. ตามคิวช่าง)', label: 'สะดวกตลอดช่วงบ่าย-เย็น', desc: '13:00 - 17:00 น.', start: '13:00' }
-                ];
-            } else if (hours === 4) {
-                slots = [
-                    { val: 'ช่วงบ่าย-เย็น: 13:00 - 17:00 น. (เต็มช่วงบ่าย-เย็น)', label: '13:00 - 17:00 น.', desc: 'เต็มช่วงบ่ายถึงเย็น (4 ชม.)', start: '13:00' },
-                    { val: 'ช่วงบ่าย-เย็น (13:00 - 17:00 น. ตามคิวช่าง)', label: 'สะดวกตลอดช่วงบ่าย-เย็น', desc: 'ตามการจัดคิว', start: '13:00' }
-                ];
+            if (hintText) {
+                hintText.textContent = "ช่วงบ่าย - เย็น: กรุณาระบุเวลาในช่วงบ่ายหรือเย็น (ตั้งแต่ 12:00 น. เป็นต้นไป)";
+            }
+            if (startInput && startInput.value < "12:00") {
+                startInput.value = "13:00";
+            }
+            if (endInput && endInput.value < "12:00") {
+                endInput.value = "16:00";
             }
         }
 
-        // ตรวจสอบ slot ที่ผ่านมาแล้ว
-        let firstAvailableVal = null;
-        let availableCount = 0;
-
-        slots.forEach(s => {
-            s.isPast = isToday && (s.start <= currentTimeStr);
-            if (!s.isPast) {
-                availableCount++;
-                if (!firstAvailableVal) {
-                    firstAvailableVal = s.val;
-                }
-            }
-        });
-
-        if (availableCount === 0) {
-            container.innerHTML = `
-                <div class="col-span-full p-4 bg-amber-50/90 border border-amber-200 rounded-2xl text-amber-800 text-xs flex items-center gap-2.5">
-                    <i data-lucide="clock" class="w-5 h-5 shrink-0 text-amber-600"></i>
-                    <div>
-                        <div class="font-bold">ทุกช่วงเวลาของรอบนี้ผ่านไปแล้วสำหรับวันนี้</div>
-                        <div class="text-[11px] text-amber-700/80 mt-0.5">กรุณาเลือกช่วงเวลาอื่น หรือเลื่อนวันนัดหมายเป็นวันถัดไป</div>
-                    </div>
-                </div>
-            `;
-            hiddenPreferredTime.value = '';
-        } else {
-            slots.forEach((s) => {
-                const label = document.createElement('label');
-                if (s.isPast) {
-                    label.className = 'cursor-not-allowed opacity-40 select-none';
-                    label.innerHTML = `
-                        <input type="radio" name="slot_choice" value="${s.val}" disabled class="peer sr-only">
-                        <div class="p-3 rounded-2xl border border-slate-200 bg-slate-50 text-slate-400 transition shadow-2xs">
-                            <div class="flex items-center justify-between">
-                                <span class="font-bold text-xs font-mono line-through text-slate-400">${s.label}</span>
-                                <span class="text-[9px] font-bold text-rose-500 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100">ผ่านไปแล้ว</span>
-                            </div>
-                            <div class="text-[10px] text-slate-400 mt-0.5">${s.desc}</div>
-                        </div>
-                    `;
-                } else {
-                    const isChecked = (s.val === firstAvailableVal);
-                    label.className = 'cursor-pointer';
-                    label.innerHTML = `
-                        <input type="radio" name="slot_choice" value="${s.val}" ${isChecked ? 'checked' : ''} class="peer sr-only">
-                        <div class="p-3 rounded-2xl border border-rose-100/80 bg-white hover:bg-rose-50/30 peer-checked:border-blue-600 peer-checked:bg-rose-500 peer-checked:text-white transition shadow-2xs">
-                            <div class="font-bold text-xs font-mono">${s.label}</div>
-                            <div class="text-[10px] text-slate-400 peer-checked:text-blue-100 mt-0.5">${s.desc}</div>
-                        </div>
-                    `;
-                    label.querySelector('input').addEventListener('change', function() {
-                        hiddenPreferredTime.value = this.value;
-                        updateSummaryPreview();
-                    });
-                }
-                container.appendChild(label);
-            });
-
-            hiddenPreferredTime.value = firstAvailableVal || '';
-        }
-
-        updateSummaryPreview();
-        lucide.createIcons();
+        syncPreferredTime();
     }
 
+    // ฟังก์ชันซิงค์เวลาเมื่อมีการเปลี่ยนค่า โดยไม่ขัดจังหวะด้วย alert
+    function handleTimeRangeChange() {
+        syncPreferredTime();
+    }
+
+    // ซิงค์ค่าเวลาลง hiddenPreferredTime เพื่อส่งฟอร์ม
+    function syncPreferredTime() {
+        const period = document.querySelector('input[name="preferred_period"]:checked')?.value || "morning";
+        const startInput = document.getElementById("preferredStartTime");
+        const endInput = document.getElementById("preferredEndTime");
+        const hiddenPreferredTime = document.getElementById("preferredTime");
+        const sVal = startInput ? startInput.value : "";
+        const eVal = endInput ? endInput.value : "";
+        
+        if (hiddenPreferredTime) {
+            if (sVal && eVal) {
+                const periodText = (period === "morning") ? "ช่วงเช้า" : "ช่วงบ่าย-เย็น";
+                hiddenPreferredTime.value = `${periodText} (เวลา ${sVal} - ${eVal} น.)`;
+            } else if (sVal) {
+                const periodText = (period === "morning") ? "ช่วงเช้า" : "ช่วงบ่าย-เย็น";
+                hiddenPreferredTime.value = `${periodText} (เวลา ${sVal} น.)`;
+            } else {
+                hiddenPreferredTime.value = "";
+            }
+        }
+        updateSummaryPreview();
+        if (window.lucide) lucide.createIcons();
+    }
+
+    // ปรับปรุงกล่องสรุปผลเรียลไทม์
     function updateSummaryPreview() {
-        const dateInputEl = document.getElementById('preferredDateInput');
-        const dateInput = dateInputEl ? dateInputEl.value : '';
-        const hiddenPreferredTime = document.getElementById('preferredTime')?.value || '';
-        const hours = document.getElementById('estimatedHoursInput')?.value || '2';
-        const previewDateEl = document.getElementById('preview-date');
-        const previewTimeEl = document.getElementById('preview-time');
+        const dateInputEl = document.getElementById("preferredDateInput");
+        const dateInput = dateInputEl ? dateInputEl.value : "";
+        const hiddenPreferredTime = document.getElementById("preferredTime")?.value || "";
+        const startInput = document.getElementById("preferredStartTime");
+        const endInput = document.getElementById("preferredEndTime");
+        const sVal = startInput ? startInput.value : "";
+        const eVal = endInput ? endInput.value : "";
+        const hours = document.getElementById("estimatedHoursInput")?.value || "2";
+        const previewDateEl = document.getElementById("preview-date");
+        const previewTimeEl = document.getElementById("preview-time");
+
+        const now = new Date();
+        const pad = n => String(n).padStart(2, "0");
+        const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+        const currentTimeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+        const isToday = (dateInput === todayStr);
+        const isPastToday = isToday && (sVal && sVal <= currentTimeStr);
 
         if (dateInput) {
             const d = new Date(dateInput);
-            const day = String(d.getDate()).padStart(2, '0');
-            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, "0");
+            const month = String(d.getMonth() + 1).padStart(2, "0");
             const year = d.getFullYear() + 543;
             previewDateEl.innerHTML = `<span class="text-slate-800 font-bold">${day}/${month}/${year}</span>`;
-            dateInputEl.classList.remove('border-rose-400', 'ring-2', 'ring-rose-200');
+            dateInputEl.classList.remove("border-rose-400", "ring-2", "ring-rose-200");
         } else {
             previewDateEl.innerHTML = '<span class="text-rose-600 font-bold animate-pulse">⚠️ กรุณาระบุวันที่ (จำเป็นต้องเลือก)</span>';
         }
 
         if (previewTimeEl) {
-            if (hiddenPreferredTime) {
-                previewTimeEl.innerHTML = `<span class="text-slate-800 font-bold">${hiddenPreferredTime}</span>`;
+            if (sVal && eVal && eVal <= sVal) {
+                previewTimeEl.innerHTML = '<span class="text-amber-600 font-bold">⚠️ เวลาสิ้นสุดต้องมากกว่าเวลาเริ่มต้น</span>';
+            } else if (isPastToday) {
+                previewTimeEl.innerHTML = `<span class="text-rose-600 font-bold">⚠️ ${hiddenPreferredTime} (เวลาเริ่มต้นผ่านไปแล้ว)</span>`;
+            } else if (hiddenPreferredTime) {
+                previewTimeEl.innerHTML = `<span class="text-rose-700 font-bold">${hiddenPreferredTime}</span>`;
             } else {
-                previewTimeEl.innerHTML = '<span class="text-rose-600 font-bold">⚠️ หมดเวลาสำหรับรอบนี้</span>';
+                previewTimeEl.innerHTML = '<span class="text-rose-600 font-bold">⚠️ กรุณาระบุเวลาที่สะดวก</span>';
             }
         }
-
-        document.getElementById('preview-hours').textContent = hours;
     }
 
-    // ตรวจสอบความถูกต้องก่อน Submit ฟอร์ม
+    // ตรวจสอบความถูกต้องเฉพาะเมื่อ Submit ฟอร์มเท่านั้น
     document.addEventListener("DOMContentLoaded", function() {
         const form = document.querySelector("form");
         if (form) {
             form.addEventListener("submit", function(e) {
                 const dateInput = document.getElementById("preferredDateInput");
                 const hiddenPreferredTime = document.getElementById("preferredTime");
+                const startInput = document.getElementById("preferredStartTime");
+                const endInput = document.getElementById("preferredEndTime");
+                const period = document.querySelector('input[name="preferred_period"]:checked')?.value || "morning";
 
                 if (!dateInput.value) {
                     e.preventDefault();
@@ -2179,9 +1511,46 @@ if (isset($_POST['submit_request'])) {
                     return;
                 }
 
-                if (!hiddenPreferredTime || !hiddenPreferredTime.value) {
+                if (!startInput || !startInput.value || !endInput || !endInput.value) {
                     e.preventDefault();
-                    alert("ช่วงเวลาที่คุณเลือกไม่สามารถใช้งานได้ (เนื่องจากเวลาดังกล่าวได้ผ่านไปแล้ว) กรุณาเลือกช่วงเวลาใหม่");
+                    alert("กรุณาระบุเวลาที่สะดวกให้ครบทั้งเวลาเริ่มต้นและเวลาสิ้นสุด");
+                    if (startInput && !startInput.value) startInput.focus();
+                    else if (endInput) endInput.focus();
+                    return;
+                }
+
+                const sVal = startInput.value;
+                const eVal = endInput.value;
+
+                if (eVal <= sVal) {
+                    e.preventDefault();
+                    alert("เวลาสิ้นสุดต้องมากกว่าเวลาเริ่มต้น (ตัวอย่างเช่น 09:00 - 11:30 น.)");
+                    endInput.focus();
+                    return;
+                }
+
+                if (period === "morning" && (sVal >= "12:00" || eVal >= "12:00")) {
+                    e.preventDefault();
+                    alert("คุณเลือกช่วงเช้า กรุณาระบุเวลาในช่วงเช้า (ก่อน 12:00 น.)");
+                    startInput.focus();
+                    return;
+                }
+
+                if (period === "afternoon" && (sVal < "12:00" || eVal < "12:00")) {
+                    e.preventDefault();
+                    alert("คุณเลือกช่วงบ่าย - เย็น กรุณาระบุเวลาในช่วงบ่ายหรือเย็น (ตั้งแต่ 12:00 น. เป็นต้นไป)");
+                    startInput.focus();
+                    return;
+                }
+
+                const now = new Date();
+                const pad = n => String(n).padStart(2, "0");
+                const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+                const currentTimeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+                if (dateInput.value === todayStr && sVal <= currentTimeStr) {
+                    e.preventDefault();
+                    alert("เวลาเริ่มต้นที่คุณเลือกได้ผ่านไปแล้วสำหรับวันนี้ กรุณาระบุเวลาหลังจากนี้ หรือเลื่อนวันนัดหมาย");
+                    startInput.focus();
                     return;
                 }
             });

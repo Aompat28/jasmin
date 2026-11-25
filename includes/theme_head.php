@@ -1,7 +1,7 @@
 <?php
 // includes/theme_head.php
-// ระบบจัดการธีมส่วนกลางสำหรับ 4 Role (Admin, Tenant, Technician, Cleaner)
-// มีเพียง 2 ธีมเท่านั้น: Dark Theme (มืด) และ Light Theme (สว่าง)
+// ระบบจัดการธีมส่วนกลางและฟอนต์สำหรับทุก Role (Admin, Tenant, Technician, Cleaner)
+// มี 2 ธีม: Dark Theme (มืด) และ Light Theme (สว่าง) พร้อมปรับฟอนต์ให้ใหญ่ คมชัด อ่านง่ายทุกหน้า
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -13,12 +13,13 @@ if (window.history.replaceState) {
     window.history.replaceState(null, null, window.location.href);
 }
 </script>
-<?php
-// ระบบธีมจะทำงานสำหรับผู้ใช้ที่เข้าสู่ระบบใน 4 Role (Admin, Tenant, Technician, Cleaner)
-if (!isset($_SESSION['user_id'])) {
-    return;
-}
 
+<!-- 🔤 โหลดฟอนต์ Google Fonts ภาษาไทย Prompt, Kanit, Plus Jakarta Sans คมชัด ครบทุกน้ำหนัก -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Prompt:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Kanit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+
+<?php
 $themeRole = $_SESSION['role'] ?? 'Tenant';
 $cookieRoleKey = 'jasmin_theme_' . $themeRole;
 $serverTheme = $_COOKIE[$cookieRoleKey] ?? ($_COOKIE['jasmin_theme'] ?? null);
@@ -28,7 +29,7 @@ if (!$serverTheme || !in_array($serverTheme, ['dark', 'light'])) {
     $serverTheme = ($themeRole === 'Admin') ? 'dark' : 'light';
 }
 ?>
-<!-- 🌟 Jasmin Theme System (Dark vs Light) 🌟 -->
+<!-- 🌟 Jasmin Theme & Font Scaling System 🌟 -->
 <script>
 (function() {
   const currentRole = '<?php echo htmlspecialchars($themeRole); ?>';
@@ -39,13 +40,106 @@ if (!$serverTheme || !in_array($serverTheme, ['dark', 'light'])) {
   document.documentElement.setAttribute('data-theme', activeTheme);
   document.documentElement.classList.remove('theme-dark', 'theme-light');
   document.documentElement.classList.add('theme-' + activeTheme);
-  // ตั้งค่า cookie ให้ตรงกับ localStorage เสมอ
   document.cookie = 'jasmin_theme_' + currentRole + '=' + activeTheme + '; path=/; max-age=31536000; SameSite=Lax';
   document.cookie = 'jasmin_theme=' + activeTheme + '; path=/; max-age=31536000; SameSite=Lax';
 })();
 </script>
 
 <style>
+  /* === 🌟 Global Typography Boost (ฟอนต์ใหญ่ขึ้น มองเห็นชัดเจน อ่านง่าย ทุกหน้า ทุก Role) 🌟 === */
+  html {
+    font-size: 17px !important; /* ปรับขนาดฟอนต์เริ่มต้นจาก 16px เป็น 17px ให้ rem units ทั้งหมดขยายใหญ่ขึ้นอย่างสวยงาม */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  @media (min-width: 1024px) {
+    html {
+      font-size: 17.5px !important; /* บนหน้าจอ Desktop ปรับเป็น 17.5px ให้ตัวอักษรใหญ่ คมชัด สบายตา ไม่ต้องเพ่ง */
+    }
+  }
+
+  /* ปรับแต่ง Font Family ตัวอักษรให้อ่านง่าย คมชัด ทุกลักษณะ */
+  body, button, input, select, textarea, table {
+    font-family: 'Prompt', 'Kanit', 'Noto Sans Thai', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  /* ยกระดับขนาดข้อความขนาดเล็กและตัวเลขในระบบ ให้ไม่เล็กเกินไปจนอ่านยาก */
+  .text-\[10px\],
+  .text-\[10\.5px\],
+  .text-\[11px\] {
+    font-size: 0.78rem !important; /* ขยายจาก 10-11px เป็น ~13.6px อ่านได้ชัดเจนทันที */
+    line-height: 1.35 !important;
+    font-weight: 600;
+  }
+
+  .text-\[12px\],
+  .text-\[13px\] {
+    font-size: 0.86rem !important; /* ขยายเป็น ~15px */
+    line-height: 1.4 !important;
+  }
+
+  /* ปรับสเกลคลาสยอดนิยมของ Tailwind ให้อ่านง่าย ชัดเจน */
+  .text-xs {
+    font-size: 0.84rem !important; /* ~14.7px */
+    line-height: 1.4 !important;
+  }
+
+  .text-sm {
+    font-size: 0.95rem !important; /* ~16.6px */
+    line-height: 1.5 !important;
+  }
+
+  .text-base {
+    font-size: 1.05rem !important; /* ~18.4px */
+    line-height: 1.6 !important;
+  }
+
+  /* ปรับปรุง Contrast สีข้อความรอง (Muted Text) ให้อ่านง่าย สบายตา ไม่ซีดจาง */
+  html[data-theme="light"] .text-slate-400,
+  html[data-theme="light"] .text-stone-400,
+  html[data-theme="light"] .text-gray-400 {
+    color: #64748b !important; /* จากเทาจางเป็นเทาเข้ม คมชัด */
+  }
+
+  html[data-theme="light"] .text-slate-500,
+  html[data-theme="light"] .text-stone-500,
+  html[data-theme="light"] .text-gray-500 {
+    color: #475569 !important; /* ชัดเจน สบายตา */
+  }
+
+  html[data-theme="dark"] .text-slate-400,
+  html[data-theme="dark"] .text-stone-400,
+  html[data-theme="dark"] .text-gray-400 {
+    color: #94a3b8 !important; /* สีสว่างชัดเจนในธีมมืด */
+  }
+
+  /* กล่องกรอกข้อมูล (Inputs, Selects, Textareas) ฟอนต์ใหญ่ ชัดเจน ไม่ต้องซูม */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="range"]):not([type="color"]),
+  textarea,
+  select {
+    font-size: 0.95rem !important; /* ~16.6px */
+    font-weight: 500 !important;
+    background-color: #ffffff !important;
+    color: #1e293b !important;
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: #94a3b8 !important;
+  }
+
+  /* ตารางข้อมูล (Data Tables) ให้หัวตารางและเนื้อหาตารางคมชัด */
+  table th {
+    font-size: 0.88rem !important; /* ~15.4px */
+    font-weight: 700 !important;
+    letter-spacing: 0.02em;
+  }
+
+  table td {
+    font-size: 0.94rem !important; /* ~16.5px */
+  }
+
   /* === การเปลี่ยนผ่านสีนุ่มนวล === */
   html, body {
     transition: background-color 0.2s ease, color 0.2s ease;
@@ -71,18 +165,6 @@ if (!$serverTheme || !in_array($serverTheme, ['dark', 'light'])) {
     background-color: #FAF9F6 !important;
     background-image: none !important;
     color: #1e293b !important;
-  }
-
-  /* ช่องกรอกข้อมูล (Inputs, Textarea, Select) ให้เป็นสีขาวเหมือนหน้าอื่นเสมอ */
-  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="range"]):not([type="color"]),
-  textarea,
-  select {
-    background-color: #ffffff !important;
-    color: #1e293b !important;
-  }
-  input::placeholder,
-  textarea::placeholder {
-    color: #94a3b8 !important;
   }
 
   /* สไตล์กล่องสวิตช์เลือกธีม (Toggle Pill) */

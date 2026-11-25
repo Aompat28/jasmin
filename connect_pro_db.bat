@@ -41,6 +41,6 @@ title PRO_DB_TUNNEL
 set "SSH_ASKPASS=%USERPROFILE%\bin\askpass.bat"
 set "SSH_ASKPASS_REQUIRE=force"
 :daemon_loop
-ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=15 -N -L 3307:127.0.0.1:3306 fuyuki@ssh.sourceped.com
+ssh -n -o StrictHostKeyChecking=no -o ServerAliveInterval=15 -N -L 3307:127.0.0.1:3306 fuyuki@ssh.sourceped.com
 ping -n 2 127.0.0.1 >nul
 goto daemon_loop

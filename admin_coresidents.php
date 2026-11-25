@@ -896,10 +896,9 @@ $countInactive = $countRejected + $countCancelled;
 
               ?>
 
-              <tr class="coresident-row hover:bg-slate-50/50 transition <?php echo $isCancelPending ? 'bg-amber-50/30 border-l-4 border-amber-400' : ($isPending ? 'bg-amber-50/20' : ''); ?>"
-
+              <tr class="coresident-row cursor-pointer hover:bg-rose-50/30/70 transition <?php echo $isCancelPending ? 'bg-amber-50/30 border-l-4 border-amber-400' : ($isPending ? 'bg-amber-50/20' : ''); ?>"
+                  onclick="openCoresidentDetailModal(<?php echo htmlspecialchars(json_encode($r), ENT_QUOTES, 'UTF-8'); ?>)"
                   data-search="<?php echo htmlspecialchars($searchKeywords, ENT_QUOTES, 'UTF-8'); ?>"
-
                   data-status="<?php echo htmlspecialchars($r['status']); ?>">
 
                 
@@ -1070,7 +1069,13 @@ $countInactive = $countRejected + $countCancelled;
 
                 <td class="p-4 text-center">
 
-                  <div class="flex flex-col gap-1.5 w-32 mx-auto">
+                  <div class="flex flex-col gap-1.5 w-32 mx-auto" onclick="event.stopPropagation()">
+
+                    <button type="button" 
+                            onclick="openCoresidentDetailModal(<?php echo htmlspecialchars(json_encode($r), ENT_QUOTES, 'UTF-8'); ?>)" 
+                            class="w-full py-1.5 bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 hover:border-indigo-300 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 shadow-2xs cursor-pointer">
+                      <i data-lucide="eye" class="w-3.5 h-3.5 text-indigo-600"></i> ดูรายละเอียด
+                    </button>
 
                     <?php if($r['status'] === 'Pending'): ?>
 
@@ -1292,6 +1297,144 @@ $countInactive = $countRejected + $countCancelled;
 
   </div>
 
+  <!-- MODAL: รายละเอียดผู้ร่วมอาศัย (2 Columns) -->
+  <div id="coresidentDetailModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+    <div class="bg-white w-full max-w-4xl max-h-[92vh] rounded-3xl shadow-2xl overflow-hidden modal-enter border border-slate-200/80 flex flex-col">
+      <!-- Header -->
+      <div class="px-5 py-4 sm:px-6 sm:py-5 border-b border-slate-200/80 flex justify-between items-center bg-slate-50/70 shrink-0">
+        <div class="flex items-center gap-3">
+          <span id="co_modal_room_badge" class="px-3 py-1 bg-slate-900 text-white rounded-xl font-bold text-sm shadow-xs font-mono">ห้อง -</span>
+          <span id="co_modal_name_title" class="font-display font-extrabold text-slate-900 text-base sm:text-lg">ข้อมูลผู้ร่วมอาศัย</span>
+          <span id="co_modal_status_badge" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">รออนุมัติ</span>
+        </div>
+        <button type="button" onclick="closeCoresidentDetailModal()" class="w-9 h-9 rounded-2xl bg-white/80 backdrop-blur-md p-1.5 border border-rose-200/60 shadow-xs hover:bg-rose-100 hover:text-rose-600 text-slate-600 transition flex items-center justify-center cursor-pointer shadow-2xs" title="ปิด">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <!-- Body 2 columns -->
+      <div class="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+          <!-- 🟦 กรอบที่ 1: ส่วนข้อมูลของผู้ร่วมอาศัย -->
+          <div class="rounded-3xl p-5 sm:p-6 border-2 border-indigo-200 bg-gradient-to-b from-indigo-50/40 to-slate-50/20 shadow-2xs space-y-4">
+            <div class="flex items-center gap-2.5 pb-3.5 border-b border-indigo-200/80">
+              <div class="w-9 h-9 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                <i data-lucide="user-check" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h4 class="font-display font-bold text-slate-900 text-base">ส่วนข้อมูลผู้ร่วมอาศัย</h4>
+                <p class="text-[11px] text-indigo-700 font-medium">รายละเอียดส่วนตัวและเอกสารประจำตัว</p>
+              </div>
+            </div>
+            <!-- ผู้ร่วมอาศัย Card -->
+            <div class="bg-white p-4 rounded-2xl border border-indigo-200/80 shadow-2xs flex items-center justify-between gap-3">
+              <div class="flex items-center gap-3">
+                <div id="co_modal_avatar" class="w-11 h-11 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-700 font-extrabold flex items-center justify-center text-base">
+                  ผ
+                </div>
+                <div>
+                  <span class="text-[10px] text-slate-400 font-semibold uppercase">ผู้ร่วมอาศัย</span>
+                  <div id="co_modal_fullname" class="font-bold text-slate-900 text-sm sm:text-base">-</div>
+                  <div class="flex items-center gap-2 mt-1">
+                    <span id="co_modal_relationship" class="text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded-full">-</span>
+                  </div>
+                </div>
+              </div>
+              <a id="co_modal_call_coresident_btn" href="#" class="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-2xs">
+                <i data-lucide="phone-call" class="w-3.5 h-3.5"></i> โทรหา
+              </a>
+            </div>
+            <!-- ข้อมูลติดต่อ & เลขบัตร -->
+            <div class="bg-white p-4 rounded-2xl border border-indigo-200/80 shadow-2xs space-y-2.5 text-xs text-slate-600">
+              <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <span class="text-slate-400">เบอร์โทรศัพท์:</span>
+                <strong id="co_modal_phone" class="text-slate-900 font-mono font-bold">-</strong>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-slate-400">เลขบัตรประชาชน / Passport:</span>
+                <strong id="co_modal_idcard_num" class="text-slate-900 font-mono font-bold">-</strong>
+              </div>
+            </div>
+            <!-- เอกสารสำเนาบัตร -->
+            <div id="co_modal_idcard_wrap" class="bg-white border-2 border-dashed border-indigo-300 rounded-2xl p-3.5 shadow-2xs">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
+                  <i data-lucide="id-card" class="w-4 h-4 text-indigo-600"></i> สำเนาบัตรประชาชน / เอกสารประจำตัว
+                </span>
+                <span class="text-[10px] bg-indigo-100 text-indigo-900 font-extrabold px-2 py-0.5 rounded-lg border border-indigo-200">ID CARD</span>
+              </div>
+              <div id="co_modal_idcard_box" class="min-h-[140px] flex items-center justify-center bg-stone-50 rounded-xl overflow-hidden">
+              </div>
+            </div>
+          </div>
+
+          <!-- 🟩 กรอบที่ 2: ส่วนข้อมูลห้องพัก & นิติบุคคล -->
+          <div class="rounded-3xl p-5 sm:p-6 border-2 border-emerald-200 bg-gradient-to-b from-emerald-50/50 to-slate-50/30 flex flex-col justify-between shadow-2xs space-y-4">
+            <div>
+              <div class="flex items-center justify-between pb-3.5 border-b border-emerald-200/80 mb-4">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-9 h-9 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <i data-lucide="home" class="w-5 h-5"></i>
+                  </div>
+                  <div>
+                    <h4 class="font-display font-bold text-slate-900 text-base">ส่วนข้อมูลห้อง & นิติบุคคล</h4>
+                    <p class="text-[11px] text-emerald-700 font-medium">ห้องพัก ผู้เช่าหลัก วันที่ยื่น และผลการพิจารณา</p>
+                  </div>
+                </div>
+                <span class="text-[11px] font-bold px-2.5 py-1 rounded-xl bg-emerald-100/80 text-emerald-800 border border-emerald-200 font-mono">
+                  นิติบุคคล
+                </span>
+              </div>
+
+              <!-- ข้อมูลผู้เช่าหลัก -->
+              <div class="bg-white p-4 rounded-2xl border border-emerald-200/80 shadow-2xs flex items-center justify-between gap-3 mb-4">
+                <div>
+                  <span class="text-[10px] text-slate-400 font-semibold uppercase">ผู้เช่าหลักประจำห้อง</span>
+                  <div id="co_modal_tenant_name" class="font-bold text-slate-900 text-sm sm:text-base">-</div>
+                  <div id="co_modal_tenant_phone" class="text-xs text-slate-500 font-mono mt-0.5">📞 -</div>
+                </div>
+                <a id="co_modal_call_tenant_btn" href="#" class="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-2xs">
+                  <i data-lucide="phone-call" class="w-3.5 h-3.5"></i> โทรหาผู้เช่าหลัก
+                </a>
+              </div>
+
+              <!-- กล่องสถานะ & วันที่ยื่น -->
+              <div class="p-4 rounded-2xl border border-slate-200 bg-white shadow-2xs space-y-2.5 text-xs text-slate-600 mb-4">
+                <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <span class="text-slate-400">สถานะคำขอ:</span>
+                  <span id="co_modal_status_text" class="font-bold">-</span>
+                </div>
+                <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <span class="text-slate-400">วันที่ยื่นคำขอ:</span>
+                  <span id="co_modal_created_at" class="font-mono text-slate-800 font-bold">-</span>
+                </div>
+                <div id="co_modal_cancel_reason_wrap" class="hidden pb-2 border-b border-slate-100">
+                  <span class="text-rose-600 font-bold block mb-1">เหตุผลที่ขอยกเลิก:</span>
+                  <div id="co_modal_cancel_reason_text" class="p-2.5 bg-rose-50 rounded-xl border border-rose-200 text-rose-800 text-xs">-</div>
+                </div>
+                <div id="co_modal_remark_wrap" class="hidden">
+                  <span class="text-slate-400 font-bold block mb-1">หมายเหตุ / เหตุผลจากนิติบุคคล:</span>
+                  <div id="co_modal_remark_text" class="p-2.5 bg-stone-50 rounded-xl border border-stone-200 text-slate-700 text-xs">-</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Actions Area -->
+            <div id="co_modal_actions" class="pt-2">
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Footer -->
+      <div class="px-5 py-4 border-t border-slate-200/80 bg-white flex items-center justify-between shrink-0">
+        <button type="button" onclick="closeCoresidentDetailModal()" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl text-xs sm:text-sm transition cursor-pointer">
+          ปิดหน้าต่าง
+        </button>
+        <div id="co_modal_footer_right" class="flex gap-2">
+        </div>
+      </div>
+    </div>
+  </div>
+
 
 
   <!-- MODAL: Standard Document/Image Viewer -->
@@ -1504,6 +1647,192 @@ $countInactive = $countRejected + $countCancelled;
       document.getElementById('rejectModal').classList.add('hidden');
 
     }
+
+    // 🌟 ฟังก์ชันเปิด Modal ดูรายละเอียดผู้ร่วมอาศัย (แบบ 2 กรอบ) 🌟
+    function openCoresidentDetailModal(data) {
+      if (!data) return;
+
+      function fmtDate(d) {
+        if (!d) return '-';
+        const clean = d.split(' ')[0];
+        const parts = clean.split('-');
+        if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        return d;
+      }
+
+      document.getElementById('co_modal_room_badge').innerText = `ห้อง ${data.roomNumber || '-'}`;
+      document.getElementById('co_modal_name_title').innerText = `ผู้ร่วมอาศัย: ${data.fullName || '-'}`;
+
+      const statusBadge = document.getElementById('co_modal_status_badge');
+      const statusText = document.getElementById('co_modal_status_text');
+      const isPending = (data.status === 'Pending');
+      const isCancelPending = (data.status === 'Cancel_Pending');
+      const isApproved = (data.status === 'Approved');
+      const isRejected = (data.status === 'Rejected');
+
+      if (isPending) {
+        statusBadge.className = 'text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 animate-pulse';
+        statusBadge.innerHTML = 'รออนุมัติเข้าพัก';
+        statusText.innerText = 'รออนุมัติเข้าพัก';
+        statusText.className = 'font-bold text-amber-600';
+      } else if (isCancelPending) {
+        statusBadge.className = 'text-xs font-bold px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 animate-pulse';
+        statusBadge.innerHTML = 'รออนุมัติการยกเลิก';
+        statusText.innerText = 'รออนุมัติการยกเลิก';
+        statusText.className = 'font-bold text-rose-600';
+      } else if (isApproved) {
+        statusBadge.className = 'text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200';
+        statusBadge.innerHTML = 'อนุมัติแล้ว';
+        statusText.innerText = 'อนุมัติแล้ว (มีสิทธิ์พักอาศัย)';
+        statusText.className = 'font-bold text-emerald-600';
+      } else if (isRejected) {
+        statusBadge.className = 'text-xs font-bold px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200';
+        statusBadge.innerHTML = 'ไม่อนุมัติ';
+        statusText.innerText = 'ไม่อนุมัติ';
+        statusText.className = 'font-bold text-rose-600';
+      } else {
+        statusBadge.className = 'text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200';
+        statusBadge.innerHTML = 'ยกเลิกแล้ว';
+        statusText.innerText = 'ยกเลิกแล้ว (สิ้นสุดการพักอาศัย)';
+        statusText.className = 'font-bold text-slate-500';
+      }
+
+      // Left Column
+      const fullName = data.fullName || '-';
+      document.getElementById('co_modal_fullname').innerText = fullName;
+      document.getElementById('co_modal_avatar').innerText = fullName.charAt(0);
+      document.getElementById('co_modal_relationship').innerText = data.relationship || '-';
+      document.getElementById('co_modal_phone').innerText = data.phoneNumber || '-';
+      document.getElementById('co_modal_idcard_num').innerText = data.idCardNumber || '-';
+
+      const callCoBtn = document.getElementById('co_modal_call_coresident_btn');
+      if (data.phoneNumber && data.phoneNumber !== '-') {
+        callCoBtn.href = `tel:${data.phoneNumber}`;
+        callCoBtn.classList.remove('hidden');
+      } else {
+        callCoBtn.classList.add('hidden');
+      }
+
+      // ID Card Image
+      const idCardBox = document.getElementById('co_modal_idcard_box');
+      if (data.idCardImage && String(data.idCardImage).trim() !== '') {
+        idCardBox.innerHTML = `
+          <div class="relative group cursor-pointer w-full rounded-xl overflow-hidden border border-indigo-200 shadow-sm" onclick="openDocModal('${data.idCardImage}', 'สำเนาบัตร - ${data.fullName} (ห้อง ${data.roomNumber})')">
+            <img src="${data.idCardImage}" class="w-full max-h-[160px] object-cover transition duration-300 group-hover:scale-105" alt="สำเนาบัตร">
+            <div class="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2 text-white font-bold text-xs backdrop-blur-2xs">
+              <i data-lucide="zoom-in" class="w-4 h-4"></i> คลิกดูภาพขยาย
+            </div>
+          </div>
+        `;
+      } else {
+        idCardBox.innerHTML = '<span class="text-xs text-slate-400 italic py-4">ไม่มีเอกสารสำเนาบัตรแนบในระบบ</span>';
+      }
+
+      // Right Column: Main Tenant
+      document.getElementById('co_modal_tenant_name').innerText = data.tenantName || '-';
+      document.getElementById('co_modal_tenant_phone').innerText = `📞 ${data.tenantPhone || '-'}`;
+      const callTenantBtn = document.getElementById('co_modal_call_tenant_btn');
+      if (data.tenantPhone && data.tenantPhone !== '-') {
+        callTenantBtn.href = `tel:${data.tenantPhone}`;
+        callTenantBtn.classList.remove('hidden');
+      } else {
+        callTenantBtn.classList.add('hidden');
+      }
+
+      document.getElementById('co_modal_created_at').innerText = `${fmtDate(data.created_at)} ${data.created_at ? data.created_at.split(' ')[1] || '' : ''}`;
+
+      // Cancel Reason
+      const cancelWrap = document.getElementById('co_modal_cancel_reason_wrap');
+      const cancelText = document.getElementById('co_modal_cancel_reason_text');
+      if (data.cancelReason && String(data.cancelReason).trim() !== '') {
+        cancelWrap.classList.remove('hidden');
+        cancelText.innerText = data.cancelReason;
+      } else {
+        cancelWrap.classList.add('hidden');
+      }
+
+      // Admin Remark
+      const remarkWrap = document.getElementById('co_modal_remark_wrap');
+      const remarkText = document.getElementById('co_modal_remark_text');
+      if (data.adminRemark && String(data.adminRemark).trim() !== '') {
+        remarkWrap.classList.remove('hidden');
+        remarkText.innerText = data.adminRemark;
+      } else {
+        remarkWrap.classList.add('hidden');
+      }
+
+      // Footer actions
+      const footerRight = document.getElementById('co_modal_footer_right');
+      footerRight.innerHTML = '';
+
+      if (isPending) {
+        footerRight.innerHTML = `
+          <button type="button" onclick="closeCoresidentDetailModal(); openRejectModal('${data.id}', '${data.fullName}', '${data.roomNumber}')" class="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-2xl text-xs font-bold transition flex items-center gap-1 cursor-pointer">
+            <i data-lucide="x" class="w-3.5 h-3.5"></i> ปฏิเสธ
+          </button>
+          <form action="" method="POST" onsubmit="return confirm('ยืนยันอนุมัติคำขอผู้ร่วมอาศัยนี้?');" class="inline">
+            <input type="hidden" name="coresident_id" value="${data.id}">
+            <button type="submit" name="approve_coresident" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-bold transition flex items-center gap-1.5 shadow-md cursor-pointer">
+              <i data-lucide="check" class="w-4 h-4"></i> อนุมัติเข้าพัก
+            </button>
+          </form>
+        `;
+      } else if (isCancelPending) {
+        footerRight.innerHTML = `
+          <form action="" method="POST" onsubmit="return confirm('ยืนยันปฏิเสธคำขอยกเลิก (ให้ผู้ร่วมอาศัยคงสถานะพักอาศัยต่อไป)?');" class="inline">
+            <input type="hidden" name="coresident_id" value="${data.id}">
+            <button type="submit" name="reject_cancellation" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-bold transition flex items-center gap-1 cursor-pointer">
+              <i data-lucide="x" class="w-3.5 h-3.5"></i> ปฏิเสธยกเลิก
+            </button>
+          </form>
+          <form action="" method="POST" onsubmit="return confirm('ยืนยันอนุมัติการยกเลิกผู้ร่วมอาศัยตามคำขอนี้หรือไม่?');" class="inline">
+            <input type="hidden" name="coresident_id" value="${data.id}">
+            <button type="submit" name="approve_cancellation" class="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl text-xs font-bold transition flex items-center gap-1.5 shadow-md cursor-pointer">
+              <i data-lucide="check" class="w-4 h-4"></i> อนุมัติการยกเลิก
+            </button>
+          </form>
+        `;
+      } else if (isApproved) {
+        footerRight.innerHTML = `
+          <button type="button" onclick="closeCoresidentDetailModal(); openRejectModal('${data.id}', '${data.fullName}', '${data.roomNumber}')" class="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-2xl text-xs font-bold transition flex items-center gap-1 cursor-pointer">
+            เพิกถอนสิทธิ์
+          </button>
+        `;
+      } else {
+        footerRight.innerHTML = `
+          <form action="" method="POST" onsubmit="return confirm('ต้องการเปลี่ยนสถานะกลับเป็นอนุมัติให้พักอาศัยใช่หรือไม่?');" class="inline">
+            <input type="hidden" name="coresident_id" value="${data.id}">
+            <button type="submit" name="approve_coresident" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-bold transition flex items-center gap-1.5 shadow-md cursor-pointer">
+              <i data-lucide="check" class="w-4 h-4"></i> เปลี่ยนเป็นอนุมัติ
+            </button>
+          </form>
+        `;
+      }
+
+      const modal = document.getElementById('coresidentDetailModal');
+      modal.classList.remove('hidden');
+      modal.style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function closeCoresidentDetailModal() {
+      const modal = document.getElementById('coresidentDetailModal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+      }
+      document.body.style.overflow = '';
+    }
+
+    // Escape listener
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeRejectModal();
+        closeCoresidentDetailModal();
+        if (typeof closeDocModal === 'function') closeDocModal();
+      }
+    });
 
 
 

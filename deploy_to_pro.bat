@@ -19,7 +19,7 @@ if %errorlevel% neq 0 (
 )
 
 echo [3/3] Extracting and updating permissions on Pro Server...
-ssh -o StrictHostKeyChecking=no fuyuki@ssh.sourceped.com "/home/fuyuki/do_deploy.sh"
+ssh -n -o StrictHostKeyChecking=no fuyuki@ssh.sourceped.com "echo 741236985 | sudo -S tar -xzf ~/deploy_pack.tar.gz -C /var/www/property_management/ && echo 741236985 | sudo -S chown -R www-data:www-data /var/www/property_management && echo 741236985 | sudo -S chmod -R 775 /var/www/property_management/uploads"
 
 echo.
 echo ========================================================

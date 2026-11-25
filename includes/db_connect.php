@@ -44,6 +44,32 @@ try {
 
     try { $conn->exec("ALTER TABLE `Invoices` ADD COLUMN `otherFeeNote` TEXT DEFAULT NULL"); } catch(PDOException $e) {}
     try { $conn->exec("ALTER TABLE `invoices` ADD COLUMN `otherFeeNote` TEXT DEFAULT NULL"); } catch(PDOException $e) {}
+
+    try {
+        $conn->exec("CREATE TABLE IF NOT EXISTS `parking_requests` (
+            `id` INT(11) NOT NULL AUTO_INCREMENT,
+            `tenantId` INT(11) NOT NULL,
+            `roomId` INT(11) NOT NULL,
+            `currentPlate` VARCHAR(50) NOT NULL,
+            `additionalPlate` VARCHAR(50) NOT NULL,
+            `vehicleType` VARCHAR(30) NOT NULL DEFAULT 'Car',
+            `brandModel` VARCHAR(100) DEFAULT NULL,
+            `province` VARCHAR(100) DEFAULT NULL,
+            `vehicleImage` VARCHAR(255) DEFAULT NULL,
+            `reason` TEXT DEFAULT NULL,
+            `status` VARCHAR(30) NOT NULL DEFAULT 'Pending',
+            `adminRemark` TEXT DEFAULT NULL,
+            `cancelReason` TEXT DEFAULT NULL,
+            `approvedAt` DATETIME DEFAULT NULL,
+            `cancelledAt` DATETIME DEFAULT NULL,
+            `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (`id`),
+            KEY `tenantId` (`tenantId`),
+            KEY `roomId` (`roomId`),
+            KEY `status` (`status`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    } catch(PDOException $e) {}
 } catch(PDOException $e) {
     echo "Connection failed: " . $e->getMessage();
 }
