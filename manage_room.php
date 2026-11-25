@@ -55,6 +55,7 @@ try {
 
 
     $conn->exec("ALTER TABLE LeaseRenewals ADD COLUMN leaseImage VARCHAR(255) DEFAULT NULL;");
+    $conn->exec("ALTER TABLE LeaseRenewals ADD COLUMN oldLeaseImage VARCHAR(255) DEFAULT NULL;");
 
 } catch(PDOException $e) {}
 
@@ -232,86 +233,52 @@ if (isset($_POST['approve_renewal'])) {
 
 
 
-    // อัปโหลดเอกสารสัญญาใหม่ (ถ้ามี)
-
+    // อัปโหลดเอกสารสัญญาใหม่ (จำเป็นต้องแนบ)
     $leaseImage = null;
 
-    if (isset($_FILES['leaseImage']) && $_FILES['leaseImage']['error'] == 0 && !empty($_FILES['leaseImage']['tmp_name'])) {
-
+    if (!isset($_FILES['leaseImage']) || $_FILES['leaseImage']['error'] != 0 || empty($_FILES['leaseImage']['tmp_name'])) {
+        $message = "<div class='alert-box p-4 mb-6 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-r-xl shadow-xs text-sm font-bold flex items-center gap-2'><i data-lucide='alert-circle' class='w-5 h-5'></i> ไม่สามารถอนุมัติได้: กรุณาแนบไฟล์เอกสารสัญญาฉบับใหม่ (ระบบกำหนดให้จำเป็นต้องแนบไฟล์สัญญาใหม่)</div>";
+    } else {
         $uploadDir = 'uploads/';
-
         if (!is_dir($uploadDir)) { mkdir($uploadDir, 0777, true); }
-
         $fileExt = strtolower(pathinfo($_FILES['leaseImage']['name'], PATHINFO_EXTENSION));
-
         $fileName = time() . '_renew_lease_' . $leaseId . '.' . $fileExt;
-
         $targetFilePath = $uploadDir . $fileName;
 
-        if (move_uploaded_file($_FILES['leaseImage']['tmp_name'], $targetFilePath)) {
-
+        if (!move_uploaded_file($_FILES['leaseImage']['tmp_name'], $targetFilePath)) {
+            $message = "<div class='alert-box p-4 mb-6 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-r-xl shadow-xs text-sm font-bold flex items-center gap-2'><i data-lucide='alert-circle' class='w-5 h-5'></i> ไม่สามารถบันทึกไฟล์เอกสารสัญญาใหม่ได้ กรุณาลองใหม่อีกครั้ง</div>";
+        } else {
             $leaseImage = $targetFilePath;
 
+            try {
+                $conn->beginTransaction();
+
+                // ดึงสัญญาเดิมของ Lease มาเก็บไว้ใน oldLeaseImage เพื่อให้สามารถดูสัญญาเดิมย้อนหลังได้ตลอด
+                $stmtGetOld = $conn->prepare("SELECT leaseImage FROM Lease WHERE leaseId = ?");
+                $stmtGetOld->execute([$leaseId]);
+                $currentLeaseImg = $stmtGetOld->fetchColumn();
+
+                // อัปเดตวันสิ้นสุดสัญญาในตาราง Lease และไฟล์สัญญาฉบับใหม่
+                $stmtUpdateLease = $conn->prepare("UPDATE Lease SET endDate = DATE_ADD(endDate, INTERVAL ? MONTH), leaseImage = ? WHERE leaseId = ?");
+                $stmtUpdateLease->execute([$months, $leaseImage, $leaseId]);
+
+                // อัปเดตสถานะในตาราง LeaseRenewals พร้อมบันทึกสัญญาใหม่ และสัญญาเดิม
+                $stmtUpdateStatus = $conn->prepare("UPDATE LeaseRenewals SET status = 'Approved', adminRemark = ?, leaseImage = ?, oldLeaseImage = COALESCE(oldLeaseImage, ?) WHERE renewalId = ?");
+                $stmtUpdateStatus->execute([$adminRemark, $leaseImage, $currentLeaseImg, $renewalId]);
+
+                // ล้างคำขอต่อสัญญา Pending อื่นๆ ของสัญญานี้
+                $stmtCleanPendingRenew = $conn->prepare("DELETE FROM LeaseRenewals WHERE leaseId = ? AND status = 'Pending'");
+                $stmtCleanPendingRenew->execute([$leaseId]);
+
+                $conn->commit();
+
+                $message = "<div class='alert-box p-4 mb-6 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-xs text-sm font-bold flex items-center gap-2'><i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600'></i> อนุมัติการต่อสัญญาเช่าเรียบร้อยแล้ว! อัปเดตวันสิ้นสุดสัญญาในระบบเพิ่ม {$months} เดือน และบันทึกสัญญาใหม่สำเร็จ</div>";
+
+            } catch(PDOException $e) {
+                if ($conn->inTransaction()) { $conn->rollBack(); }
+                $message = "<div class='alert-box p-4 mb-6 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-r-xl shadow-xs text-sm font-bold flex items-center gap-2'><i data-lucide='alert-circle' class='w-5 h-5'></i> เกิดข้อผิดพลาด: " . htmlspecialchars($e->getMessage()) . "</div>";
+            }
         }
-
-    }
-
-
-
-    try {
-
-        $conn->beginTransaction();
-
-
-
-        // อัปเดตวันสิ้นสุดสัญญาในตาราง Lease
-
-        $stmtUpdateLease = $conn->prepare("UPDATE Lease SET endDate = DATE_ADD(endDate, INTERVAL ? MONTH) WHERE leaseId = ?");
-
-        $stmtUpdateLease->execute([$months, $leaseId]);
-
-
-
-        // ถ้ามีการแนบสัญญาใหม่ ให้อัปเดตไฟล์สัญญาในตาราง Lease ด้วย
-
-        if (!empty($leaseImage)) {
-
-            $stmtImg = $conn->prepare("UPDATE Lease SET leaseImage = ? WHERE leaseId = ?");
-
-            $stmtImg->execute([$leaseImage, $leaseId]);
-
-        }
-
-
-
-        // อัปเดตสถานะในตาราง LeaseRenewals
-
-        $stmtUpdateStatus = $conn->prepare("UPDATE LeaseRenewals SET status = 'Approved', adminRemark = ?, leaseImage = COALESCE(?, leaseImage) WHERE renewalId = ?");
-
-        $stmtUpdateStatus->execute([$adminRemark, $leaseImage, $renewalId]);
-
-
-
-        // ล้างคำขอต่อสัญญา Pending อื่นๆ ของสัญญานี้
-
-        $stmtCleanPendingRenew = $conn->prepare("DELETE FROM LeaseRenewals WHERE leaseId = ? AND status = 'Pending'");
-
-        $stmtCleanPendingRenew->execute([$leaseId]);
-
-
-
-        $conn->commit();
-
-
-
-        $message = "<div class='alert-box p-4 mb-6 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-xs text-sm font-bold flex items-center gap-2'><i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600'></i> อนุมัติการต่อสัญญาเช่าเรียบร้อยแล้ว! อัปเดตวันสิ้นสุดสัญญาในระบบเพิ่ม {$months} เดือน</div>";
-
-    } catch(PDOException $e) {
-
-        if ($conn->inTransaction()) { $conn->rollBack(); }
-
-        $message = "<div class='alert-box p-4 mb-6 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-r-xl shadow-xs text-sm font-bold flex items-center gap-2'><i data-lucide='alert-circle' class='w-5 h-5'></i> เกิดข้อผิดพลาด: " . htmlspecialchars($e->getMessage()) . "</div>";
-
     }
 
 }
@@ -643,19 +610,23 @@ $rooms = $conn->query("
 // 3.3 ดึงข้อมูลคำขอต่อสัญญาทั้งหมด (LeaseRenewals)
 
 $stmtReqs = $conn->prepare("
-
-    SELECT lr.*, u.fullName, u.phone AS tenantPhone, r.roomNumber, r.rentPrice, l.startDate, l.endDate AS currentEndDate, l.depositAmount, l.leaseImage
-
+    SELECT 
+        lr.*, 
+        lr.leaseImage AS newLeaseImage, 
+        COALESCE(lr.oldLeaseImage, l.leaseImage) AS effectiveOldLeaseImage,
+        u.fullName, 
+        u.phone AS tenantPhone, 
+        r.roomNumber, 
+        r.rentPrice, 
+        l.startDate, 
+        l.endDate AS currentEndDate, 
+        l.depositAmount, 
+        l.leaseImage AS currentLeaseImage
     FROM LeaseRenewals lr
-
     JOIN User u ON lr.tenantId = u.userId
-
     JOIN Room r ON lr.roomId = r.roomId
-
     JOIN Lease l ON lr.leaseId = l.leaseId
-
     ORDER BY FIELD(lr.status, 'Pending', 'Approved', 'Rejected'), lr.renewalId DESC
-
 ");
 
 $stmtReqs->execute();
@@ -1574,9 +1545,7 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
                                                         </span>
 
                                                         <button type="button" 
-
-                                                                onclick="openApproveModal('<?php echo $renInfo['renewalId']; ?>', '<?php echo $renInfo['leaseId']; ?>', '<?php echo $renInfo['extensionMonths']; ?>', '<?php echo htmlspecialchars($r['tenantName'], ENT_QUOTES); ?>', '<?php echo htmlspecialchars($r['roomNumber'], ENT_QUOTES); ?>', '<?php echo $newEndObj->format('d/m/Y'); ?>')"
-
+                                                                onclick="openApproveModal('<?php echo $renInfo['renewalId']; ?>', '<?php echo $renInfo['leaseId']; ?>', '<?php echo $renInfo['extensionMonths']; ?>', '<?php echo htmlspecialchars($r['tenantName'], ENT_QUOTES); ?>', '<?php echo htmlspecialchars($r['roomNumber'], ENT_QUOTES); ?>', '<?php echo $newEndObj->format('d/m/Y'); ?>', '<?php echo htmlspecialchars($r['leaseImage'] ?? '', ENT_QUOTES); ?>')"
                                                                 class="px-2.5 py-1 bg-rose-500 hover:bg-rose-600 text-white rounded-lg text-[10px] font-bold shadow-2xs transition flex items-center gap-1 cursor-pointer">
 
                                                             <i data-lucide="check" class="w-3 h-3"></i> อนุมัติต่อสัญญา
@@ -1758,9 +1727,7 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
                                         ?>
 
                                             <button type="button" 
-
-                                                    onclick="openApproveModal('<?php echo $renInfo['renewalId']; ?>', '<?php echo $renInfo['leaseId']; ?>', '<?php echo $renInfo['extensionMonths']; ?>', '<?php echo htmlspecialchars($r['tenantName'], ENT_QUOTES); ?>', '<?php echo htmlspecialchars($r['roomNumber'], ENT_QUOTES); ?>', '<?php echo $newEndObj->format('d/m/Y'); ?>')"
-
+                                                    onclick="openApproveModal('<?php echo $renInfo['renewalId']; ?>', '<?php echo $renInfo['leaseId']; ?>', '<?php echo $renInfo['extensionMonths']; ?>', '<?php echo htmlspecialchars($r['tenantName'], ENT_QUOTES); ?>', '<?php echo htmlspecialchars($r['roomNumber'], ENT_QUOTES); ?>', '<?php echo $newEndObj->format('d/m/Y'); ?>', '<?php echo htmlspecialchars($r['leaseImage'] ?? '', ENT_QUOTES); ?>')"
                                                     class="w-full px-3 py-1.5 bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 shadow-2xs transition">
 
                                                 <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> อนุมัติต่อสัญญา
@@ -2262,10 +2229,8 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
 
                                         <!-- ปุ่มอนุมัติ (เปิด Modal) -->
 
-                                        <button type="button" onclick="openApproveModal('<?php echo $req['renewalId']; ?>', '<?php echo $req['leaseId']; ?>', '<?php echo $req['extensionMonths']; ?>', '<?php echo htmlspecialchars($req['fullName'], ENT_QUOTES); ?>', '<?php echo htmlspecialchars($req['roomNumber'], ENT_QUOTES); ?>', '<?php echo $newEndDateFormatted; ?>')" class="w-full py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-2xs transition flex items-center justify-center gap-1 cursor-pointer">
-
+                                        <button type="button" onclick="openApproveModal('<?php echo $req['renewalId']; ?>', '<?php echo $req['leaseId']; ?>', '<?php echo $req['extensionMonths']; ?>', '<?php echo htmlspecialchars($req['fullName'], ENT_QUOTES); ?>', '<?php echo htmlspecialchars($req['roomNumber'], ENT_QUOTES); ?>', '<?php echo $newEndDateFormatted; ?>', '<?php echo htmlspecialchars($req['effectiveOldLeaseImage'] ?? ($req['currentLeaseImage'] ?? ''), ENT_QUOTES); ?>')" class="w-full py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-2xs transition flex items-center justify-center gap-1 cursor-pointer">
                                             <i data-lucide="check" class="w-3.5 h-3.5"></i> อนุมัติต่อสัญญา
-
                                         </button>
 
 
@@ -3924,120 +3889,126 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
 
 
 
-  <!-- MODAL 4: อนุมัติคำขอต่อสัญญาเช่า -->
-
-  <div id="approveModal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-
-    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 modal-enter">
-
-      <div class="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
-
-        <h3 class="font-display font-bold text-slate-900 text-base flex items-center gap-2">
-
-          <i data-lucide="check-circle-2" class="w-5 h-5 text-emerald-600"></i> อนุมัติคำขอต่อสัญญาเช่า
-
-        </h3>
-
-        <button type="button" onclick="closeApproveModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-100">
-
-          <i data-lucide="x" class="w-5 h-5"></i>
-
+  <!-- MODAL 4: อนุมัติคำขอต่อสัญญาเช่า (เต็มหน้าจอ) -->
+  <div id="approveModal" class="hidden fixed inset-0 z-50 bg-white flex flex-col w-full h-full min-h-screen overflow-hidden">
+    <!-- Top Header (Full Width Top Bar) -->
+    <div class="px-5 py-3.5 sm:px-8 sm:py-4.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white shrink-0 shadow-md flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <button type="button" onclick="closeApproveModal()" class="w-9 h-9 rounded-2xl bg-black/20 hover:bg-black/35 text-white flex items-center justify-center transition cursor-pointer shadow-xs shrink-0" title="ย้อนกลับ">
+          <i data-lucide="arrow-left" class="w-5 h-5"></i>
         </button>
-
+        <div>
+          <span class="px-2.5 py-0.5 rounded-full bg-white/20 text-white text-[11px] font-bold tracking-wide backdrop-blur-xs inline-flex items-center gap-1 shadow-xs mb-1">
+            <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> ตรวจสอบ & อนุมัติคำขอต่อสัญญา
+          </span>
+          <h3 class="font-display font-extrabold text-white text-lg sm:text-2xl leading-tight">อนุมัติคำขอต่อสัญญาเช่า</h3>
+          <p class="text-xs sm:text-sm text-emerald-100 mt-0.5">ผู้เช่า: <strong id="approveName" class="text-white"></strong> • ห้องพัก: <strong id="approveRoom" class="text-white font-mono"></strong></p>
+        </div>
       </div>
-
-
-
-      <form action="" method="POST" enctype="multipart/form-data" class="space-y-4">
-
-        <input type="hidden" name="renewal_id" id="approveRenewalId" value="">
-
-        <input type="hidden" name="lease_id" id="approveLeaseId" value="">
-
-        <input type="hidden" name="extension_months" id="approveExtensionMonths" value="">
-
-
-
-        <div class="p-3.5 bg-rose-50/70 rounded-2xl border border-indigo-100 text-xs space-y-1.5">
-
-          <div class="flex justify-between">
-
-            <span class="text-slate-500">ผู้เช่า:</span>
-
-            <strong id="approveName" class="text-slate-900"></strong>
-
-          </div>
-
-          <div class="flex justify-between">
-
-            <span class="text-slate-500">ห้องพัก:</span>
-
-            <strong id="approveRoom" class="text-blue-600 font-mono font-bold"></strong>
-
-          </div>
-
-          <div class="flex justify-between">
-
-            <span class="text-slate-500">ขอยืดอายุสัญญา:</span>
-
-            <strong id="approveMonthsText" class="text-rose-700 font-bold"></strong>
-
-          </div>
-
-          <div class="flex justify-between pt-1 border-t border-rose-200/60">
-
-            <span class="text-slate-600 font-semibold">วันสิ้นสุดสัญญาใหม่:</span>
-
-            <strong id="approveNewEndDate" class="text-emerald-700 font-mono font-bold"></strong>
-
-          </div>
-
-        </div>
-
-
-
-        <div>
-
-          <label class="block text-xs font-semibold text-slate-700 mb-1.5">ข้อความตอบกลับผู้เช่า (adminRemark)</label>
-
-          <input type="text" name="admin_remark" id="approveRemark" placeholder="เช่น อนุมัติต่อสัญญาเช่าเรียบร้อยแล้ว" class="w-full px-3 py-2 text-xs bg-stone-50 border border-slate-200 rounded-xl outline-none focus:border-rose-500 focus:bg-white transition">
-
-        </div>
-
-
-
-        <div>
-
-          <label class="block text-xs font-semibold text-slate-700 mb-1.5">แนบไฟล์เอกสารสัญญาฉบับใหม่ (ถ้ามี)</label>
-
-          <input type="file" name="leaseImage" accept="image/*,.pdf" class="w-full text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 bg-stone-50 border border-slate-200 rounded-xl cursor-pointer">
-
-          <span class="text-[10px] text-slate-400 mt-1 block">* หากแนบไฟล์ใหม่ ระบบจะอัปเดตไฟล์สัญญาในหน้าระบบของผู้เช่าทันที</span>
-
-        </div>
-
-
-
-        <div class="flex gap-2 pt-2">
-
-          <button type="button" onclick="closeApproveModal()" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition">
-
-            ยกเลิก
-
-          </button>
-
-          <button type="submit" name="approve_renewal" class="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-600/20 transition flex items-center justify-center gap-1">
-
-            <i data-lucide="check-circle" class="w-4 h-4"></i> ยืนยันอนุมัติสัญญา
-
-          </button>
-
-        </div>
-
-      </form>
-
+      <button type="button" onclick="closeApproveModal()" class="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-xl text-white font-bold text-xs transition backdrop-blur-xs cursor-pointer shadow-xs">
+        <i data-lucide="x" class="w-4 h-4"></i> ปิดหน้าต่าง
+      </button>
     </div>
 
+    <!-- Modal Body (Full Width Scrollable, Centered content) -->
+    <div class="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-gradient-to-b from-emerald-50/20 via-slate-50/50 to-white">
+      <div class="max-w-3xl lg:max-w-4xl mx-auto w-full">
+        <form action="" method="POST" enctype="multipart/form-data" id="approveRenewalForm" class="space-y-6">
+          <input type="hidden" name="renewal_id" id="approveRenewalId" value="">
+          <input type="hidden" name="lease_id" id="approveLeaseId" value="">
+          <input type="hidden" name="extension_months" id="approveExtensionMonths" value="">
+
+          <!-- Card 1: สรุปข้อมูลคำขอต่อสัญญา -->
+          <div class="bg-white rounded-3xl p-5 sm:p-6 border border-emerald-200/80 shadow-xs space-y-4">
+            <div class="flex items-center gap-2 pb-3 border-b border-slate-100 text-sm font-bold text-slate-800">
+              <i data-lucide="file-text" class="w-4 h-4 text-emerald-600"></i>
+              <span>ข้อมูลสรุปคำขอต่อสัญญาเช่า</span>
+            </div>
+            
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs sm:text-sm">
+              <div class="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/70 space-y-1">
+                <span class="text-slate-500 text-xs">ผู้ยื่นคำขอ:</span>
+                <div id="approveNameCard" class="font-bold text-slate-900 text-base">-</div>
+              </div>
+              <div class="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/70 space-y-1">
+                <span class="text-slate-500 text-xs">ห้องพัก:</span>
+                <div id="approveRoomCard" class="font-bold text-blue-600 font-mono text-base">-</div>
+              </div>
+              <div class="p-3.5 bg-amber-50/80 rounded-2xl border border-amber-200/70 space-y-1">
+                <span class="text-amber-800 text-xs font-semibold">ระยะเวลาที่ขอต่อสัญญา:</span>
+                <div id="approveMonthsText" class="font-extrabold text-amber-900 text-base">-</div>
+              </div>
+              <div class="p-3.5 bg-emerald-50/80 rounded-2xl border border-emerald-200/70 space-y-1">
+                <span class="text-emerald-800 text-xs font-semibold">วันสิ้นสุดสัญญาใหม่:</span>
+                <div id="approveNewEndDate" class="font-extrabold text-emerald-800 font-mono text-base">-</div>
+              </div>
+
+              <!-- เอกสารสัญญาเช่าฉบับเดิม (ก่อนต่อสัญญา) -->
+              <div id="approveOldDocWrap" class="p-4 bg-indigo-50/40 rounded-2xl border border-indigo-200/80 space-y-2 sm:col-span-2">
+                <div class="flex items-center justify-between">
+                  <span class="text-indigo-950 text-xs font-bold flex items-center gap-1.5">
+                    <i data-lucide="file-text" class="w-4 h-4 text-indigo-600"></i> เอกสารสัญญาเช่าฉบับเดิม (ก่อนต่อสัญญา)
+                  </span>
+                  <span class="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-lg border border-indigo-200">สัญญาเดิม</span>
+                </div>
+                <div id="approveOldDocBox" class="text-xs text-slate-500">
+                  กำลังโหลดข้อมูลสัญญาเดิม...
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 2: ข้อความตอบกลับผู้เช่า -->
+          <div class="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-xs space-y-2">
+            <label class="block text-xs sm:text-sm font-bold text-slate-800">
+              ข้อความตอบกลับผู้เช่า (adminRemark)
+            </label>
+            <input type="text" name="admin_remark" id="approveRemark" placeholder="เช่น อนุมัติต่อสัญญาเช่าเรียบร้อยแล้ว" class="w-full px-4 py-3 text-xs sm:text-sm bg-stone-50 border border-slate-200 rounded-2xl outline-none focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10 transition">
+            <span class="text-[11px] text-slate-400 block">ข้อความนี้จะแสดงในการ์ดและหน้าต่างรายละเอียดฝั่งผู้เช่าทันที</span>
+          </div>
+
+          <!-- Card 3: แนบไฟล์เอกสารสัญญาฉบับใหม่ (จำเป็นต้องแนบ) -->
+          <div class="bg-white rounded-3xl p-5 sm:p-6 border-2 border-rose-300 shadow-xs space-y-3">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <label class="block text-xs sm:text-sm font-bold text-slate-900">
+                แนบไฟล์เอกสารสัญญาฉบับใหม่ <span class="text-rose-600 font-bold">* (จำเป็นต้องแนบ)</span>
+              </label>
+              <span class="px-2.5 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-full text-[11px] font-bold">
+                บังคับแนบไฟล์
+              </span>
+            </div>
+
+            <div class="relative border-2 border-dashed border-rose-300 hover:border-rose-400 bg-rose-50/30 hover:bg-rose-50/50 rounded-2xl p-6 text-center transition cursor-pointer">
+              <input type="file" name="leaseImage" id="approveLeaseImage" accept="image/*,.pdf" required class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onchange="previewApproveFileName(this)">
+              <div class="space-y-2 pointer-events-none">
+                <div class="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto shadow-2xs">
+                  <i data-lucide="file-up" class="w-6 h-6"></i>
+                </div>
+                <div id="approveFileNameDisplay" class="text-xs sm:text-sm font-bold text-slate-800">
+                  คลิกเพื่อเลือกไฟล์สัญญาใหม่ หรือลากไฟล์มาวางที่นี่
+                </div>
+                <p class="text-[11px] text-slate-500">รองรับไฟล์รูปภาพ (JPG, PNG, WEBP) หรือเอกสาร PDF</p>
+              </div>
+            </div>
+
+            <p class="text-xs text-rose-600 font-semibold flex items-center gap-1.5 pt-1">
+              <i data-lucide="alert-circle" class="w-4 h-4 text-rose-500 shrink-0"></i>
+              <span>* จำเป็นต้องแนบไฟล์สัญญาฉบับใหม่ เพื่อให้ระบบอัปเดตไฟล์สัญญาในหน้าระบบของผู้เช่าทันที</span>
+            </p>
+          </div>
+
+          <!-- Action buttons inside form -->
+          <div class="pt-4 flex gap-3">
+            <button type="button" onclick="closeApproveModal()" class="w-1/3 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-bold rounded-2xl transition cursor-pointer text-center">
+              ยกเลิก
+            </button>
+            <button type="submit" name="approve_renewal" class="w-2/3 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold rounded-2xl shadow-lg shadow-emerald-600/25 transition flex items-center justify-center gap-2 cursor-pointer active:scale-95">
+              <i data-lucide="check-circle" class="w-4 h-4 sm:w-5 sm:h-5"></i> ยืนยันอนุมัติสัญญาเช่า
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 
 
@@ -4581,22 +4552,27 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
     </div>
   </div>
 
-  <!-- MODAL: รายละเอียดคำขอต่อสัญญาเช่า (2 Columns) -->
-  <div id="renewalDetailModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-    <div class="bg-white w-full max-w-4xl max-h-[92vh] rounded-3xl shadow-2xl overflow-hidden modal-enter border border-slate-200/80 flex flex-col">
-      <!-- Header -->
-      <div class="px-5 py-4 sm:px-6 sm:py-5 border-b border-slate-200/80 flex justify-between items-center bg-slate-50/70 shrink-0">
-        <div class="flex items-center gap-3">
-          <span id="ren_modal_room_badge" class="px-3 py-1 bg-slate-900 text-white rounded-xl font-bold text-sm shadow-xs font-mono">ห้อง -</span>
-          <span id="ren_modal_id_badge" class="px-2.5 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-xs font-mono font-bold">#REN-0000</span>
-          <span id="ren_modal_status_badge" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">รออนุมัติ</span>
-        </div>
-        <button type="button" onclick="closeRenewalDetailModal()" class="w-9 h-9 rounded-2xl bg-white/80 backdrop-blur-md p-1.5 border border-rose-200/60 shadow-xs hover:bg-rose-100 hover:text-rose-600 text-slate-600 transition flex items-center justify-center cursor-pointer shadow-2xs" title="ปิด">
-          <i data-lucide="x" class="w-5 h-5"></i>
+  <!-- MODAL: รายละเอียดคำขอต่อสัญญาเช่า (เต็มหน้าจอ) -->
+  <div id="renewalDetailModal" class="hidden fixed inset-0 z-50 bg-white flex flex-col w-full h-full min-h-screen overflow-hidden">
+    <!-- Header -->
+    <div class="px-5 py-3.5 sm:px-8 sm:py-4 bg-gradient-to-r from-slate-900 via-rose-950 to-slate-900 text-white shrink-0 shadow-md flex justify-between items-center">
+      <div class="flex items-center gap-3">
+        <button type="button" onclick="closeRenewalDetailModal()" class="w-9 h-9 rounded-2xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition cursor-pointer shadow-xs shrink-0" title="ย้อนกลับ">
+          <i data-lucide="arrow-left" class="w-5 h-5"></i>
         </button>
+        <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
+          <span id="ren_modal_room_badge" class="px-3 py-1 bg-white/20 backdrop-blur-xs text-white rounded-xl font-bold text-sm shadow-xs font-mono">ห้อง -</span>
+          <span id="ren_modal_id_badge" class="px-2.5 py-0.5 bg-rose-500/30 border border-rose-300/40 text-rose-200 rounded-lg text-xs font-mono font-bold">#REN-0000</span>
+          <span id="ren_modal_status_badge" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-white text-slate-900 shadow-xs">รออนุมัติ</span>
+        </div>
       </div>
-      <!-- Body 2 columns -->
-      <div class="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
+      <button type="button" onclick="closeRenewalDetailModal()" class="w-9 h-9 rounded-2xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition cursor-pointer shadow-xs" title="ปิด">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+    </div>
+    <!-- Body 2 columns (scrollable) -->
+    <div class="p-4 sm:p-6 lg:p-8 overflow-y-auto flex-1 bg-gradient-to-b from-rose-50/20 via-slate-50/40 to-white">
+      <div class="max-w-5xl mx-auto w-full">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
           <!-- 🟦 กรอบที่ 1: ส่วนข้อมูลผู้เช่า & สัญญาเดิม -->
           <div class="rounded-3xl p-5 sm:p-6 border-2 border-indigo-200 bg-gradient-to-b from-indigo-50/40 to-slate-50/20 shadow-2xs space-y-4">
@@ -4652,9 +4628,9 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
             <div id="ren_modal_lease_doc_wrap" class="bg-white border-2 border-dashed border-indigo-300 rounded-2xl p-3.5 shadow-2xs">
               <div class="flex items-center justify-between mb-2">
                 <span class="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
-                  <i data-lucide="file-text" class="w-4 h-4 text-indigo-600"></i> เอกสารสัญญาเช่าปัจจุบัน
+                  <i data-lucide="file-text" class="w-4 h-4 text-indigo-600"></i> เอกสารสัญญาเช่าเดิม (ก่อนต่อสัญญา)
                 </span>
-                <span class="text-[10px] bg-indigo-100 text-indigo-900 font-extrabold px-2 py-0.5 rounded-lg border border-indigo-200">LEASE DOC</span>
+                <span class="text-[10px] bg-indigo-100 text-indigo-900 font-extrabold px-2 py-0.5 rounded-lg border border-indigo-200">LEASE DOC (เดิม)</span>
               </div>
               <div id="ren_modal_lease_doc_box" class="min-h-[100px] flex items-center justify-center bg-stone-50 rounded-xl overflow-hidden text-xs text-slate-400">
                 ไม่มีเอกสารแนบ
@@ -4703,6 +4679,19 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
                 </div>
                 <p id="ren_modal_remark_text" class="text-xs text-slate-700 leading-relaxed font-normal">-</p>
               </div>
+
+              <!-- เอกสารสัญญาเช่าฉบับใหม่ที่แนบมา (New Lease Doc) -->
+              <div id="ren_modal_new_doc_wrap" class="bg-white border-2 border-dashed border-emerald-300 rounded-2xl p-3.5 shadow-2xs mb-4">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                    <i data-lucide="file-check-2" class="w-4 h-4 text-emerald-600"></i> เอกสารสัญญาเช่าฉบับใหม่ (ที่แนบมา)
+                  </span>
+                  <span id="ren_modal_new_doc_badge" class="text-[10px] bg-emerald-100 text-emerald-900 font-extrabold px-2 py-0.5 rounded-lg border border-emerald-200">NEW LEASE DOC</span>
+                </div>
+                <div id="ren_modal_new_doc_box" class="min-h-[100px] flex items-center justify-center bg-stone-50 rounded-xl overflow-hidden text-xs text-slate-400">
+                  ไม่มีเอกสารแนบ
+                </div>
+              </div>
             </div>
 
             <!-- Actions Area -->
@@ -4711,33 +4700,38 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
           </div>
         </div>
       </div>
-      <!-- Footer -->
-      <div class="px-5 py-4 border-t border-slate-200/80 bg-white flex items-center justify-between shrink-0">
-        <button type="button" onclick="closeRenewalDetailModal()" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl text-xs sm:text-sm transition cursor-pointer">
-          ปิดหน้าต่าง
-        </button>
-        <div id="ren_modal_footer_right" class="flex gap-2">
-        </div>
+    </div>
+    <!-- Footer -->
+    <div class="px-5 py-4 sm:px-8 sm:py-4.5 border-t border-slate-200/80 bg-white flex items-center justify-between shrink-0 shadow-lg">
+      <button type="button" onclick="closeRenewalDetailModal()" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl text-xs sm:text-sm transition cursor-pointer">
+        ปิดหน้าต่าง
+      </button>
+      <div id="ren_modal_footer_right" class="flex gap-2">
       </div>
     </div>
   </div>
 
-  <!-- MODAL: รายละเอียดคำขอย้ายห้อง (2 Columns) -->
-  <div id="roomChangeDetailModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-    <div class="bg-white w-full max-w-4xl max-h-[92vh] rounded-3xl shadow-2xl overflow-hidden modal-enter border border-slate-200/80 flex flex-col">
-      <!-- Header -->
-      <div class="px-5 py-4 sm:px-6 sm:py-5 border-b border-slate-200/80 flex justify-between items-center bg-slate-50/70 shrink-0">
-        <div class="flex items-center gap-3">
-          <span id="rc_modal_room_badge" class="px-3 py-1 bg-slate-900 text-white rounded-xl font-bold text-sm shadow-xs font-mono">ห้อง -</span>
-          <span id="rc_modal_id_badge" class="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-mono font-bold">#CHG-0000</span>
-          <span id="rc_modal_status_badge" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">รออนุมัติ</span>
-        </div>
-        <button type="button" onclick="closeRoomChangeDetailModal()" class="w-9 h-9 rounded-2xl bg-white/80 backdrop-blur-md p-1.5 border border-rose-200/60 shadow-xs hover:bg-rose-100 hover:text-rose-600 text-slate-600 transition flex items-center justify-center cursor-pointer shadow-2xs" title="ปิด">
-          <i data-lucide="x" class="w-5 h-5"></i>
+  <!-- MODAL: รายละเอียดคำขอย้ายห้อง (เต็มหน้าจอ) -->
+  <div id="roomChangeDetailModal" class="hidden fixed inset-0 z-50 bg-white flex flex-col w-full h-full min-h-screen overflow-hidden">
+    <!-- Header -->
+    <div class="px-5 py-3.5 sm:px-8 sm:py-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white shrink-0 shadow-md flex justify-between items-center">
+      <div class="flex items-center gap-3">
+        <button type="button" onclick="closeRoomChangeDetailModal()" class="w-9 h-9 rounded-2xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition cursor-pointer shadow-xs shrink-0" title="ย้อนกลับ">
+          <i data-lucide="arrow-left" class="w-5 h-5"></i>
         </button>
+        <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
+          <span id="rc_modal_room_badge" class="px-3 py-1 bg-white/20 backdrop-blur-xs text-white rounded-xl font-bold text-sm shadow-xs font-mono">ห้อง -</span>
+          <span id="rc_modal_id_badge" class="px-2.5 py-0.5 bg-indigo-500/30 border border-indigo-300/40 text-indigo-200 rounded-lg text-xs font-mono font-bold">#CHG-0000</span>
+          <span id="rc_modal_status_badge" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-white text-slate-900 shadow-xs">รออนุมัติ</span>
+        </div>
       </div>
-      <!-- Body 2 columns -->
-      <div class="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
+      <button type="button" onclick="closeRoomChangeDetailModal()" class="w-9 h-9 rounded-2xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition cursor-pointer shadow-xs" title="ปิด">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+    </div>
+    <!-- Body 2 columns -->
+    <div class="p-4 sm:p-6 lg:p-8 overflow-y-auto flex-1 bg-gradient-to-b from-indigo-50/20 via-slate-50/40 to-white">
+      <div class="max-w-5xl mx-auto w-full">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
           <!-- 🟦 กรอบที่ 1: ส่วนข้อมูลผู้เช่า & ห้องปัจจุบัน -->
           <div class="rounded-3xl p-5 sm:p-6 border-2 border-indigo-200 bg-gradient-to-b from-indigo-50/40 to-slate-50/20 shadow-2xs space-y-4">
@@ -4848,13 +4842,13 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
           </div>
         </div>
       </div>
-      <!-- Footer -->
-      <div class="px-5 py-4 border-t border-slate-200/80 bg-white flex items-center justify-between shrink-0">
-        <button type="button" onclick="closeRoomChangeDetailModal()" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl text-xs sm:text-sm transition cursor-pointer">
-          ปิดหน้าต่าง
-        </button>
-        <div id="rc_modal_footer_right" class="flex gap-2">
-        </div>
+    </div>
+    <!-- Footer -->
+    <div class="px-5 py-4 sm:px-8 sm:py-4.5 border-t border-slate-200/80 bg-white flex items-center justify-between shrink-0 shadow-lg">
+      <button type="button" onclick="closeRoomChangeDetailModal()" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl text-xs sm:text-sm transition cursor-pointer">
+        ปิดหน้าต่าง
+      </button>
+      <div id="rc_modal_footer_right" class="flex gap-2">
       </div>
     </div>
   </div>
@@ -5276,37 +5270,71 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
 
 
     // 5. ฟังก์ชันเปิด/ปิด Modal อนุมัติ & ปฏิเสธคำขอต่อสัญญา
-
-    function openApproveModal(id, leaseId, months, name, room, newEndDate) {
-
+    function openApproveModal(id, leaseId, months, name, room, newEndDate, oldLeaseDoc) {
         document.getElementById('approveRenewalId').value = id;
-
         document.getElementById('approveLeaseId').value = leaseId;
-
         document.getElementById('approveExtensionMonths').value = months;
-
         document.getElementById('approveName').innerText = name;
-
-        document.getElementById('approveRoom').innerText = room;
-
+        if (document.getElementById('approveNameCard')) document.getElementById('approveNameCard').innerText = name;
+        document.getElementById('approveRoom').innerText = 'ห้อง ' + room;
+        if (document.getElementById('approveRoomCard')) document.getElementById('approveRoomCard').innerText = 'ห้อง ' + room;
         document.getElementById('approveMonthsText').innerText = '+' + months + ' เดือน';
-
         document.getElementById('approveNewEndDate').innerText = newEndDate;
-
         document.getElementById('approveRemark').value = 'อนุมัติต่อสัญญาเช่าเพิ่ม ' + months + ' เดือนเรียบร้อยแล้ว';
+        
+        // แสดงเอกสารสัญญาเช่าฉบับเดิม
+        const oldDocBox = document.getElementById('approveOldDocBox');
+        if (oldDocBox) {
+            if (oldLeaseDoc && String(oldLeaseDoc).trim() !== '') {
+                oldDocBox.innerHTML = `
+                    <div class="flex items-center justify-between gap-3 p-3 bg-white rounded-xl border border-indigo-200 shadow-2xs">
+                        <div class="flex items-center gap-2.5 min-w-0">
+                            <div class="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                                <i data-lucide="file-text" class="w-5 h-5"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <span class="text-xs font-bold text-slate-800 block truncate">เอกสารสัญญาเช่าเดิม</span>
+                                <span class="text-[11px] text-slate-400 font-mono block truncate">${oldLeaseDoc}</span>
+                            </div>
+                        </div>
+                        <button type="button" onclick="openDocViewer('${oldLeaseDoc}', 'สัญญาเดิม - ห้อง ${room}')" class="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition flex items-center gap-1 shrink-0 cursor-pointer shadow-2xs">
+                            <i data-lucide="eye" class="w-3.5 h-3.5"></i> ดูสัญญาเดิม
+                        </button>
+                    </div>
+                `;
+            } else {
+                oldDocBox.innerHTML = '<span class="text-xs text-slate-400 italic">ไม่มีเอกสารสัญญาเดิมแนบในระบบ</span>';
+            }
+        }
 
-        document.getElementById('approveModal').classList.remove('hidden');
+        const fileInput = document.getElementById('approveLeaseImage');
+        if (fileInput) fileInput.value = '';
+        const nameDisp = document.getElementById('approveFileNameDisplay');
+        if (nameDisp) nameDisp.innerHTML = 'คลิกเพื่อเลือกไฟล์สัญญาใหม่ หรือลากไฟล์มาวางที่นี่';
 
-        lucide.createIcons();
-
+        const modal = document.getElementById('approveModal');
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+        if (window.lucide) lucide.createIcons();
     }
 
-
-
     function closeApproveModal() {
+        const modal = document.getElementById('approveModal');
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+        document.body.style.overflow = '';
+    }
 
-        document.getElementById('approveModal').classList.add('hidden');
-
+    function previewApproveFileName(input) {
+        const display = document.getElementById('approveFileNameDisplay');
+        if (!display) return;
+        if (input.files && input.files[0]) {
+            display.innerHTML = `<span class="text-emerald-700 font-bold flex items-center justify-center gap-1.5"><i data-lucide="check-circle" class="w-4 h-4"></i> ${input.files[0].name}</span>`;
+            if (window.lucide) lucide.createIcons();
+        } else {
+            display.innerHTML = 'คลิกเพื่อเลือกไฟล์สัญญาใหม่ หรือลากไฟล์มาวางที่นี่';
+        }
     }
 
 
@@ -6131,19 +6159,28 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
         document.getElementById('ren_modal_start_date').innerText = fmtDate(data.startDate);
         document.getElementById('ren_modal_current_end_date').innerText = fmtDate(data.currentEndDate);
 
-        // เอกสารสัญญาเช่า
+        // เอกสารสัญญาเช่าเดิม
         const leaseBox = document.getElementById('ren_modal_lease_doc_box');
-        if (data.leaseImage && String(data.leaseImage).trim() !== '') {
+        const oldDoc = data.effectiveOldLeaseImage || data.oldLeaseImage || data.currentLeaseImage || data.leaseImage;
+        if (oldDoc && String(oldDoc).trim() !== '') {
             leaseBox.innerHTML = `
-                <div class="relative group cursor-pointer w-full rounded-xl overflow-hidden border border-indigo-200 shadow-sm" onclick="openDocViewer('${data.leaseImage}', 'สัญญาเช่า - ห้อง ${data.roomNumber}')">
-                    <img src="${data.leaseImage}" class="w-full max-h-[160px] object-cover transition duration-300 group-hover:scale-105" alt="เอกสารสัญญา">
+                <div class="relative group cursor-pointer w-full rounded-xl overflow-hidden border border-indigo-200 shadow-sm" onclick="openDocViewer('${oldDoc}', 'สัญญาเช่าเดิม - ห้อง ${data.roomNumber}')">
+                    <img src="${oldDoc}" class="w-full max-h-[160px] object-cover transition duration-300 group-hover:scale-105" alt="เอกสารสัญญาเดิม">
                     <div class="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2 text-white font-bold text-xs backdrop-blur-2xs">
-                        <i data-lucide="zoom-in" class="w-4 h-4"></i> คลิกดูภาพขยาย
+                        <i data-lucide="zoom-in" class="w-4 h-4"></i> คลิกดูภาพขยายสัญญาเดิม
                     </div>
+                </div>
+                <div class="flex items-center justify-between text-xs pt-2">
+                    <span class="text-indigo-900 font-bold flex items-center gap-1">
+                        <i data-lucide="file-text" class="w-3.5 h-3.5 text-indigo-600"></i> สัญญาเดิม
+                    </span>
+                    <a href="${oldDoc}" download target="_blank" class="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg font-bold text-[11px] transition flex items-center gap-1 cursor-pointer">
+                        <i data-lucide="download" class="w-3 h-3"></i> ดาวน์โหลด
+                    </a>
                 </div>
             `;
         } else {
-            leaseBox.innerHTML = '<span class="text-xs text-slate-400 italic py-4">ไม่มีเอกสารสัญญาแนบในระบบ</span>';
+            leaseBox.innerHTML = '<span class="text-xs text-slate-400 italic py-4">ไม่มีเอกสารสัญญาเดิมแนบในระบบ</span>';
         }
 
         // 🟩 กรอบที่ 2: ส่วนคำขอต่อสัญญา & นิติบุคคล
@@ -6170,6 +6207,46 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
             remarkText.innerText = '-';
         }
 
+        // เอกสารสัญญาเช่าฉบับใหม่ (ที่แอดมินแนบมา)
+        const newDocBox = document.getElementById('ren_modal_new_doc_box');
+        const newDocWrap = document.getElementById('ren_modal_new_doc_wrap');
+        const newDoc = data.newLeaseImage || (isApproved ? (data.leaseImage || data.currentLeaseImage) : null);
+        if (newDocBox) {
+            if (newDoc && String(newDoc).trim() !== '') {
+                if (newDocWrap) newDocWrap.classList.remove('hidden');
+                newDocBox.innerHTML = `
+                    <div class="space-y-2 w-full">
+                        <div class="relative group cursor-pointer w-full rounded-xl overflow-hidden border border-emerald-300 shadow-sm" onclick="openDocViewer('${newDoc}', 'สัญญาเช่าฉบับใหม่ - ห้อง ${data.roomNumber}')">
+                            <img src="${newDoc}" class="w-full max-h-[160px] object-cover transition duration-300 group-hover:scale-105" alt="เอกสารสัญญาใหม่">
+                            <div class="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2 text-white font-bold text-xs backdrop-blur-2xs">
+                                <i data-lucide="zoom-in" class="w-4 h-4"></i> คลิกดูภาพขยายสัญญาใหม่
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between text-xs pt-1">
+                            <span class="text-emerald-800 font-bold flex items-center gap-1">
+                                <i data-lucide="check-circle" class="w-3.5 h-3.5 text-emerald-600"></i> สัญญาฉบับใหม่ที่แนบ
+                            </span>
+                            <a href="${newDoc}" download target="_blank" class="px-2.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-lg font-bold text-[11px] transition flex items-center gap-1 cursor-pointer">
+                                <i data-lucide="download" class="w-3 h-3"></i> ดาวน์โหลด
+                            </a>
+                        </div>
+                    </div>
+                `;
+            } else if (isPending) {
+                if (newDocWrap) newDocWrap.classList.remove('hidden');
+                newDocBox.innerHTML = `
+                    <div class="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-800 text-xs text-center space-y-1 w-full">
+                        <div class="font-bold flex items-center justify-center gap-1">
+                            <i data-lucide="clock" class="w-4 h-4 text-amber-600"></i> รอแนบสัญญาใหม่เมื่ออนุมัติ
+                        </div>
+                        <p class="text-[11px] text-amber-700">เจ้าหน้าที่จะต้องแนบไฟล์สัญญาใหม่เมื่อกดปุ่ม "อนุมัติต่อสัญญา"</p>
+                    </div>
+                `;
+            } else {
+                if (newDocWrap) newDocWrap.classList.add('hidden');
+            }
+        }
+
         // Actions
         const footerRight = document.getElementById('ren_modal_footer_right');
         footerRight.innerHTML = '';
@@ -6178,7 +6255,7 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
                 <button type="button" onclick="closeRenewalDetailModal(); openRejectModal('${data.renewalId}', '${data.fullName}', '${data.roomNumber}')" class="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-2xl text-xs font-bold transition flex items-center gap-1 cursor-pointer">
                     <i data-lucide="x" class="w-3.5 h-3.5"></i> ปฏิเสธ
                 </button>
-                <button type="button" onclick="closeRenewalDetailModal(); openApproveModal('${data.renewalId}', '${data.leaseId}', '${data.extensionMonths}', '${data.fullName}', '${data.roomNumber}', '${newEndFormatted}')" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-bold transition flex items-center gap-1.5 shadow-md cursor-pointer">
+                <button type="button" onclick="closeRenewalDetailModal(); openApproveModal('${data.renewalId}', '${data.leaseId}', '${data.extensionMonths}', '${data.fullName}', '${data.roomNumber}', '${newEndFormatted}', '${data.effectiveOldLeaseImage || data.oldLeaseImage || data.currentLeaseImage || data.leaseImage || ''}')" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-bold transition flex items-center gap-1.5 shadow-md cursor-pointer">
                     <i data-lucide="check" class="w-4 h-4"></i> อนุมัติต่อสัญญา
                 </button>
             `;
@@ -6358,25 +6435,38 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
 
 
     // 9. เริ่มต้นหน้าตามแท็บหรือฟิลเตอร์ที่ส่งมา
-
     document.addEventListener('DOMContentLoaded', function() {
-
         if (activeMainTab && mainTabsConfig[activeMainTab]) {
-
             switchMainTab(activeMainTab);
-
         } else {
-
             switchMainTab('rooms');
-
             if ('<?php echo $initialFilter; ?>' !== 'all') {
-
                 filterByStatus('<?php echo $initialFilter; ?>');
-
             }
-
         }
 
+        // ตรวจสอบความถูกต้องก่อนส่งฟอร์มอนุมัติต่อสัญญา (บังคับแนบไฟล์สัญญาใหม่)
+        const approveForm = document.getElementById('approveRenewalForm');
+        if (approveForm) {
+            approveForm.addEventListener('submit', function(e) {
+                const fileInput = document.getElementById('approveLeaseImage');
+                if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+                    e.preventDefault();
+                    if (window.Swal) {
+                        Swal.fire({
+                            icon: 'warning',
+                            title: 'จำเป็นต้องแนบไฟล์สัญญา',
+                            text: 'กรุณาแนบไฟล์เอกสารสัญญาฉบับใหม่ก่อนดำเนินการอนุมัติสัญญาครับ',
+                            confirmButtonText: 'ตกลง',
+                            confirmButtonColor: '#059669'
+                        });
+                    } else {
+                        alert('กรุณาแนบไฟล์เอกสารสัญญาฉบับใหม่ก่อนดำเนินการอนุมัติสัญญา');
+                    }
+                    return false;
+                }
+            });
+        }
     });
 
 

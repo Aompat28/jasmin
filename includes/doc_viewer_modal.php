@@ -1,5 +1,5 @@
 <!-- Modal ดูเอกสารสัญญาภายในเว็บ (Image / PDF Viewer) -->
-<div id="imageViewerModal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 transition-all duration-300" onclick="if(event.target === this) closeDocModal();">
+<div id="imageViewerModal" class="hidden fixed inset-0 z-[70] overflow-y-auto bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 transition-all duration-300" onclick="if(event.target === this) closeDocModal();">
   <div class="relative bg-white rounded-3xl max-w-4xl w-full p-4 sm:p-5 shadow-2xl border border-slate-100 flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
     
     <!-- Modal Header -->

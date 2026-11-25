@@ -97,42 +97,43 @@ if (empty($myRoomNumber)) {
 
 
 // 🌟 Real-time Status Check Endpoint (สำหรับ Polling ฝั่งผู้เช่า)
+$thaiMonthNamesRc = [
+    1 => 'มกราคม', 2 => 'กุมภาพันธ์', 3 => 'มีนาคม', 4 => 'เมษายน',
+    5 => 'พฤษภาคม', 6 => 'มิถุนายน', 7 => 'กรกฎาคม', 8 => 'สิงหาคม',
+    9 => 'กันยายน', 10 => 'ตุลาคม', 11 => 'พฤศจิกายน', 12 => 'ธันวาคม'
+];
+$formatThaiDateRc = function($dateStr, $includeTime = false) use ($thaiMonthNamesRc) {
+    if (!$dateStr) return '-';
+    $t = strtotime($dateStr);
+    $d = date('j', $t);
+    $m = $thaiMonthNamesRc[intval(date('n', $t))];
+    $y = date('Y', $t) + 543;
+    $res = "{$d} {$m} {$y}";
+    if ($includeTime) {
+        $res .= " เวลา " . date('H:i', $t) . " น.";
+    }
+    return $res;
+};
 
 if (isset($_GET['check_status'])) {
-
     header('Content-Type: application/json');
-
     if (!$myRoom) {
-
         echo json_encode(['status' => 'NoActiveRoom']);
-
         exit();
-
     }
-
-    $stmtCheckRealtime = $conn->prepare("SELECT status, adminRemark, created_at FROM RoomChangeRequests WHERE tenantId = ? ORDER BY requestId DESC LIMIT 1");
-
+    $stmtCheckRealtime = $conn->prepare("SELECT status, adminRemark, created_at, preferredMoveDate, targetRoomType, targetRoomId, requestId FROM RoomChangeRequests WHERE tenantId = ? ORDER BY requestId DESC LIMIT 1");
     $stmtCheckRealtime->execute([$tenantId]);
-
     $latestReq = $stmtCheckRealtime->fetch(PDO::FETCH_ASSOC);
 
-
-
     echo json_encode([
-
         'status' => $latestReq ? $latestReq['status'] : 'None',
-
-        'adminRemark' => $latestReq ? $latestReq['adminRemark'] : ''
-
+        'adminRemark' => $latestReq ? $latestReq['adminRemark'] : '',
+        'preferredMoveDate' => ($latestReq && !empty($latestReq['preferredMoveDate'])) ? $formatThaiDateRc($latestReq['preferredMoveDate']) : '',
+        'requestId' => $latestReq ? $latestReq['requestId'] : null
     ]);
-
     exit();
-
 }
-
-
-
-// ดึงรายการห้องว่างในระบบที่มีอยู่ในปัจจุบัน เผื่อเลือกระบุห้องเจาะจง
+    // ดึงรายการห้องว่างในระบบที่มีอยู่ในปัจจุบัน เผื่อเลือกระบุห้องเจาะจง
 
 $availableRooms = $conn->query("
 
@@ -148,6 +149,7 @@ $availableRooms = $conn->query("
 
 
 
+$activeTab = isset($_GET['tab']) && $_GET['tab'] === 'history' ? 'history' : 'request';
 $pendingRequest = null;
 
 $requestHistory = [];
@@ -380,7 +382,8 @@ if ($myRoom) {
 
     } else {
 
-        $pendingRequest = null;
+        $activeTab = isset($_GET['tab']) && $_GET['tab'] === 'history' ? 'history' : 'request';
+$pendingRequest = null;
 
     }
 
@@ -395,65 +398,18 @@ if ($myRoom) {
 <html lang="th">
 
 <head>
-
   <meta charset="UTF-8">
-
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-
-  <title>jasmin</title>
-
-  <script src="https://cdn.tailwindcss.com">
-    function selectTargetRoomType(type) {
-        document.getElementById('targetRoomTypeInput').value = type;
-        const btnAir = document.getElementById('btnTargetAir');
-        const btnFan = document.getElementById('btnTargetFan');
-        const checkAir = document.getElementById('checkAir');
-        const checkFan = document.getElementById('checkFan');
-
-        if (type === 'Air') {
-            btnAir.className = 'p-3.5 rounded-2xl border-2 flex items-center justify-between text-left transition-all cursor-pointer border-sky-500 bg-gradient-to-br from-sky-50 to-blue-50/70 text-sky-950 font-bold shadow-xs';
-            btnFan.className = 'p-3.5 rounded-2xl border-2 flex items-center justify-between text-left transition-all cursor-pointer border-rose-100/80 bg-white hover:border-sky-300 text-slate-700 font-semibold';
-            if (checkAir) checkAir.classList.remove('hidden');
-            if (checkFan) checkFan.classList.add('hidden');
-        } else {
-            btnFan.className = 'p-3.5 rounded-2xl border-2 flex items-center justify-between text-left transition-all cursor-pointer border-sky-500 bg-gradient-to-br from-sky-50 to-blue-50/70 text-sky-950 font-bold shadow-xs';
-            btnAir.className = 'p-3.5 rounded-2xl border-2 flex items-center justify-between text-left transition-all cursor-pointer border-rose-100/80 bg-white hover:border-sky-300 text-slate-700 font-semibold';
-            if (checkFan) checkFan.classList.remove('hidden');
-            if (checkAir) checkAir.classList.add('hidden');
-        }
-    }
-
-</script>
-
+  <title>ขอย้ายห้องพัก - Jasmin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-
-  <script src="https://unpkg.com/lucide@latest">
-    function selectTargetRoomType(type) {
-        document.getElementById('targetRoomTypeInput').value = type;
-        const btnAir = document.getElementById('btnTargetAir');
-        const btnFan = document.getElementById('btnTargetFan');
-        const checkAir = document.getElementById('checkAir');
-        const checkFan = document.getElementById('checkFan');
-
-        if (type === 'Air') {
-            btnAir.className = 'p-3.5 rounded-2xl border-2 flex items-center justify-between text-left transition-all cursor-pointer border-sky-500 bg-gradient-to-br from-sky-50 to-blue-50/70 text-sky-950 font-bold shadow-xs';
-            btnFan.className = 'p-3.5 rounded-2xl border-2 flex items-center justify-between text-left transition-all cursor-pointer border-rose-100/80 bg-white hover:border-sky-300 text-slate-700 font-semibold';
-            if (checkAir) checkAir.classList.remove('hidden');
-            if (checkFan) checkFan.classList.add('hidden');
-        } else {
-            btnFan.className = 'p-3.5 rounded-2xl border-2 flex items-center justify-between text-left transition-all cursor-pointer border-sky-500 bg-gradient-to-br from-sky-50 to-blue-50/70 text-sky-950 font-bold shadow-xs';
-            btnAir.className = 'p-3.5 rounded-2xl border-2 flex items-center justify-between text-left transition-all cursor-pointer border-rose-100/80 bg-white hover:border-sky-300 text-slate-700 font-semibold';
-            if (checkFan) checkFan.classList.remove('hidden');
-            if (checkAir) checkAir.classList.add('hidden');
-        }
-    }
-
-</script>
-
-  <style> body { font-family: 'Prompt', sans-serif; background-color: #FAF9F6; color: #1e293b; } </style>
-
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body { font-family: 'Prompt', sans-serif; background-color: #FAF9F6; color: #1e293b; }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
   <?php include_once 'includes/swal.php'; ?>
-
   <?php include_once 'includes/theme_head.php'; ?>
 </head>
 
@@ -599,6 +555,33 @@ if ($myRoom) {
 
                       </div>
 
+          <!-- 🌟 แท็บสลับหน้า: คำขอย้ายห้อง vs ประวัติคำขอ 🌟 -->
+          <div class="mb-5 flex gap-2 border-b border-rose-100/80 pb-px overflow-x-auto hide-scrollbar">
+              <!-- แท็บ 1: คำขอย้ายห้อง -->
+              <button type="button" onclick="switchRoomChangeTab('request')" id="tab-rc-request" class="<?php echo ($activeTab === 'request') ? 'px-5 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-rose-600 text-rose-600 flex items-center gap-2 whitespace-nowrap transition cursor-pointer' : 'px-5 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer'; ?>">
+                  <i data-lucide="repeat" class="w-4 h-4"></i>
+                  <span>คำขอย้ายห้อง</span>
+                  <?php if($pendingRequest): ?>
+                      <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-800 rounded-full border border-amber-300">
+                          <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                          รออนุมัติ
+                      </span>
+                  <?php endif; ?>
+              </button>
+
+              <!-- แท็บ 2: ประวัติคำขอ -->
+              <button type="button" onclick="switchRoomChangeTab('history')" id="tab-rc-history" class="<?php echo ($activeTab === 'history') ? 'px-5 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-rose-600 text-rose-600 flex items-center gap-2 whitespace-nowrap transition cursor-pointer' : 'px-5 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer'; ?>">
+                  <i data-lucide="history" class="w-4 h-4"></i>
+                  <span>ประวัติคำขอ</span>
+                  <span class="inline-flex items-center justify-center px-2 py-0.5 text-[10px] font-bold bg-slate-100 text-slate-600 rounded-full">
+                      <?php echo count($requestHistory); ?>
+                  </span>
+              </button>
+          </div>
+
+          <!-- ================= TAB 1: คำขอย้ายห้อง ================= -->
+          <div id="content-rc-request" class="<?php echo ($activeTab === 'request') ? '' : 'hidden'; ?>">
+
                   </div>
 
                   <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center shadow-xs">
@@ -615,99 +598,77 @@ if ($myRoom) {
 
           <?php if(!$hasApprovedRequest): ?>
 
-              <?php if($pendingRequest): ?>
+              <?php if($pendingRequest): 
+                  $thaiMonthNamesRc = [
+                      1 => 'มกราคม', 2 => 'กุมภาพันธ์', 3 => 'มีนาคม', 4 => 'เมษายน',
+                      5 => 'พฤษภาคม', 6 => 'มิถุนายน', 7 => 'กรกฎาคม', 8 => 'สิงหาคม',
+                      9 => 'กันยายน', 10 => 'ตุลาคม', 11 => 'พฤศจิกายน', 12 => 'ธันวาคม'
+                  ];
+                  $formatThaiDateRc = function($dateStr, $includeTime = false) use ($thaiMonthNamesRc) {
+                      if (!$dateStr) return '-';
+                      $t = strtotime($dateStr);
+                      $d = date('j', $t);
+                      $m = $thaiMonthNamesRc[intval(date('n', $t))];
+                      $y = date('Y', $t) + 543;
+                      $res = "{$d} {$m} {$y}";
+                      if ($includeTime) {
+                          $res .= " เวลา " . date('H:i', $t) . " น.";
+                      }
+                      return $res;
+                  };
 
-                  <!-- 🌟 กรณีมีคำขอย้ายห้องค้างอยู่ (กำลังรอดำเนินการ) -->
+                  $moveDateFull = !empty($pendingRequest['preferredMoveDate']) ? $formatThaiDateRc($pendingRequest['preferredMoveDate']) : '-';
+                  $reqDateRcFull = $formatThaiDateRc($pendingRequest['created_at'], true);
+                  $targetTypeLabel = ($pendingRequest['targetRoomType'] === 'Air') ? '❄️ ห้องแอร์' : '🌀 ห้องพัดลม';
+              ?>
 
-                  <div class="bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 p-5 rounded-3xl border border-amber-200/80 shadow-sm mb-6 space-y-3">
-
-                      <div class="flex items-center justify-between border-b border-amber-200/60 pb-3">
-
-                          <div class="flex items-center gap-2 font-bold text-sm text-amber-900">
-
-                              <span class="relative flex h-3 w-3">
-
-                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-
-                                <span class="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
-
+                  <!-- 🌟 การ์ดแสดงคำขอย้ายห้องที่รอดำเนินการ (แสดงแค่พอคราวๆ ให้เห็น พอกดเข้าไปถึงเป็นรายละเอียดเต็ม) 🌟 -->
+                  <div onclick="openPendingRoomChangeModal()" 
+                       class="cursor-pointer transition-all duration-200 hover:shadow-lg hover:border-amber-400 select-none bg-gradient-to-br from-amber-50/70 via-white to-orange-50/40 text-slate-800 p-5 rounded-3xl border border-amber-200 shadow-xs mb-6 space-y-3.5 group">
+                      
+                      <!-- Header แถบสถานะแบบย่อ -->
+                      <div class="flex items-center justify-between border-b border-amber-100/80 pb-2.5">
+                          <div class="flex items-center gap-2">
+                              <span class="relative flex h-2.5 w-2.5">
+                                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                  <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
                               </span>
-
-                              <span>⏳ อยู่ระหว่างกำลังรอดำเนินการ</span>
-
+                              <span class="font-bold text-sm text-slate-800">คำขอย้ายห้องพัก (ห้อง <?php echo htmlspecialchars($activeLease['roomNumber'] ?? ''); ?>)</span>
                           </div>
-
-                          <span class="px-2.5 py-1 bg-amber-200/80 text-amber-900 rounded-full font-bold text-[10px]">รอแอดมินอนุมัติ</span>
-
+                          <span id="pendingRoomChangeCardStatus" class="px-2.5 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded-full font-bold text-[11px] shadow-2xs">
+                              ⏳ รอแอดมินอนุมัติ
+                          </span>
                       </div>
 
-                      <div class="text-xs text-amber-900 space-y-1.5">
-
-                          <?php if(!empty($pendingRequest['targetRoomType'])): ?>
-
-                            <div class="flex justify-between">
-
-                              <span class="text-slate-600">ย้ายไปประเภท:</span>
-
-                              <strong class="text-amber-950"><?php echo ($pendingRequest['targetRoomType'] === 'Air') ? '❄️ ห้องแอร์' : '🌀 ห้องพัดลม'; ?></strong>
-
-                            </div>
-
-                          <?php endif; ?>
-
-                          <div class="flex justify-between">
-
-                            <span class="text-slate-600">เหตุผล:</span>
-
-                            <span class="font-medium text-amber-950 text-right max-w-[200px]"><?php echo htmlspecialchars($pendingRequest['reason']); ?></span>
-
+                      <!-- ข้อมูลสรุปพอคราวๆ (2 ช่อง) -->
+                      <div class="grid grid-cols-2 gap-2.5 bg-amber-50/60 p-3 rounded-2xl border border-amber-100 text-xs">
+                          <div>
+                              <span class="text-slate-500 text-[11px] flex items-center gap-1 mb-0.5">
+                                  <i data-lucide="door-open" class="w-3 h-3 text-amber-600"></i> ย้ายไปประเภทห้อง:
+                              </span>
+                              <strong class="text-amber-900 font-bold text-sm"><?php echo $targetTypeLabel; ?></strong>
                           </div>
-
-                          <?php if(!empty($pendingRequest['preferredMoveDate'])): ?>
-
-                            <div class="flex justify-between">
-
-                              <span class="text-slate-600">วันที่ประสงค์ย้าย:</span>
-
-                              <strong class="font-mono text-amber-950"><?php echo date("d/m/Y", strtotime($pendingRequest['preferredMoveDate'])); ?></strong>
-
-                            </div>
-
-                          <?php endif; ?>
-
-                          
-
-                          <?php if(!empty($pendingRequest['paymentSlip'])): ?>
-
-                            <div class="flex justify-between items-center pt-2 border-t border-amber-200/60 mt-1">
-
-                              <span class="text-slate-600 flex items-center gap-1"><i data-lucide="receipt" class="w-3.5 h-3.5 text-amber-700"></i> สลิปค่าทำความสะอาด (500฿):</span>
-
-                              <button type="button" onclick="openImageModal('<?php echo htmlspecialchars($pendingRequest['paymentSlip']); ?>', 'หลักฐานสลิปโอนค่าทำความสะอาด 500 บาท')" class="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[11px] font-bold shadow-2xs transition flex items-center gap-1 cursor-pointer">
-
-                                <i data-lucide="image" class="w-3 h-3"></i> ดูสลิป
-
-                              </button>
-
-                            </div>
-
-                          <?php endif; ?>
-
-
-
-                          <div class="flex justify-between text-[11px] text-slate-500 pt-1 border-t border-amber-200/60 mt-2">
-
-                            <span>วันที่ยื่นคำขอ:</span>
-
-                            <span class="font-mono"><?php echo date("d/m/Y H:i", strtotime($pendingRequest['created_at'])); ?> น.</span>
-
+                          <div>
+                              <span class="text-slate-500 text-[11px] flex items-center gap-1 mb-0.5">
+                                  <i data-lucide="calendar" class="w-3 h-3 text-amber-600"></i> วันที่ยื่นคำขอ:
+                              </span>
+                              <span class="font-mono text-slate-800 font-bold"><?php echo date("d/m/Y H:i", strtotime($pendingRequest['created_at'])); ?> น.</span>
                           </div>
-
                       </div>
 
+                      <!-- แถบล่างชวนคลิกดูรายละเอียด -->
+                      <div class="flex items-center justify-between pt-1 text-xs">
+                          <span class="text-slate-500 text-[11px] flex items-center gap-1">
+                              <i data-lucide="info" class="w-3.5 h-3.5 text-amber-600"></i>
+                              <span>คลิกที่นี่เพื่อดูรายละเอียด & ขั้นตอน</span>
+                          </span>
+                          <span class="inline-flex items-center gap-1 px-3 py-1 bg-amber-100/80 group-hover:bg-amber-500 group-hover:text-white text-amber-900 font-bold rounded-xl text-xs transition-colors">
+                              <span>ดูรายละเอียด</span>
+                              <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+                          </span>
+                      </div>
                   </div>
-
-              <?php else: ?>
+                  <?php else: ?>
 
                   <!-- ฟอร์มขอย้ายห้อง -->
 
@@ -923,7 +884,11 @@ if ($myRoom) {
 
           <?php if(!empty($requestHistory)): ?>
 
-          <div class="bg-white p-5 rounded-3xl shadow-sm border border-rose-100/80">
+                    </div> <!-- End #content-rc-request -->
+
+          <!-- ================= TAB 2: ประวัติคำขอ ================= -->
+          <div id="content-rc-history" class="<?php echo ($activeTab === 'history') ? '' : 'hidden'; ?>">
+<div class="bg-white p-5 rounded-3xl shadow-sm border border-rose-100/80">
 
               <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
 
@@ -983,6 +948,20 @@ if ($myRoom) {
 
                       <div class="text-[11px] text-slate-400 mt-1 font-mono">ยื่นเมื่อ: <?php echo date("d/m/Y H:i", strtotime($h['created_at'])); ?> น.</div>
 
+                      <div class="mt-2 flex flex-wrap gap-2">
+                        <button type="button" onclick='openRoomChangeModal({
+                          roomNumber: "<?php echo htmlspecialchars($activeLease["roomNumber"] ?? ""); ?>",
+                          targetRoom: "<?php echo !empty($h["targetRoomNumber"]) ? "ห้อง " . htmlspecialchars($h["targetRoomNumber"]) : (($h["targetRoomType"] === "Air") ? "ห้องแอร์" : "ห้องพัดลม"); ?>",
+                          tenantName: "<?php echo htmlspecialchars($tenantName); ?>",
+                          reason: "<?php echo addslashes($h["reason"] ?? ""); ?>",
+                          preferredMoveDate: "<?php echo !empty($h["preferredMoveDate"]) ? date("d/m/Y", strtotime($h["preferredMoveDate"])) : "-"; ?>",
+                          createdAt: "<?php echo date("d/m/Y H:i", strtotime($h["created_at"])); ?> น.",
+                          status: "<?php echo $h["status"]; ?>",
+                          paymentSlip: "<?php echo htmlspecialchars($h["paymentSlip"] ?? "", ENT_QUOTES); ?>",
+                          adminRemark: "<?php echo addslashes($h["adminRemark"] ?? ""); ?>"
+                        })' class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200 rounded-lg text-[11px] font-bold transition cursor-pointer">
+                          <i data-lucide="eye" class="w-3.5 h-3.5 text-amber-600"></i> ดูรายละเอียด & ขั้นตอน
+                        </button>
                       <?php if(!empty($h['paymentSlip'])): ?>
 
                         <div class="mt-1.5 flex items-center gap-1.5">
@@ -1055,7 +1034,167 @@ if ($myRoom) {
 
       <?php endif; ?>
 
-  </main>
+
+      <!-- 🌟 MODAL: แสดงรายละเอียดคำขอย้ายห้องพักและขั้นตอนการดำเนินงานแบบเต็มหน้าจอ 🌟 -->
+      <div id="roomChangeDetailModal" class="hidden fixed inset-0 z-50 bg-white flex flex-col w-full h-full min-h-screen overflow-hidden">
+          <!-- Modal Header (Full Width Top Bar) -->
+          <div class="bg-gradient-to-r from-amber-500 via-amber-600 to-orange-500 text-white px-5 py-3.5 sm:px-8 sm:py-4.5 flex items-center justify-between shrink-0 shadow-md">
+              <div class="flex items-center gap-3">
+                  <button type="button" onclick="closeRoomChangeModal()" class="w-9 h-9 rounded-2xl bg-black/20 hover:bg-black/35 text-white flex items-center justify-center transition cursor-pointer shadow-xs shrink-0" title="ย้อนกลับ">
+                      <i data-lucide="arrow-left" class="w-5 h-5"></i>
+                  </button>
+                  <div>
+                      <div class="flex flex-wrap items-center gap-2 mb-1">
+                          <span class="px-2.5 py-0.5 rounded-full bg-white/20 text-white text-[11px] font-bold tracking-wide backdrop-blur-xs flex items-center gap-1 shadow-xs">
+                              <i data-lucide="repeat" class="w-3.5 h-3.5"></i> คำขอย้ายห้องพัก
+                          </span>
+                          <span id="rcModalStatusBadge" class="px-2.5 py-0.5 rounded-full bg-white text-amber-900 text-[11px] font-bold shadow-xs">
+                              ⏳ รอแอดมินอนุมัติ
+                          </span>
+                          <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/25 border border-white/30 text-white text-[11px] font-semibold flex items-center gap-1.5 backdrop-blur-xs">
+                              <span class="w-2 h-2 rounded-full bg-emerald-300 animate-pulse"></span> อัปเดตสดเรียลไทม์
+                          </span>
+                      </div>
+                      <h2 id="rcModalTitle" class="text-lg sm:text-2xl font-extrabold font-display tracking-tight text-white leading-tight">รายละเอียดคำขอย้ายห้องพัก</h2>
+                      <p id="rcModalSubtitle" class="text-xs sm:text-sm text-amber-100 mt-0.5 flex items-center gap-2">
+                          <span>ห้องปัจจุบัน <strong id="rcModalRoomNum" class="text-white">...</strong></span>
+                          <span>•</span>
+                          <span>ผู้เช่า: <strong id="rcModalTenantName" class="text-white">...</strong></span>
+                      </p>
+                  </div>
+              </div>
+              <button type="button" onclick="closeRoomChangeModal()" class="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-xl text-white font-bold text-xs transition backdrop-blur-xs cursor-pointer shadow-xs">
+                  <i data-lucide="x" class="w-4 h-4"></i> ปิดหน้าต่าง
+              </button>
+          </div>
+
+          <!-- Modal Body (Full Width Scrollable, Centered content) -->
+          <div class="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-gradient-to-b from-amber-50/30 via-slate-50/50 to-white">
+              <div class="max-w-4xl lg:max-w-5xl mx-auto w-full space-y-6">
+                  
+                  <!-- 🌟 Progress Stepper (ขั้นตอนการดำเนินงานแบบกว้างเต็มตา) 🌟 -->
+                  <div class="p-5 sm:p-6 bg-gradient-to-br from-amber-50/90 via-orange-50/40 to-amber-50/90 rounded-3xl border border-amber-200/90 shadow-xs space-y-4">
+                      <div class="flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm font-bold text-amber-950">
+                          <span class="flex items-center gap-2">
+                              <i data-lucide="milestone" class="w-4 h-4 sm:w-5 sm:h-5 text-amber-600"></i>
+                              <span>สถานะขั้นตอนการดำเนินงาน:</span>
+                          </span>
+                          <span id="rcModalStepIndicator" class="text-amber-900 bg-amber-200/80 px-3 py-1 rounded-full text-xs font-extrabold border border-amber-300/60 shadow-2xs">
+                              ขั้นตอนที่ 2 จาก 3 (กำลังดำเนินการ)
+                          </span>
+                      </div>
+
+                      <!-- 3 Steps Bar (3 Columns on SM+, spacious layout) -->
+                      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 text-center">
+                          <div id="rcStep1Box" class="p-4 rounded-2xl border flex flex-col items-center justify-center gap-1.5 bg-emerald-50 border-emerald-300 text-emerald-800 transition-all shadow-2xs">
+                              <span id="rcStep1Icon" class="w-9 h-9 rounded-full bg-emerald-500 text-white flex items-center justify-center text-sm font-bold shadow-xs">✓</span>
+                              <span class="font-bold text-xs sm:text-sm">1. ยื่นคำขอแล้ว</span>
+                              <span id="rcStep1Time" class="text-[11px] text-emerald-700/80 font-normal">บันทึกคำขอเข้าระบบ</span>
+                          </div>
+                          <div id="rcStep2Box" class="p-4 rounded-2xl border flex flex-col items-center justify-center gap-1.5 bg-amber-100 border-amber-400 text-amber-950 shadow-xs ring-2 ring-amber-300/60 transition-all">
+                              <span id="rcStep2Icon" class="w-9 h-9 rounded-full bg-amber-600 text-white flex items-center justify-center text-sm font-bold animate-pulse shadow-xs">⏳</span>
+                              <span class="font-bold text-xs sm:text-sm">2. ตรวจสอบห้องว่าง</span>
+                              <span id="rcStep2Time" class="text-[11px] text-amber-800 font-bold">กำลังดำเนินการ</span>
+                          </div>
+                          <div id="rcStep3Box" class="p-4 rounded-2xl border flex flex-col items-center justify-center gap-1.5 bg-stone-50 border-stone-200 text-stone-400 transition-all">
+                              <span id="rcStep3Icon" class="w-9 h-9 rounded-full bg-stone-200 text-stone-500 flex items-center justify-center text-sm font-bold">3</span>
+                              <span class="font-bold text-xs sm:text-sm">3. อนุมัติย้ายห้อง</span>
+                              <span id="rcStep3Time" class="text-[11px] text-stone-400 font-normal">รออนุมัติ</span>
+                          </div>
+                      </div>
+
+                      <!-- Step Description Box -->
+                      <div id="rcModalStepDesc" class="p-4 bg-white/95 rounded-2xl border border-amber-200/90 text-xs sm:text-sm text-amber-950 leading-relaxed shadow-2xs flex items-start gap-2.5">
+                          <i data-lucide="info" class="w-5 h-5 text-amber-600 shrink-0 mt-0.5"></i>
+                          <div id="rcModalStepDescText">
+                              กำลังรอนิติบุคคลตรวจสอบห้องว่างตามประเภทที่ระบุ พร้อมจัดเตรียมการย้ายห้อง
+                          </div>
+                      </div>
+                  </div>
+
+                  <!-- 🌟 ตารางข้อมูลรายละเอียดคำขอย้ายห้อง (Grid 2 คอลัมน์) 🌟 -->
+                  <div class="bg-white rounded-3xl border border-stone-200/90 shadow-xs overflow-hidden">
+                      <div class="p-4 bg-stone-50 border-b border-stone-200/80 flex items-center gap-2">
+                          <i data-lucide="file-spreadsheet" class="w-4 h-4 text-slate-500"></i>
+                          <h4 class="text-xs sm:text-sm font-bold text-slate-700">ข้อมูลสรุปคำขอย้ายห้องพัก</h4>
+                      </div>
+
+                      <div class="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-stone-100 text-xs sm:text-sm">
+                          <div class="p-4 sm:p-5 space-y-4">
+                              <div class="flex justify-between items-center">
+                                  <span class="text-slate-500 flex items-center gap-2"><i data-lucide="home" class="w-4 h-4 text-slate-400"></i> ห้องพักปัจจุบัน</span>
+                                  <strong id="rcModalInfoRoom" class="text-slate-800 text-sm sm:text-base font-bold">ห้อง ...</strong>
+                              </div>
+                              <div class="flex justify-between items-center">
+                                  <span class="text-slate-500 flex items-center gap-2"><i data-lucide="door-open" class="w-4 h-4 text-amber-600"></i> ย้ายไปห้องพัก</span>
+                                  <strong id="rcModalInfoTarget" class="text-amber-800 bg-amber-50 px-3 py-1 rounded-xl font-bold text-xs sm:text-sm border border-amber-200">...</strong>
+                              </div>
+                          </div>
+
+                          <div class="p-4 sm:p-5 space-y-4">
+                              <div class="flex justify-between items-center">
+                                  <span class="text-slate-500 flex items-center gap-2"><i data-lucide="calendar" class="w-4 h-4 text-slate-400"></i> วันเวลาที่ยื่นคำขอ</span>
+                                  <span id="rcModalInfoCreatedAt" class="font-mono text-slate-800 font-bold">...</span>
+                              </div>
+                          </div>
+                      </div>
+
+                      <!-- Highlighted Preferred Move Date -->
+                      <div class="p-4 sm:p-5 bg-gradient-to-r from-rose-50 via-pink-50/60 to-rose-50 border-t border-rose-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                          <div class="flex items-center gap-2 text-rose-900 font-bold text-xs sm:text-sm">
+                              <div class="w-8 h-8 rounded-xl bg-rose-500 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                                  <i data-lucide="calendar-heart" class="w-4 h-4"></i>
+                              </div>
+                              <div>
+                                  <div class="text-sm font-extrabold">วันที่ประสงค์ขอย้าย (คำขอวันที่ขอย้าย):</div>
+                                  <span class="text-[11px] text-rose-700/80 font-normal">กำหนดการที่ต้องการย้ายเข้าห้องใหม่</span>
+                              </div>
+                          </div>
+                          <strong id="rcModalInfoMoveDate" class="text-rose-700 font-extrabold text-sm sm:text-base font-mono bg-white px-4 py-2.5 rounded-2xl border border-rose-200/90 shadow-2xs text-center">
+                              ...
+                          </strong>
+                      </div>
+
+                      <!-- Reason & Slip -->
+                      <div class="p-4 sm:p-5 border-t border-stone-100 space-y-3.5 text-xs sm:text-sm">
+                          <div>
+                              <span class="text-slate-500 flex items-center gap-2 mb-1.5 font-bold"><i data-lucide="file-text" class="w-4 h-4 text-slate-400"></i> เหตุผลการขอย้าย:</span>
+                              <div id="rcModalInfoReason" class="text-slate-800 font-medium pl-6 leading-relaxed">...</div>
+                          </div>
+
+                          <div id="rcModalSlipWrap" class="p-3.5 bg-emerald-50/80 rounded-2xl border border-emerald-200/80 flex items-center justify-between">
+                              <span class="text-emerald-900 font-bold flex items-center gap-2"><i data-lucide="receipt" class="w-4 h-4 text-emerald-600"></i> ค่าทำความสะอาด (500 บาท):</span>
+                              <button type="button" id="rcModalSlipBtn" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-2xs transition flex items-center gap-1.5 cursor-pointer">
+                                  <i data-lucide="image" class="w-4 h-4"></i> ดูสลิปแนบ
+                              </button>
+                          </div>
+                      </div>
+                  </div>
+
+                  <!-- Admin Remark (if any) -->
+                  <div id="rcModalRemarkWrap" class="hidden p-4 sm:p-5 bg-white rounded-3xl border border-slate-200/90 text-xs sm:text-sm shadow-xs space-y-2">
+                      <div class="text-xs font-bold text-slate-600 flex items-center gap-2">
+                          <i data-lucide="message-square" class="w-4 h-4 text-slate-500"></i> หมายเหตุจากนิติบุคคล:
+                      </div>
+                      <div id="rcModalRemarkText" class="text-slate-800 font-medium pl-6 leading-relaxed"></div>
+                  </div>
+              </div>
+          </div>
+
+          <!-- Modal Footer (Full Width Bottom Bar) -->
+          <div class="px-5 py-3 sm:px-8 sm:py-3.5 bg-white border-t border-slate-200/90 shrink-0 flex items-center justify-between shadow-lg">
+              <span class="text-xs text-slate-500 flex items-center gap-2">
+                  <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span class="font-medium">ระบบกำลังเชื่อมต่อและอัปเดตสถานะอัตโนมัติ</span>
+              </span>
+              <button type="button" onclick="closeRoomChangeModal()" class="px-6 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs sm:text-sm transition cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5">
+                  <i data-lucide="x" class="w-4 h-4"></i> ปิดหน้าต่าง
+              </button>
+          </div>
+      </div>
+
+            </div> <!-- End #content-rc-history -->
+</main>
 
 
 
@@ -1156,69 +1295,71 @@ if ($myRoom) {
     // ⚡ 2. ตรวจสอบสถานะการอนุมัติแบบเรียลไทม์ (Real-time Polling)
 
     <?php if($pendingRequest): ?>
-
+    let knownRcStatus = '<?php echo $pendingRequest['status'] ?? 'Pending'; ?>';
     let pollInterval = setInterval(function() {
-
       fetch('tenant_room_change.php?check_status=1')
-
         .then(res => res.json())
-
         .then(data => {
+          if (!data || !data.status) return;
 
-          if (data.status === 'Approved') {
+          // ถ้าสถานะเปลี่ยน หรือมีข้อมูลใหม่
+          if (data.status !== knownRcStatus) {
+            knownRcStatus = data.status;
 
-            clearInterval(pollInterval);
+            // 1. อัปเดตป้ายสถานะบนการ์ดหน้าหลัก
+            const pageBadge = document.getElementById('pendingRoomChangeCardStatus');
+            if (pageBadge) {
+              if (data.status === 'Approved') {
+                pageBadge.className = 'px-2.5 py-0.5 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-full font-bold text-[11px] shadow-2xs';
+                pageBadge.innerHTML = '✓ อนุมัติแล้ว';
+              } else if (data.status === 'Rejected') {
+                pageBadge.className = 'px-2.5 py-0.5 bg-rose-100 text-rose-900 border border-rose-300 rounded-full font-bold text-[11px] shadow-2xs';
+                pageBadge.innerHTML = '❌ ไม่อนุมัติ';
+              }
+            }
 
-            Swal.fire({
+            // 2. ถ้าเปิด Modal ค้างอยู่ ให้อัปเดตข้อมูลสดๆ ทันที
+            const modal = document.getElementById('roomChangeDetailModal');
+            const isModalOpen = modal && !modal.classList.contains('hidden') && modal.style.display !== 'none';
+            if (isModalOpen && currentModalRcData) {
+              currentModalRcData.status = data.status;
+              if (data.adminRemark) currentModalRcData.adminRemark = data.adminRemark;
+              if (data.preferredMoveDate) currentModalRcData.preferredMoveDate = data.preferredMoveDate;
+              renderRoomChangeModalData(currentModalRcData);
+              if (window.lucide) lucide.createIcons();
+            }
 
-              icon: 'success',
-
-              title: '🎉 คำขอย้ายห้องพักได้รับการอนุมัติแล้ว!',
-
-              html: `<p class="text-sm">แอดมินได้อนุมัติคำขอย้ายห้องพักของคุณเรียบร้อยแล้ว</p>
-
-                     ${data.adminRemark ? `<p class="text-xs text-slate-500 mt-2 bg-rose-50/30 p-2 rounded-lg">💬 ${data.adminRemark}</p>` : ''}`,
-
-              confirmButtonText: 'ตกลง',
-
-              confirmButtonColor: '#2563eb'
-
-            }).then(() => {
-
-              location.reload();
-
-            });
-
-          } else if (data.status === 'Rejected') {
-
-            clearInterval(pollInterval);
-
-            Swal.fire({
-
-              icon: 'error',
-
-              title: '❌ คำขอย้ายห้องพักถูกปฏิเสธ',
-
-              html: `<p class="text-sm">${data.adminRemark || 'แอดมินได้ปฏิเสธคำขอย้ายห้องพัก'}</p>`,
-
-              confirmButtonText: 'ตกลง',
-
-              confirmButtonColor: '#ef4444'
-
-            }).then(() => {
-
-              location.reload();
-
-            });
-
+            // 3. แสดง SweetAlert2 แจ้งเตือนผู้เช่า
+            if (data.status === 'Approved') {
+              clearInterval(pollInterval);
+              Swal.fire({
+                icon: 'success',
+                title: '🎉 คำขอย้ายห้องพักได้รับการอนุมัติแล้ว!',
+                html: `<div class="space-y-2 text-left">
+                         <p class="text-sm text-slate-600">แอดมินได้อนุมัติคำขอย้ายห้องพักของคุณเรียบร้อยแล้ว</p>
+                         ${data.adminRemark ? `<div class="text-xs text-slate-500 bg-slate-50 p-2 rounded-lg">💬 หมายเหตุ: ${data.adminRemark}</div>` : ''}
+                       </div>`,
+                confirmButtonText: 'ตกลง',
+                confirmButtonColor: '#059669'
+              }).then(() => {
+                location.reload();
+              });
+            } else if (data.status === 'Rejected') {
+              clearInterval(pollInterval);
+              Swal.fire({
+                icon: 'error',
+                title: '❌ คำขอย้ายห้องพักถูกปฏิเสธ',
+                html: `<p class="text-sm text-slate-600">${data.adminRemark || 'แอดมินได้ปฏิเสธคำขอย้ายห้องพัก'}</p>`,
+                confirmButtonText: 'ตกลง',
+                confirmButtonColor: '#ef4444'
+              }).then(() => {
+                location.reload();
+              });
+            }
           }
-
         })
-
         .catch(err => console.error('Realtime check error:', err));
-
-    }, 4000);
-
+    }, 3000);
     <?php endif; ?>
 
   
@@ -1241,6 +1382,163 @@ if ($myRoom) {
             if (checkAir) checkAir.classList.add('hidden');
         }
     }
+
+
+    function toggleRoomChangeDetails() {
+        const el = document.getElementById('rcDetailsExpanded');
+        const chevron = document.getElementById('rcChevronIcon');
+        const footerChevron = document.getElementById('rcFooterChevron');
+        const toggleText = document.getElementById('rcToggleText');
+        if (!el) return;
+        if (el.classList.contains('hidden')) {
+            el.classList.remove('hidden');
+            if (chevron) chevron.classList.add('rotate-180');
+            if (footerChevron) footerChevron.classList.add('rotate-180');
+            if (toggleText) toggleText.textContent = 'คลิกเพื่อย่อรายละเอียด';
+        } else {
+            el.classList.add('hidden');
+            if (chevron) chevron.classList.remove('rotate-180');
+            if (footerChevron) footerChevron.classList.remove('rotate-180');
+            if (toggleText) toggleText.textContent = 'คลิกเพื่อดูรายละเอียดเพิ่มเติม';
+        }
+        if (window.lucide) lucide.createIcons();
+    }
+
+    // 🌟 ระบบ Modal รายละเอียดคำขอย้ายห้องพัก & ไทม์ไลน์ขั้นตอน 🌟
+    let currentModalRcData = null;
+
+    function openPendingRoomChangeModal() {
+        openRoomChangeModal({
+            roomNumber: '<?php echo htmlspecialchars($activeLease['roomNumber'] ?? ''); ?>',
+            tenantName: '<?php echo htmlspecialchars($tenantName); ?>',
+            targetDisplay: '<?php echo addslashes($targetTypeLabel); ?>',
+            createdAt: '<?php echo !empty($pendingRequest['created_at']) ? date("d/m/Y H:i", strtotime($pendingRequest['created_at'])) . " น." : "-"; ?>',
+            preferredMoveDate: '<?php echo !empty($pendingRequest['preferredMoveDate']) ? $formatThaiDateRc($pendingRequest['preferredMoveDate']) : "-"; ?>',
+            reason: '<?php echo addslashes($pendingRequest['reason'] ?? ""); ?>',
+            slipUrl: '<?php echo !empty($pendingRequest['cleaningFeeSlip']) ? "uploads/slips/" . htmlspecialchars($pendingRequest['cleaningFeeSlip'], ENT_QUOTES) : ""; ?>',
+            status: '<?php echo $pendingRequest['status'] ?? "Pending"; ?>',
+            adminRemark: '<?php echo addslashes($pendingRequest['adminRemark'] ?? ""); ?>'
+        });
+    }
+
+    function openRoomChangeModal(data) {
+        if (!data) return;
+        currentModalRcData = data;
+        renderRoomChangeModalData(data);
+
+        const modal = document.getElementById('roomChangeDetailModal');
+        if (modal) {
+            modal.classList.remove('hidden');
+            modal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+        if (window.lucide) lucide.createIcons();
+    }
+
+    function renderRoomChangeModalData(data) {
+        if (!data) return;
+        document.getElementById('rcModalRoomNum').innerText = data.roomNumber || '-';
+        document.getElementById('rcModalTenantName').innerText = data.tenantName || '-';
+        document.getElementById('rcModalInfoRoom').innerText = 'ห้อง ' + (data.roomNumber || '-');
+        document.getElementById('rcModalInfoTarget').innerText = data.targetDisplay || '-';
+        document.getElementById('rcModalInfoCreatedAt').innerText = data.createdAt || '-';
+        document.getElementById('rcModalInfoMoveDate').innerText = data.preferredMoveDate || '-';
+        document.getElementById('rcModalInfoReason').innerText = data.reason || '-';
+
+        if (data.slipUrl) {
+            document.getElementById('rcModalSlipWrap').classList.remove('hidden');
+            document.getElementById('rcModalSlipBtn').onclick = function() {
+                openDocModal(data.slipUrl);
+            };
+        } else {
+            document.getElementById('rcModalSlipWrap').classList.add('hidden');
+        }
+
+        const status = data.status || 'Pending';
+        const badge = document.getElementById('rcModalStatusBadge');
+        const indicator = document.getElementById('rcModalStepIndicator');
+        const step1Box = document.getElementById('rcStep1Box');
+        const step2Box = document.getElementById('rcStep2Box');
+        const step3Box = document.getElementById('rcStep3Box');
+        const descText = document.getElementById('rcModalStepDescText');
+
+        if (status === 'Approved') {
+            badge.className = 'px-3 py-1 rounded-full bg-emerald-500 text-white text-xs font-bold shadow-xs';
+            badge.innerHTML = '✓ อนุมัติแล้ว';
+            indicator.innerText = 'ขั้นตอนที่ 3 จาก 3 (เสร็จสมบูรณ์)';
+            indicator.className = 'text-emerald-900 bg-emerald-200/90 px-3 py-1 rounded-full text-xs font-extrabold border border-emerald-300 shadow-2xs';
+
+            step1Box.className = 'p-4 rounded-2xl border flex flex-col items-center justify-center gap-1.5 bg-emerald-50 border-emerald-300 text-emerald-800 transition-all shadow-2xs';
+            step2Box.className = 'p-4 rounded-2xl border flex flex-col items-center justify-center gap-1.5 bg-emerald-50 border-emerald-300 text-emerald-800 transition-all shadow-2xs';
+            step2Box.querySelector('span:first-child').className = 'w-9 h-9 rounded-full bg-emerald-500 text-white flex items-center justify-center text-sm font-bold shadow-xs';
+            step2Box.querySelector('span:first-child').innerHTML = '✓';
+            document.getElementById('rcStep2Time').innerText = 'ตรวจสอบแล้ว';
+            document.getElementById('rcStep2Time').className = 'text-[11px] text-emerald-700/80 font-normal';
+
+            step3Box.className = 'p-4 rounded-2xl border flex flex-col items-center justify-center gap-1.5 bg-emerald-50 border-emerald-400 text-emerald-950 ring-2 ring-emerald-300/70 transition-all shadow-xs';
+            step3Box.querySelector('span:first-child').className = 'w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center text-sm font-bold shadow-xs';
+            step3Box.querySelector('span:first-child').innerHTML = '✓';
+            document.getElementById('rcStep3Time').innerText = 'อนุมัติเรียบร้อย';
+            document.getElementById('rcStep3Time').className = 'text-[11px] text-emerald-800 font-bold';
+
+            if (descText) {
+                descText.innerHTML = '<span class="text-emerald-800 font-bold">🎉 คำขอย้ายห้องพักได้รับการอนุมัติเรียบร้อยแล้ว</span> สัญญาได้รับการปรับเปลี่ยนเป็นห้องใหม่เรียบร้อยแล้ว';
+            }
+        } else if (status === 'Rejected') {
+            badge.className = 'px-3 py-1 rounded-full bg-rose-500 text-white text-xs font-bold shadow-xs';
+            badge.innerHTML = '❌ ไม่อนุมัติ';
+            indicator.innerText = 'คำขอถูกปฏิเสธ';
+            indicator.className = 'text-rose-900 bg-rose-200/90 px-3 py-1 rounded-full text-xs font-extrabold border border-rose-300 shadow-2xs';
+
+            if (descText) {
+                descText.innerHTML = '<span class="text-rose-800 font-bold">❌ คำขอย้ายห้องพักไม่ได้รับการอนุมัติ</span>' + (data.adminRemark ? '<br>เหตุผล: ' + data.adminRemark : '');
+            }
+        } else {
+            // Pending
+            badge.className = 'px-3 py-1 rounded-full bg-white text-amber-900 text-xs font-bold shadow-xs';
+            badge.innerHTML = '⏳ รอแอดมินอนุมัติ';
+            indicator.innerText = 'ขั้นตอนที่ 2 จาก 3 (กำลังดำเนินการ)';
+            indicator.className = 'text-amber-900 bg-amber-200/80 px-3 py-1 rounded-full text-xs font-extrabold border border-amber-300/60 shadow-2xs';
+
+            step1Box.className = 'p-4 rounded-2xl border flex flex-col items-center justify-center gap-1.5 bg-emerald-50 border-emerald-300 text-emerald-800 transition-all shadow-2xs';
+            step2Box.className = 'p-4 rounded-2xl border flex flex-col items-center justify-center gap-1.5 bg-amber-100 border-amber-400 text-amber-950 shadow-xs ring-2 ring-amber-300/60 transition-all';
+            step2Box.querySelector('span:first-child').className = 'w-9 h-9 rounded-full bg-amber-600 text-white flex items-center justify-center text-sm font-bold animate-pulse shadow-xs';
+            step2Box.querySelector('span:first-child').innerHTML = '⏳';
+            document.getElementById('rcStep2Time').innerText = 'กำลังดำเนินการ';
+            document.getElementById('rcStep2Time').className = 'text-[11px] text-amber-800 font-bold';
+
+            step3Box.className = 'p-4 rounded-2xl border flex flex-col items-center justify-center gap-1.5 bg-stone-50 border-stone-200 text-stone-400 transition-all';
+            step3Box.querySelector('span:first-child').className = 'w-9 h-9 rounded-full bg-stone-200 text-stone-500 flex items-center justify-center text-sm font-bold';
+            step3Box.querySelector('span:first-child').innerHTML = '3';
+            document.getElementById('rcStep3Time').innerText = 'รออนุมัติ';
+
+            if (descText) {
+                descText.innerHTML = 'กำลังรอนิติบุคคลและแอดมินตรวจสอบห้องว่างตามคำขอ และจัดเตรียมดำเนินการย้ายในวันที่ <strong>' + (data.preferredMoveDate || '-') + '</strong>';
+            }
+        }
+
+        if (data.adminRemark) {
+            document.getElementById('rcModalRemarkWrap').classList.remove('hidden');
+            document.getElementById('rcModalRemarkText').innerText = data.adminRemark;
+        } else {
+            document.getElementById('rcModalRemarkWrap').classList.add('hidden');
+        }
+    }
+
+    function closeRoomChangeModal() {
+        const modal = document.getElementById('roomChangeDetailModal');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.style.display = 'none';
+            document.body.style.overflow = '';
+        }
+    }
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            closeRoomChangeModal();
+        }
+    });
 
 </script>
 

@@ -642,13 +642,7 @@ if (isset($_POST['submit_request'])) {
 
             </span>
 
-            <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full">
-
-              <i data-lucide="clock" class="w-3.5 h-3.5 text-amber-500"></i>
-
-              <span>บริการรวดเร็วทันใจ</span>
-
-            </span>
+            
 
           </div>
 
@@ -668,17 +662,7 @@ if (isset($_POST['submit_request'])) {
 
 
 
-        <div class="flex flex-wrap items-center gap-3 shrink-0">
-
-          <a href="tenant_request_history.php" class="px-4 py-2.5 bg-white hover:bg-stone-50 text-slate-700 rounded-2xl text-xs sm:text-sm font-bold transition flex items-center gap-2 cursor-pointer border border-stone-200 shadow-2xs active:scale-95">
-
-            <i data-lucide="history" class="w-4 h-4 text-slate-500"></i>
-
-            <span>ประวัติการแจ้งซ่อม</span>
-
-          </a>
-
-        </div>
+        
 
       </div>
 
@@ -1020,10 +1004,63 @@ if (isset($_POST['submit_request'])) {
                     </div>
 
                 </div>
+            <!-- 2. รายละเอียดปัญหา -->
+            <div>
+                <label class="block text-sm font-bold text-slate-700 mb-1.5">
+                    รายละเอียดปัญหา <span class="text-rose-500">*</span>
+                </label>
+                <textarea name="description" required rows="3" placeholder="อธิบายปัญหาที่พบ เช่น หลอดไฟห้องน้ำขาด, ก๊อกอ่างล้างหน้าน้ำหยดตลอดเวลา เพื่อให้นิติบุคคลเตรียมอุปกรณ์ได้ถูกต้อง..." class="w-full px-4 py-3 text-sm bg-white text-slate-800 placeholder-slate-400 border border-stone-200 focus:border-rose-500 focus:ring-2 focus:ring-rose-200/50 rounded-xl outline-none transition leading-relaxed shadow-2xs"></textarea>
+            </div>
 
+            <!-- 3. รูปถ่ายหน้างาน -->
+            <div>
+                <label class="block text-sm font-bold text-slate-700 mb-1.5">
+                    รูปถ่ายปัญหาหน้างาน <span class="text-slate-400 font-normal text-xs">(ถ้ามี จะช่วยให้นิติวินิจฉัยและเตรียมอะไหล่ได้เร็วขึ้น)</span>
+                </label>
+                <input type="file" name="request_image" accept="image/*" class="w-full text-sm text-slate-600 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-stone-100 file:text-slate-700 hover:file:bg-stone-200 bg-white border border-stone-200 rounded-xl transition cursor-pointer shadow-2xs">
+            </div>
 
+            <!-- ======================================================== -->
+            <!-- 🌟 5. วันและช่วงเวลาที่สะดวก 🌟 -->
+            <!-- ======================================================== -->
+            <div class="pt-4 border-t border-rose-100/60 space-y-4">
+                <div class="flex items-center justify-between">
+                    <label class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                        <i data-lucide="calendar" class="w-4 h-4 text-rose-600"></i>
+                        <span>ระบุวันและช่วงเวลาที่สะดวกให้ช่างเข้าทำงาน</span>
+                        <span class="text-rose-500">*</span>
+                    </label>
+                    <span class="text-[11px] text-rose-700 bg-rose-50 px-2.5 py-0.5 rounded-full font-bold border border-rose-200 flex items-center gap-1 shadow-2xs">
+                        <span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+                        จำเป็นต้องเลือก
+                    </span>
+                </div>
 
-                
+                <!-- 5.1 วันที่สะดวก -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">
+                        วันที่สะดวกเข้าห้อง <span class="text-rose-500 font-bold">* (จำเป็นต้องเลือก)</span>
+                    </label>
+                    <input type="date" name="preferredDate" id="preferredDateInput" required value="<?php echo (date('H:i') >= '16:00') ? date('Y-m-d', strtotime('+1 day')) : date('Y-m-d'); ?>" min="<?php echo (date('H:i') >= '16:00') ? date('Y-m-d', strtotime('+1 day')) : date('Y-m-d'); ?>" onchange="handleDateChange()" class="w-full px-4 py-2.5 text-sm bg-white text-slate-800 border border-stone-200 rounded-xl outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-200/50 transition cursor-pointer shadow-2xs">
+                    <p class="text-[11px] text-slate-400 mt-1">โปรดระบุวันที่ที่ท่านสะดวกให้ช่างหรือแม่บ้านเข้าดำเนินการ</p>
+                </div>
+
+                <!-- 5.2 ช่วงเวลา (เช้า vs บ่าย-เย็น) -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-2">เลือกช่วงเวลาที่สะดวก (เช้า - บ่าย/เย็น) <span class="text-rose-500 font-bold">* (จำเป็นต้องเลือก)</span></label>
+                    <div class="grid grid-cols-2 gap-3">
+                        
+                        <!-- ช่วงเช้า -->
+                        <label class="cursor-pointer">
+                            <input type="radio" name="preferred_period" value="morning" checked onchange="updateTimeSlots()" class="peer sr-only">
+                            <div class="p-3.5 rounded-2xl border-2 border-rose-100/80 bg-white peer-checked:border-blue-600 peer-checked:bg-rose-50/50 hover:bg-rose-50/30 transition flex items-center gap-3 shadow-2xs">
+                                <div class="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                                    <i data-lucide="sun" class="w-5 h-5"></i>
+                                </div>
+                                <div>
+                                    <div class="text-sm font-bold text-slate-800">☀️ ช่วงเช้า</div>
+                                </div>
+                            </div>
                         </label>
 
                         <!-- ช่วงบ่าย - เย็น -->
@@ -1350,6 +1387,11 @@ if (isset($_POST['submit_request'])) {
 
 
     
+    
+    function handleDateChange() {
+        updateTimeSlots();
+        updateSummaryPreview();
+    }
     function updateTimeSlots() {
         const startInput = document.getElementById("preferredStartTime");
         const endInput = document.getElementById("preferredEndTime");
@@ -1362,7 +1404,7 @@ if (isset($_POST['submit_request'])) {
         const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
         const currentTimeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
         const selectedDate = dateInputEl ? dateInputEl.value : "";
-        const isToday = (!selectedDate || selectedDate === todayStr);
+        const isToday = (selectedDate === todayStr);
 
         // ตรวจสอบช่วงเช้า (ถ้าเป็นวันนี้และเวลา >= 12:00 ช่วงเช้าจะถูกปิดและสลับไปบ่ายโดยอัตโนมัติ)
         const morningRadio = document.querySelector('input[name="preferred_period"][value="morning"]');

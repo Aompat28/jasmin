@@ -45,6 +45,11 @@ try {
     try { $conn->exec("ALTER TABLE `Invoices` ADD COLUMN `otherFeeNote` TEXT DEFAULT NULL"); } catch(PDOException $e) {}
     try { $conn->exec("ALTER TABLE `invoices` ADD COLUMN `otherFeeNote` TEXT DEFAULT NULL"); } catch(PDOException $e) {}
 
+    try { $conn->exec("ALTER TABLE `LeaseRenewals` ADD COLUMN `leaseImage` VARCHAR(255) DEFAULT NULL"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `leaserenewals` ADD COLUMN `leaseImage` VARCHAR(255) DEFAULT NULL"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `LeaseRenewals` ADD COLUMN `oldLeaseImage` VARCHAR(255) DEFAULT NULL"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `leaserenewals` ADD COLUMN `oldLeaseImage` VARCHAR(255) DEFAULT NULL"); } catch(PDOException $e) {}
+
     try {
         $conn->exec("CREATE TABLE IF NOT EXISTS `parking_requests` (
             `id` INT(11) NOT NULL AUTO_INCREMENT,
