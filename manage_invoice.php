@@ -12,117 +12,15 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Admin') {
 $adminName = $_SESSION['full_name'] ?? 'ผู้ดูแลระบบ';
 $initials = strtoupper(mb_substr($adminName, 0, 2, 'UTF-8'));
 $message = "";
+
+try {
+    $conn->exec("ALTER TABLE Invoices ADD COLUMN slipRejectReason TEXT NULL");
+} catch(Throwable $e) {}
 $step = 1; // ค่าเริ่มต้นคือขั้นตอนกรอกข้อมูล
 $previewData = [];
 
 // กำหนดแท็บเริ่มต้น (create หรือ list)
 $activeTab = $_GET['tab'] ?? 'list';
-
-/**
- * คำนวณรอบบิลที่ถูกต้องตามลำดับสัญญาเช่า (ป้องกันการออกบิลข้ามเดือน หรือออกบิลย้อนหลัง)
- */
-function getExpectedBillingMonthForRoom($conn, $roomId, $tenantId, $leaseStartDate) {
-    $thaiMonths = [
-        1 => 'มกราคม', 2 => 'กุมภาพันธ์', 3 => 'มีนาคม', 4 => 'เมษายน',
-        5 => 'พฤษภาคม', 6 => 'มิถุนายน', 7 => 'กรกฎาคม', 8 => 'สิงหาคม',
-        9 => 'กันยายน', 10 => 'ตุลาคม', 11 => 'พฤศจิกายน', 12 => 'ธันวาคม'
-    ];
-    $thaiMonthsMap = [
-        'มกราคม' => 1, 'กุมภาพันธ์' => 2, 'มีนาคม' => 3, 'เมษายน' => 4,
-        'พฤษภาคม' => 5, 'มิถุนายน' => 6, 'กรกฎาคม' => 7, 'สิงหาคม' => 8,
-        'กันยายน' => 9, 'ตุลาคม' => 10, 'พฤศจิกายน' => 11, 'ธันวาคม' => 12
-    ];
-
-    $stmt = $conn->prepare("
-        SELECT billingMonth, status, invoiceId 
-        FROM Invoices 
-        WHERE roomId = ? AND tenantId = ? 
-        ORDER BY invoiceId DESC 
-        LIMIT 1
-    ");
-    $stmt->execute([$roomId, $tenantId]);
-    $lastInv = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if ($lastInv && !empty($lastInv['billingMonth'])) {
-        $lastMonthStr = trim($lastInv['billingMonth']);
-        $year = null;
-        $month = null;
-
-        foreach ($thaiMonthsMap as $mName => $mNum) {
-            if (mb_strpos($lastMonthStr, $mName) !== false) {
-                $month = $mNum;
-                break;
-            }
-        }
-
-        if (preg_match('/\b(20\d\d|25\d\d)\b/', $lastMonthStr, $mYear)) {
-            $y = intval($mYear[1]);
-            if ($y > 2400) $y -= 543;
-            $year = $y;
-        }
-
-        if (preg_match('/^(\d{4})-(\d{2})$/', $lastMonthStr, $mYm)) {
-            $year = intval($mYm[1]);
-            $month = intval($mYm[2]);
-        }
-
-        if ($year && $month) {
-            $nextMonth = $month + 1;
-            $nextYear = $year;
-            if ($nextMonth > 12) {
-                $nextMonth = 1;
-                $nextYear += 1;
-            }
-            $nextYm = sprintf('%04d-%02d', $nextYear, $nextMonth);
-            $nextThai = $thaiMonths[$nextMonth] . ' ' . $nextYear;
-
-            $currentYm = sprintf('%04d-%02d', $year, $month);
-            $currentThai = $thaiMonths[$month] . ' ' . $year;
-
-            return [
-                'expectedYm' => $nextYm,
-                'expectedThai' => $nextThai,
-                'prevThai' => $lastMonthStr,
-                'isFirst' => false,
-                'lastStatus' => $lastInv['status'],
-                'currentUnpaidYm' => ($lastInv['status'] !== 'Paid') ? $currentYm : null,
-                'currentUnpaidThai' => ($lastInv['status'] !== 'Paid') ? $currentThai : null
-            ];
-        }
-    }
-
-    // กรณีบิลแรกของสัญญาเช่า (ยังไม่เคยมีบิลมาก่อนเลย)
-    if (!empty($leaseStartDate)) {
-        $ts = strtotime($leaseStartDate);
-        if ($ts) {
-            $year = intval(date('Y', $ts));
-            $month = intval(date('n', $ts));
-            $ym = sprintf('%04d-%02d', $year, $month);
-            $thai = $thaiMonths[$month] . ' ' . $year;
-            return [
-                'expectedYm' => $ym,
-                'expectedThai' => $thai,
-                'prevThai' => null,
-                'isFirst' => true,
-                'lastStatus' => null,
-                'currentUnpaidYm' => null,
-                'currentUnpaidThai' => null
-            ];
-        }
-    }
-
-    $curY = intval(date('Y'));
-    $curM = intval(date('n'));
-    return [
-        'expectedYm' => date('Y-m'),
-        'expectedThai' => $thaiMonths[$curM] . ' ' . $curY,
-        'prevThai' => null,
-        'isFirst' => true,
-        'lastStatus' => null,
-        'currentUnpaidYm' => null,
-        'currentUnpaidThai' => null
-    ];
-}
 
 // ขั้นตอนที่ 1: เมื่อแอดมินกดคำนวณเพื่อพรีวิวดูความถูกต้องก่อน
 if (isset($_POST['preview_invoice'])) {
@@ -131,74 +29,45 @@ if (isset($_POST['preview_invoice'])) {
     
     // แปลงวันที่จาก Calendar (YYYY-MM) เป็นภาษาไทย
     $rawMonth = trim($_POST['billingMonth']);
-    $thaiMonths = [
-        '01' => 'มกราคม', '02' => 'กุมภาพันธ์', '03' => 'มีนาคม', '04' => 'เมษายน',
-        '05' => 'พฤษภาคม', '06' => 'มิถุนายน', '07' => 'กรกฎาคม', '08' => 'สิงหาคม',
-        '09' => 'กันยายน', '10' => 'ตุลาคม', '11' => 'พฤศจิกายน', '12' => 'ธันวาคม'
-    ];
-    if (preg_match('/^(\d{4})-(\d{2})$/', $rawMonth, $matches)) {
-        $billingMonth = $thaiMonths[$matches[2]] . ' ' . $matches[1];
+    $maxAllowedMonth = date('Y-m');
+
+    // ตรวจสอบล็อกไม่ให้กรอกหรือเลือกรอบบิลล่วงหน้า (เลือกได้เฉพาะรอบเดือนปัจจุบันหรือย้อนหลัง) ยกเว้นมี presetReqId
+    if ($rawMonth > $maxAllowedMonth && empty($_POST['presetReqId'])) {
+        $message = "<div class='alert-box p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'>❌ ไม่สามารถออกบิลล่วงหน้าได้ (เลือกได้สูงสุดไม่เกินรอบเดือนปัจจุบัน {$maxAllowedMonth} หรือเลือกรอบย้อนหลัง)</div>";
+        $step = 1;
     } else {
-        $billingMonth = $rawMonth; // กรณีพิมพ์เอง
-    }
-
-    $waterPrev = min(9999, max(0, intval($_POST['waterPrev'])));
-    $waterCurr = min(9999, max(0, intval($_POST['waterCurr'])));
-    $waterRate = 18.00; // ล็อกไว้ 18.00 บาท/หน่วย ห้ามเปลี่ยนแปลงตามคำสั่ง
-    $electricPrev = min(9999, max(0, intval($_POST['electricPrev'])));
-    $electricCurr = min(9999, max(0, intval($_POST['electricCurr'])));
-    $electricRate = 8.00; // ล็อกไว้ 8.00 บาท/หน่วย ห้ามเปลี่ยนแปลงตามคำสั่ง
-    $otherFee = floatval($_POST['otherFee']);
-
-    // ดึงข้อมูลห้องและผู้เช่า
-    $stmtLease = $conn->prepare("
-        SELECT l.tenantId, l.startDate AS leaseStartDate, r.roomNumber, r.rentPrice, u.fullName 
-        FROM Lease l 
-        JOIN Room r ON l.roomId = r.roomId 
-        JOIN User u ON l.tenantId = u.userId
-        WHERE l.roomId = ? AND l.status = 'Active' 
-        LIMIT 1
-    ");
-    $stmtLease->execute([$roomId]);
-    $lease = $stmtLease->fetch(PDO::FETCH_ASSOC);
-
-    if ($lease) {
-        // ตรวจสอบความถูกต้องของรอบบิลตามลำดับสัญญา (ห้ามออกข้ามเดือน / ห้ามออกย้อนหลัง)
-        $monthRule = getExpectedBillingMonthForRoom($conn, $roomId, $lease['tenantId'], $lease['leaseStartDate'] ?? null);
-
-        $submittedYm = '';
-        if (preg_match('/^(\d{4})-(\d{2})$/', $rawMonth, $mMatch)) {
-            $submittedYm = $rawMonth;
+        if (preg_match('/^(\d{4})-(\d{2})$/', $rawMonth, $matches)) {
+            $thaiMonths = [
+                '01' => 'มกราคม', '02' => 'กุมภาพันธ์', '03' => 'มีนาคม', '04' => 'เมษายน',
+                '05' => 'พฤษภาคม', '06' => 'มิถุนายน', '07' => 'กรกฎาคม', '08' => 'สิงหาคม',
+                '09' => 'กันยายน', '10' => 'ตุลาคม', '11' => 'พฤศจิกายน', '12' => 'ธันวาคม'
+            ];
+            $billingMonth = $thaiMonths[$matches[2]] . ' ' . $matches[1];
         } else {
-            foreach ($thaiMonths as $num => $name) {
-                if (mb_strpos($rawMonth, $name) !== false) {
-                    if (preg_match('/\b(20\d\d|25\d\d)\b/', $rawMonth, $yMatch)) {
-                        $y = intval($yMatch[1]);
-                        if ($y > 2400) $y -= 543;
-                        $submittedYm = sprintf('%04d-%02d', $y, intval($num));
-                        break;
-                    }
-                }
-            }
+            $billingMonth = $rawMonth; // กรณีพิมพ์เอง
         }
 
-        $isAllowed = false;
-        $isRetroactive = false;
-        if (!empty($submittedYm)) {
-            // อนุญาตให้ออกบิลย้อนหลังได้ตามคำขอผู้เช่า ($submittedYm <= expectedYm)
-            if ($submittedYm <= $monthRule['expectedYm']) {
-                $isAllowed = true;
-                $isRetroactive = ($submittedYm < $monthRule['expectedYm']);
-            } elseif (!empty($monthRule['currentUnpaidYm']) && $submittedYm === $monthRule['currentUnpaidYm']) {
-                // อนุญาตให้อัปเดตบิลของรอบปัจจุบันที่ยังไม่ได้ชำระเงิน
-                $isAllowed = true;
-            }
-        }
+        $waterPrev = min(9999, max(0, intval($_POST['waterPrev'])));
+        $waterCurr = min(9999, max(0, intval($_POST['waterCurr'])));
+        $waterRate = 18.00; // ล็อกไว้ 18.00 บาท/หน่วย ห้ามเปลี่ยนแปลงตามคำสั่ง
+        $electricPrev = min(9999, max(0, intval($_POST['electricPrev'])));
+        $electricCurr = min(9999, max(0, intval($_POST['electricCurr'])));
+        $electricRate = 8.00; // ล็อกไว้ 8.00 บาท/หน่วย ห้ามเปลี่ยนแปลงตามคำสั่ง
+        $otherFee = floatval($_POST['otherFee']);
 
-        if (!$isAllowed) {
-            $message = "<div class='alert-box p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-800 rounded-2xl shadow-xs text-sm font-bold flex items-center gap-2 mb-6'><i data-lucide='alert-triangle' class='w-5 h-5 text-rose-600 shrink-0'></i> ❌ ไม่สามารถออกบิลข้ามเดือนล่วงหน้าได้! (คุณระบุเดือน <b>{$billingMonth}</b> แต่รอบบิลปัจจุบันของห้องนี้คือเดือน <b>{$monthRule['expectedThai']}</b> กรุณาออกบิลตามลำดับ ไม่สามารถข้ามเดือนไปในอนาคตได้)</div>";
-            $step = 1;
-        } else {
+        // ดึงข้อมูลห้องและผู้เช่า
+        $stmtLease = $conn->prepare("
+            SELECT l.tenantId, r.roomNumber, r.rentPrice, u.fullName 
+            FROM Lease l 
+            JOIN Room r ON l.roomId = r.roomId 
+            JOIN User u ON l.tenantId = u.userId
+            WHERE l.roomId = ? AND l.status = 'Active' 
+            LIMIT 1
+        ");
+        $stmtLease->execute([$roomId]);
+        $lease = $stmtLease->fetch(PDO::FETCH_ASSOC);
+
+        if ($lease) {
             $waterUnits = max(0, $waterCurr - $waterPrev);
             $waterTotal = $waterUnits * $waterRate;
 
@@ -214,7 +83,8 @@ if (isset($_POST['preview_invoice'])) {
                 'tenantId' => $lease['tenantId'],
                 'tenantName' => $lease['fullName'],
                 'billingMonth' => $billingMonth,
-                'isRetroactive' => $isRetroactive ? 1 : 0,
+                'rawMonth' => $rawMonth,
+                'presetReqId' => trim($_POST['presetReqId'] ?? ''),
                 'rentPrice' => $lease['rentPrice'],
                 'waterPrev' => $waterPrev,
                 'waterCurr' => $waterCurr,
@@ -231,9 +101,9 @@ if (isset($_POST['preview_invoice'])) {
                 'totalAmount' => $totalAmount
             ];
             $step = 2; // สลับไปหน้าพรีวิว
+        } else {
+            $message = "<div class='alert-box p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'>❌ ห้องนี้ยังไม่มีสัญญาเช่าที่เปิดใช้งานอยู่ ไม่สามารถออกบิลได้</div>";
         }
-    } else {
-        $message = "<div class='alert-box p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'>❌ ห้องนี้ยังไม่มีสัญญาเช่าที่เปิดใช้งานอยู่ ไม่สามารถออกบิลได้</div>";
     }
 }
 
@@ -243,63 +113,31 @@ if (isset($_POST['confirm_invoice'])) {
     $roomId = $_POST['roomId'];
     $tenantId = $_POST['tenantId'];
     $billingMonth = $_POST['billingMonth'];
-    $rentPrice = floatval($_POST['rentPrice']);
-    $waterPrev = min(9999, max(0, intval($_POST['waterPrev'])));
-    $waterCurr = min(9999, max(0, intval($_POST['waterCurr'])));
-    $waterRate = 18.00;
-    $electricPrev = min(9999, max(0, intval($_POST['electricPrev'])));
-    $electricCurr = min(9999, max(0, intval($_POST['electricCurr'])));
-    $electricRate = 8.00;
-    $otherFee = floatval($_POST['otherFee']);
-    $otherFeeNote = trim($_POST['otherFeeNote'] ?? '');
-    $totalAmount = floatval($_POST['totalAmount']);
+    $rawMonth = trim($_POST['rawMonth'] ?? '');
+    $presetReqId = intval($_POST['presetReqId'] ?? 0);
+    $maxAllowedYear = (int)date('Y');
+    $maxAllowedM = (int)date('n') + 1;
+    if ($maxAllowedM > 12) {
+        $maxAllowedM = 1;
+        $maxAllowedYear++;
+    }
+    $maxAllowedMonth = sprintf('%04d-%02d', $maxAllowedYear, $maxAllowedM);
 
-    try {
-        // ตรวจสอบความถูกต้องของรอบบิลตามลำดับสัญญาเช่าอีกครั้งก่อนบันทึกจริง (ห้ามออกข้ามเดือน / ห้ามออกย้อนหลัง)
-        $stmtChkLease = $conn->prepare("SELECT startDate FROM Lease WHERE roomId = ? AND tenantId = ? AND status = 'Active' LIMIT 1");
-        $stmtChkLease->execute([$roomId, $tenantId]);
-        $leaseStart = $stmtChkLease->fetchColumn() ?: null;
+    if (!empty($rawMonth) && $rawMonth > $maxAllowedMonth) {
+        $message = "<div class='alert-box p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'>❌ สามารถเลือกรอบบิลได้สูงสุดไม่เกินเดือนถัดไป 1 เดือน ({$maxAllowedMonth}) เท่านั้น</div>";
+    } else {
+        $rentPrice = floatval($_POST['rentPrice']);
+        $waterPrev = min(9999, max(0, intval($_POST['waterPrev'])));
+        $waterCurr = min(9999, max(0, intval($_POST['waterCurr'])));
+        $waterRate = 18.00;
+        $electricPrev = min(9999, max(0, intval($_POST['electricPrev'])));
+        $electricCurr = min(9999, max(0, intval($_POST['electricCurr'])));
+        $electricRate = 8.00;
+        $otherFee = floatval($_POST['otherFee']);
+        $otherFeeNote = trim($_POST['otherFeeNote'] ?? '');
+        $totalAmount = floatval($_POST['totalAmount']);
 
-        $monthRule = getExpectedBillingMonthForRoom($conn, $roomId, $tenantId, $leaseStart);
-
-        $submittedYm = '';
-        if (preg_match('/^(\d{4})-(\d{2})$/', $billingMonth, $mMatch)) {
-            $submittedYm = $billingMonth;
-        } else {
-            $thaiMonthsMap = [
-                'มกราคม' => '01', 'กุมภาพันธ์' => '02', 'มีนาคม' => '03', 'เมษายน' => '04',
-                'พฤษภาคม' => '05', 'มิถุนายน' => '06', 'กรกฎาคม' => '07', 'สิงหาคม' => '08',
-                'กันยายน' => '09', 'ตุลาคม' => '10', 'พฤศจิกายน' => '11', 'ธันวาคม' => '12'
-            ];
-            foreach ($thaiMonthsMap as $name => $num) {
-                if (mb_strpos($billingMonth, $name) !== false) {
-                    if (preg_match('/\b(20\d\d|25\d\d)\b/', $billingMonth, $yMatch)) {
-                        $y = intval($yMatch[1]);
-                        if ($y > 2400) $y -= 543;
-                        $submittedYm = sprintf('%04d-%02d', $y, intval($num));
-                        break;
-                    }
-                }
-            }
-        }
-
-        $isAllowed = false;
-        $isRetroactive = false;
-        if (!empty($submittedYm)) {
-            // อนุญาตให้ออกบิลย้อนหลังได้ตามคำขอผู้เช่า ($submittedYm <= expectedYm)
-            if ($submittedYm <= $monthRule['expectedYm']) {
-                $isAllowed = true;
-                $isRetroactive = ($submittedYm < $monthRule['expectedYm']);
-            } elseif (!empty($monthRule['currentUnpaidYm']) && $submittedYm === $monthRule['currentUnpaidYm']) {
-                $isAllowed = true;
-            }
-        }
-
-        if (!$isAllowed) {
-            $message = "<div class='alert-box p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-800 rounded-2xl shadow-xs text-sm font-bold flex items-center gap-2 mb-6'><i data-lucide='alert-triangle' class='w-5 h-5 text-rose-600 shrink-0'></i> ❌ ไม่สามารถบันทึกบิลได้เนื่องจากรอบบิลข้ามเดือนไปในอนาคต (รอบบิลสูงสุดที่อนุญาตคือเดือน <b>{$monthRule['expectedThai']}</b> กรุณาออกบิลตามลำดับ ไม่สามารถข้ามเดือนได้)</div>";
-            $activeTab = 'create';
-            $step = 1;
-        } else {
+        try {
             // ตรวจสอบว่าเคยออกบิลรอบเดือนนี้สำหรับห้องนี้แล้วหรือไม่
             $stmtCheck = $conn->prepare("SELECT invoiceId, status FROM Invoices WHERE roomId = ? AND billingMonth = ? ORDER BY invoiceId DESC LIMIT 1");
             $stmtCheck->execute([$roomId, $billingMonth]);
@@ -314,11 +152,16 @@ if (isset($_POST['confirm_invoice'])) {
             } else {
                 $stmt = $conn->prepare("INSERT INTO Invoices (roomId, tenantId, billingMonth, rentPrice, waterPrev, waterCurr, waterUnitRate, electricPrev, electricCurr, electricUnitRate, otherFee, otherFeeNote, totalAmount, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Unpaid')");
                 $stmt->execute([$roomId, $tenantId, $billingMonth, $rentPrice, $waterPrev, $waterCurr, $waterRate, $electricPrev, $electricCurr, $electricRate, $otherFee, $otherFeeNote, $totalAmount]);
-                $retroTag = $isRetroactive ? " (ออกบิลย้อนหลังตามคำขอ)" : "";
-                $message = "<div class='alert-box p-4 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600'></i> ออกใบแจ้งหนี้ประจำเดือน {$billingMonth}{$retroTag} ส่งให้ผู้เช่าสำเร็จเรียบร้อยแล้ว!</div>";
+                $message = "<div class='alert-box p-4 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600'></i> ออกใบแจ้งหนี้ประจำเดือน {$billingMonth} ส่งให้ผู้เช่าสำเร็จเรียบร้อยแล้ว!</div>";
             }
             $step = 1; // กลับสู่หน้าปกติ
-        }
+
+            // หากมาจากการออกบิลตามคำขอย้อนหลัง ให้อัปเดตสถานะคำขอเป็น Approved/เรียบร้อย
+            if ($presetReqId > 0) {
+                try {
+                    $conn->prepare("UPDATE RetroactiveInvoiceRequests SET status = 'Approved', adminRemark = 'ออกบิลเรียบร้อยแล้ว', updatedAt = NOW() WHERE requestId = ?")->execute([$presetReqId]);
+                } catch(PDOException $e) {}
+            }
 
         // แจ้งลูกบ้านว่ามีบิลใหม่
         $stmtTenant = $conn->prepare("
@@ -349,6 +192,7 @@ if (isset($_POST['confirm_invoice'])) {
     } catch(PDOException $e) {
         $message = "<div class='alert-box p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'>❌ เกิดข้อผิดพลาด: " . $e->getMessage() . "</div>";
     }
+    }
 }
 
 // 3. เมื่อแอดมินกดอนุมัติหรือเปลี่ยนสถานะสลิปชำระเงิน
@@ -357,55 +201,14 @@ if (isset($_POST['update_payment_status'])) {
     $invoiceId = $_POST['invoiceId'];
     $newStatus = $_POST['update_payment_status']; 
 
-    if ($newStatus === 'Paid') {
-        // ตรวจสอบว่าลูกบ้านแนบรูปสลิปแล้วหรือไม่ ก่อนจะอนุมัติได้
-        $stmtChkSlip = $conn->prepare("SELECT slipImage FROM Invoices WHERE invoiceId = ?");
-        $stmtChkSlip->execute([$invoiceId]);
-        $currSlip = $stmtChkSlip->fetchColumn();
+    $stmtStatus = $conn->prepare("UPDATE Invoices SET status = ? WHERE invoiceId = ?");
+    $stmtStatus->execute([$newStatus, $invoiceId]);
+    
+    $statusText = ($newStatus === 'Paid') ? 'อนุมัติการชำระเงินเรียบร้อยแล้ว' : 'เปลี่ยนสถานะกลับเป็นรอชำระเงินเรียบร้อยแล้ว';
+    $message = "<div class='alert-box p-4 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600'></i> {$statusText}</div>";
 
-        if (empty($currSlip)) {
-            $message = "<div class='alert-box p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-800 rounded-2xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='alert-circle' class='w-5 h-5 text-rose-600'></i> ❌ ไม่สามารถอนุมัติได้เนื่องจากลูกบ้านยังไม่ได้แนบรูปสลิปโอนเงิน กรุณารอลูกบ้านแนบรูปสลิปก่อน</div>";
-        } else {
-            $stmtStatus = $conn->prepare("UPDATE Invoices SET status = 'Paid' WHERE invoiceId = ?");
-            $stmtStatus->execute([$invoiceId]);
-            
-            $message = "<div class='alert-box p-4 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600'></i> อนุมัติการชำระเงินเรียบร้อยแล้ว</div>";
-
-            // แจ้งผลอนุมัติสลิปผ่านทางอีเมล
-            $stmtInv = $conn->prepare("
-                SELECT i.billingMonth, i.totalAmount, u.fullName, u.email, r.roomNumber
-                FROM Invoices i
-                JOIN User u ON i.tenantId = u.userId
-                LEFT JOIN Room r ON i.roomId = r.roomId
-                WHERE i.invoiceId = ?
-                LIMIT 1
-            ");
-            $stmtInv->execute([$invoiceId]);
-            $invInfo = $stmtInv->fetch(PDO::FETCH_ASSOC);
-            if ($invInfo && !empty($invInfo['email'])) {
-                $safeName = htmlspecialchars($invInfo['fullName'] ?? '', ENT_QUOTES, 'UTF-8');
-                $safeMonth = htmlspecialchars($invInfo['billingMonth'] ?? '', ENT_QUOTES, 'UTF-8');
-                $safeRoom = htmlspecialchars($invInfo['roomNumber'] ?? '', ENT_QUOTES, 'UTF-8');
-                $safeTotal = number_format((float)($invInfo['totalAmount'] ?? 0), 2);
-                sendMail(
-                    $invInfo['email'],
-                    "[หอพักจัสมิน] ยืนยันการชำระเงินบิล {$invInfo['billingMonth']} เรียบร้อยแล้ว",
-                    "<h2>สวัสดีคุณ {$safeName}</h2>
-                    <p>นิติบุคคลได้อนุมัติสลิปชำระเงินของท่านแล้ว</p>
-                    <p><b>ห้อง:</b> {$safeRoom}<br>
-                    <b>งวด:</b> {$safeMonth}<br>
-                    <b>ยอด:</b> {$safeTotal} บาท<br>
-                    <b>สถานะ:</b> ชำระแล้ว</p>"
-                );
-            }
-        }
-    } else {
-        $stmtStatus = $conn->prepare("UPDATE Invoices SET status = 'Unpaid' WHERE invoiceId = ?");
-        $stmtStatus->execute([$invoiceId]);
-        
-        $message = "<div class='alert-box p-4 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600'></i> เปลี่ยนสถานะกลับเป็นรอชำระเงินเรียบร้อยแล้ว</div>";
-
-        // แจ้งผลยกเลิกสถานะสลิปผ่านทางอีเมล
+    // แจ้งผลอนุมัติ / ปฏิเสธสลิปผ่านทางอีเมล
+    if (in_array($newStatus, ['Paid', 'Unpaid'], true)) {
         $stmtInv = $conn->prepare("
             SELECT i.billingMonth, i.totalAmount, u.fullName, u.email, r.roomNumber
             FROM Invoices i
@@ -421,19 +224,137 @@ if (isset($_POST['update_payment_status'])) {
             $safeMonth = htmlspecialchars($invInfo['billingMonth'] ?? '', ENT_QUOTES, 'UTF-8');
             $safeRoom = htmlspecialchars($invInfo['roomNumber'] ?? '', ENT_QUOTES, 'UTF-8');
             $safeTotal = number_format((float)($invInfo['totalAmount'] ?? 0), 2);
-            sendMail(
-                $invInfo['email'],
-                "[หอพักจัสมิน] สลิปชำระเงินบิล {$invInfo['billingMonth']} ยังไม่ผ่านการอนุมัติ",
-                "<h2>สวัสดีคุณ {$safeName}</h2>
-                <p>สลิปชำระเงินของท่านยังไม่ผ่านการอนุมัติ หรือสถานะถูกตั้งกลับเป็นยังไม่ชำระ</p>
-                <p><b>ห้อง:</b> {$safeRoom}<br>
-                <b>งวด:</b> {$safeMonth}<br>
-                <b>ยอด:</b> {$safeTotal} บาท</p>
-                <p>กรุณาเข้าสู่ระบบเพื่อตรวจสอบและอัปโหลดสลิปใหม่หากจำเป็น</p>"
-            );
+            if ($newStatus === 'Paid') {
+                sendMail(
+                    $invInfo['email'],
+                    "[หอพักจัสมิน] ยืนยันการชำระเงินบิล {$invInfo['billingMonth']} เรียบร้อยแล้ว",
+                    "<h2>สวัสดีคุณ {$safeName}</h2>
+                    <p>นิติบุคคลได้อนุมัติสลิปชำระเงินของท่านแล้ว</p>
+                    <p><b>ห้อง:</b> {$safeRoom}<br>
+                    <b>งวด:</b> {$safeMonth}<br>
+                    <b>ยอด:</b> {$safeTotal} บาท<br>
+                    <b>สถานะ:</b> ชำระแล้ว</p>"
+                );
+            } else {
+                sendMail(
+                    $invInfo['email'],
+                    "[หอพักจัสมิน] สลิปชำระเงินบิล {$invInfo['billingMonth']} ยังไม่ผ่านการอนุมัติ",
+                    "<h2>สวัสดีคุณ {$safeName}</h2>
+                    <p>สลิปชำระเงินของท่านยังไม่ผ่านการอนุมัติ หรือสถานะถูกตั้งกลับเป็นยังไม่ชำระ</p>
+                    <p><b>ห้อง:</b> {$safeRoom}<br>
+                    <b>งวด:</b> {$safeMonth}<br>
+                    <b>ยอด:</b> {$safeTotal} บาท</p>
+                    <p>กรุณาเข้าสู่ระบบเพื่อตรวจสอบและอัปโหลดสลิปใหม่หากจำเป็น</p>"
+                );
+            }
         }
     }
 }
+
+// 3.1 เมื่อแอดมินส่งกลับให้ลูกบ้านแนบสลิปใหม่ (กรณีสลิปไม่ถูกต้อง/ยอดไม่ตรง)
+if (isset($_POST['reject_slip'])) {
+    $activeTab = 'list';
+    $invoiceId = intval($_POST['invoiceId'] ?? 0);
+    $reason = trim($_POST['rejectReason'] ?? '');
+    if (empty($reason)) {
+        $reason = 'สลิปไม่ถูกต้อง หรือยอดเงินไม่ครบถ้วน กรุณาตรวจสอบยอดเงินและแนบสลิปใหม่อีกครั้ง';
+    }
+
+    $stmtUp = $conn->prepare("UPDATE Invoices SET status = 'Unpaid', slipRejectReason = ? WHERE invoiceId = ?");
+    $stmtUp->execute([$reason, $invoiceId]);
+
+    // ดึงข้อมูลส่งเมลแจ้งเตือน
+    $stmtInv = $conn->prepare("
+        SELECT i.billingMonth, i.totalAmount, u.fullName, u.email, r.roomNumber
+        FROM Invoices i
+        JOIN User u ON i.tenantId = u.userId
+        LEFT JOIN Room r ON i.roomId = r.roomId
+        WHERE i.invoiceId = ?
+        LIMIT 1
+    ");
+    $stmtInv->execute([$invoiceId]);
+    $invInfo = $stmtInv->fetch(PDO::FETCH_ASSOC);
+
+    if ($invInfo && !empty($invInfo['email'])) {
+        $safeName = htmlspecialchars($invInfo['fullName'] ?? '', ENT_QUOTES, 'UTF-8');
+        $safeMonth = htmlspecialchars($invInfo['billingMonth'] ?? '', ENT_QUOTES, 'UTF-8');
+        $safeRoom = htmlspecialchars($invInfo['roomNumber'] ?? '', ENT_QUOTES, 'UTF-8');
+        $safeTotal = number_format((float)($invInfo['totalAmount'] ?? 0), 2);
+        $safeReason = htmlspecialchars($reason, ENT_QUOTES, 'UTF-8');
+
+        sendMail(
+            $invInfo['email'],
+            "[หอพักจัสมิน] แจ้งให้ส่งสลิปชำระเงินใหม่สำหรับบิล {$safeMonth} (ห้อง {$safeRoom})",
+            "<h2>สวัสดีคุณ {$safeName}</h2>
+            <p style='color: #dc2626; font-weight: bold;'>⚠️ สลิปชำระเงินของท่านไม่ผ่านการอนุมัติ</p>
+            <p><b>เหตุผลจากผู้ดูแลระบบ:</b> {$safeReason}</p>
+            <p><b>ห้องพัก:</b> {$safeRoom}<br>
+            <b>รอบบิล:</b> {$safeMonth}<br>
+            <b>ยอดที่ต้องชำระ:</b> {$safeTotal} บาท</p>
+            <p>กรุณาเข้าสู่ระบบหอพักจัสมิน เพื่อตรวจสอบยอดเงินและแนบสลิปชำระเงินใหม่อีกครั้งครับ</p>"
+        );
+    }
+
+    $roomNo = htmlspecialchars($invInfo['roomNumber'] ?? '');
+    $message = "<div class='alert-box p-4 bg-amber-50 border-l-4 border-amber-500 text-amber-800 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='alert-triangle' class='w-5 h-5 text-amber-600'></i> ส่งกลับให้ผู้เช่าห้อง {$roomNo} แนบสลิปใหม่เรียบร้อยแล้ว</div>";
+}
+
+// 4. เมื่อแอดมินกดอนุมัติคำขอออกบิลย้อนหลัง
+if (isset($_POST['approve_retro_request'])) {
+    $activeTab = 'retro';
+    $requestId = intval($_POST['requestId'] ?? 0);
+    if ($requestId > 0) {
+        try {
+            $stmtApprove = $conn->prepare("UPDATE RetroactiveInvoiceRequests SET status = 'Approved', updatedAt = NOW() WHERE requestId = ?");
+            $stmtApprove->execute([$requestId]);
+            $message = "<div class='alert-box p-4 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600'></i> อนุมัติคำขอออกบิลย้อนหลังเรียบร้อยแล้ว ท่านสามารถกดปุ่ม 'ออกบิลรอบนี้' เพื่อออกบิลได้ทันที</div>";
+        } catch(PDOException $e) {
+            $message = "<div class='alert-box p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'>❌ เกิดข้อผิดพลาด: " . $e->getMessage() . "</div>";
+        }
+    }
+}
+
+// 5. เมื่อแอดมินกดยกเลิกคำขอออกบิลย้อนหลัง
+if (isset($_POST['reject_retro_request'])) {
+    $activeTab = 'retro';
+    $requestId = intval($_POST['requestId'] ?? 0);
+    $adminRemark = trim($_POST['adminRemark'] ?? '');
+    if ($requestId > 0) {
+        try {
+            $stmtReject = $conn->prepare("UPDATE RetroactiveInvoiceRequests SET status = 'Rejected', adminRemark = ?, updatedAt = NOW() WHERE requestId = ?");
+            $stmtReject->execute([$adminRemark, $requestId]);
+            $message = "<div class='alert-box p-4 bg-amber-50 border-l-4 border-amber-500 text-amber-800 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='x-circle' class='w-5 h-5 text-amber-600'></i> ยกเลิกคำขอออกบิลย้อนหลังเรียบร้อยแล้ว</div>";
+        } catch(PDOException $e) {
+            $message = "<div class='alert-box p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'>❌ เกิดข้อผิดพลาด: " . $e->getMessage() . "</div>";
+        }
+    }
+}
+
+// รับค่าจากปุ่ม 'ออกบิลตามคำขอ' (Preset Parameters)
+$presetRoomId = isset($_GET['roomId']) ? intval($_GET['roomId']) : null;
+$presetMonth = isset($_GET['presetMonth']) ? trim($_GET['presetMonth']) : null;
+$presetReqId = isset($_GET['reqId']) ? intval($_GET['reqId']) : null;
+if ($presetRoomId && $presetMonth) {
+    $activeTab = 'create';
+}
+
+// ดึงคำขอรอบบิลย้อนหลังทั้งหมด
+$retroRequests = [];
+try {
+    $stmtRetro = $conn->query("
+        SELECT r.*, rm.roomNumber, u.fullName AS tenantName, u.phone AS tenantPhone
+        FROM RetroactiveInvoiceRequests r
+        JOIN Room rm ON r.roomId = rm.roomId
+        JOIN User u ON r.tenantId = u.userId
+        ORDER BY CASE WHEN r.status = 'Pending' THEN 1 WHEN r.status = 'Approved' THEN 2 ELSE 3 END, r.requestId DESC
+    ");
+    if ($stmtRetro) {
+        $retroRequests = $stmtRetro->fetchAll(PDO::FETCH_ASSOC);
+    }
+} catch(Throwable $e) {}
+$pendingRetroCount = count(array_filter($retroRequests, function($req) {
+    return ($req['status'] ?? '') === 'Pending';
+}));
 
 // ดึงรายการห้องที่มีผู้เช่าอยู่จริง พร้อมเลขมิเตอร์น้ำ-ไฟล่าสุดของแต่ละห้อง
 $rooms = $conn->query("
@@ -442,33 +363,21 @@ $rooms = $conn->query("
            latestInv.waterCurr AS lastWater,
            latestInv.electricCurr AS lastElectric,
            latestInv.billingMonth AS lastBillingMonth,
-           latestInv.status AS lastStatus,
            latestInv.invoiceId AS lastInvoiceId
     FROM Room r 
     JOIN Lease l ON r.roomId = l.roomId AND l.status = 'Active'
     JOIN User u ON l.tenantId = u.userId
     LEFT JOIN (
-        SELECT i1.roomId, i1.tenantId, i1.waterCurr, i1.electricCurr, i1.billingMonth, i1.status, i1.invoiceId
+        SELECT i1.roomId, i1.waterCurr, i1.electricCurr, i1.billingMonth, i1.invoiceId
         FROM Invoices i1
         JOIN (
-            SELECT roomId, tenantId, MAX(invoiceId) AS maxId
+            SELECT roomId, MAX(invoiceId) AS maxId
             FROM Invoices
-            GROUP BY roomId, tenantId
+            GROUP BY roomId
         ) i2 ON i1.invoiceId = i2.maxId
-    ) latestInv ON r.roomId = latestInv.roomId AND l.tenantId = latestInv.tenantId
+    ) latestInv ON r.roomId = latestInv.roomId
     ORDER BY r.roomNumber ASC
 ")->fetchAll(PDO::FETCH_ASSOC);
-
-foreach ($rooms as &$r) {
-    $rule = getExpectedBillingMonthForRoom($conn, $r['roomId'], $r['tenantId'], $r['leaseStartDate']);
-    $r['expectedYm'] = $rule['expectedYm'];
-    $r['expectedThai'] = $rule['expectedThai'];
-    $r['prevThai'] = $rule['prevThai'];
-    $r['isFirst'] = $rule['isFirst'];
-    $r['currentUnpaidYm'] = $rule['currentUnpaidYm'];
-    $r['currentUnpaidThai'] = $rule['currentUnpaidThai'];
-}
-unset($r);
 
 // ดึงประวัติเลขมิเตอร์ตามห้องและรอบเดือน เพื่อให้ระบบเปลี่ยนเลขมิเตอร์เก่าตามรอบเดือนที่เลือกได้แบบไดนามิก
 $roomMetersHistory = [];
@@ -734,6 +643,16 @@ if ($step === 2) {
             <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-100 text-rose-700">พรีวิว</span>
           <?php endif; ?>
         </button>
+
+        <button type="button" id="btn-tab-retro" onclick="switchTab('retro')" class="flex-1 sm:flex-none px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer <?php echo ($activeTab === 'retro') ? 'bg-gradient-to-r from-rose-600 via-rose-500 to-pink-600 text-white shadow-md shadow-rose-500/20' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'; ?>">
+          <i data-lucide="history" class="w-4 h-4"></i>
+          <span>คำขอบิลย้อนหลัง</span>
+          <?php if($pendingRetroCount > 0): ?>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold <?php echo ($activeTab === 'retro') ? 'bg-white/20 text-white' : 'bg-amber-500 text-white'; ?>">
+              <?php echo $pendingRetroCount; ?> คำขอใหม่
+            </span>
+          <?php endif; ?>
+        </button>
       </div>
 
       <div class="text-xs text-slate-400 font-medium px-3 hidden sm:block flex items-center gap-1.5">
@@ -844,9 +763,15 @@ if ($step === 2) {
                 <td class="py-3.5 px-4 text-center">
                   <div class="flex flex-col items-center justify-center gap-1.5">
                     <?php if($inv['status'] === 'Unpaid'): ?>
-                      <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                        <i data-lucide="hourglass" class="w-3 h-3 text-amber-500"></i> รอชำระเงิน
-                      </span>
+                      <?php if(!empty($inv['slipRejectReason'])): ?>
+                        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200" title="<?php echo htmlspecialchars($inv['slipRejectReason'], ENT_QUOTES); ?>">
+                          <i data-lucide="alert-triangle" class="w-3 h-3 text-rose-600"></i> ขอสลิปใหม่
+                        </span>
+                      <?php else: ?>
+                        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                          <i data-lucide="hourglass" class="w-3 h-3 text-amber-500"></i> รอชำระเงิน
+                        </span>
+                      <?php endif; ?>
                       <?php if(!empty($inv['slipImage'])): ?>
                         <div class="flex items-center gap-1.5 mt-0.5">
                           <img src="<?php echo htmlspecialchars($inv['slipImage']); ?>" 
@@ -903,28 +828,24 @@ if ($step === 2) {
                 <!-- จัดการ (ตรวจสอบบิล) -->
                 <td class="py-3.5 px-4 text-center">
                   <div class="flex items-center justify-center gap-1.5 flex-wrap">
-                    <?php if($inv['status'] === 'Paid'): ?>
-                      <!-- ฟอร์มเปลี่ยนสถานะกลับเป็น Unpaid -->
-                      <form action="manage_invoice.php?tab=list" method="POST" class="inline-flex items-center justify-center gap-1.5 m-0" onsubmit="return handleStatusSubmit(event, this)">
-                        <input type="hidden" name="invoiceId" value="<?php echo $inv['invoiceId']; ?>">
-                        <button type="submit" name="update_payment_status" value="Unpaid" onclick="event.stopPropagation()" class="inline-flex items-center gap-1 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition cursor-pointer" title="เปลี่ยนสถานะกลับเป็นรอชำระ">
-                          <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> ยกเลิกสถานะ
-                        </button>
-                      </form>
-                    <?php elseif(!empty($inv['slipImage'])): ?>
-                      <!-- ลูกบ้านแนบรูปสลิปแล้ว: ขึ้นปุ่มให้อนุมัติ -->
-                      <form action="manage_invoice.php?tab=list" method="POST" class="inline-flex items-center justify-center gap-1.5 m-0" onsubmit="return handleStatusSubmit(event, this)">
-                        <input type="hidden" name="invoiceId" value="<?php echo $inv['invoiceId']; ?>">
-                        <button type="submit" name="update_payment_status" value="Paid" onclick="event.stopPropagation()" class="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition cursor-pointer" title="อนุมัติการชำระเงิน">
+                    <!-- ฟอร์มเปลี่ยนสถานะ -->
+                    <form action="manage_invoice.php?tab=list" method="POST" class="inline-flex items-center justify-center gap-1.5 m-0" onsubmit="return handleStatusSubmit(event, this)">
+                      <input type="hidden" name="invoiceId" value="<?php echo $inv['invoiceId']; ?>">
+                      <?php if($inv['status'] !== 'Paid'): ?>
+                        <button type="submit" name="update_payment_status" value="Paid" onclick="event.stopPropagation()" class="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition cursor-pointer">
                           <i data-lucide="check" class="w-3.5 h-3.5"></i> อนุมัติยอด
                         </button>
-                      </form>
-                    <?php else: ?>
-                      <!-- ยังไม่แนบสลิป: ไม่ขึ้นปุ่มให้อนุมัติ ต้องรอให้ลูกบ้านแนบรูปมาก่อน -->
-                      <span class="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-50 border border-slate-200 text-slate-400 rounded-xl text-[11px] font-medium" title="รอลูกบ้านแนบรูปสลิปก่อน ปุ่มอนุมัติจึงจะปรากฏ">
-                        <i data-lucide="clock" class="w-3.5 h-3.5 text-slate-400"></i> รอลูกบ้านแนบสลิป
-                      </span>
-                    <?php endif; ?>
+                        <?php if(!empty($inv['slipImage'])): ?>
+                          <button type="button" onclick="event.stopPropagation(); openRejectSlipModal(<?php echo $inv['invoiceId']; ?>)" class="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition cursor-pointer" title="สลิปไม่ถูกต้อง / แจ้งให้ส่งสลิปใหม่">
+                            <i data-lucide="x" class="w-3.5 h-3.5 text-rose-600"></i> ขอสลิปใหม่
+                          </button>
+                        <?php endif; ?>
+                      <?php else: ?>
+                        <button type="submit" name="update_payment_status" value="Unpaid" onclick="event.stopPropagation()" class="inline-flex items-center gap-1 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition cursor-pointer">
+                          <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> ยกเลิกสถานะ
+                        </button>
+                      <?php endif; ?>
+                    </form>
                   </div>
                 </td>
 
@@ -981,19 +902,8 @@ if ($step === 2) {
 
           <div>
             <div class="text-xs text-slate-500 font-medium">รอบเดือน (Billing Month)</div>
-            <div class="text-sm font-bold text-amber-600 flex items-center gap-2 flex-wrap">
-              <span class="flex items-center gap-1">
-                <i data-lucide="calendar" class="w-3.5 h-3.5"></i> <?php echo $previewData['billingMonth']; ?>
-              </span>
-              <?php if(!empty($previewData['isRetroactive'])): ?>
-                <span class="px-2 py-0.5 bg-amber-100 text-amber-800 border border-amber-300 rounded-md text-[10px] font-bold flex items-center gap-1">
-                  <i data-lucide="history" class="w-3 h-3 text-amber-700"></i> ออกบิลย้อนหลัง (ตามคำขอ)
-                </span>
-              <?php else: ?>
-                <span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-md text-[10px] font-bold flex items-center gap-1">
-                  <i data-lucide="check" class="w-3 h-3 text-emerald-700"></i> รอบบิลปัจจุบัน
-                </span>
-              <?php endif; ?>
+            <div class="text-sm font-bold text-amber-600 flex items-center gap-1">
+              <i data-lucide="calendar" class="w-3.5 h-3.5"></i> <?php echo $previewData['billingMonth']; ?>
             </div>
           </div>
         </div>
@@ -1082,22 +992,16 @@ if ($step === 2) {
                 <option value="">-- เลือกห้องพัก (เฉพาะห้องที่มีผู้เช่า) --</option>
                 <?php foreach($rooms as $r): ?>
                   <option value="<?php echo $r['roomId']; ?>" 
+                          <?php echo ($presetRoomId == $r['roomId']) ? 'selected' : ''; ?>
                           data-rent="<?php echo $r['rentPrice']; ?>" 
                           data-tenant="<?php echo htmlspecialchars($r['fullName']); ?>"
                           data-water-prev="<?php echo $r['lastWater'] ?? ''; ?>"
                           data-electric-prev="<?php echo $r['lastElectric'] ?? ''; ?>"
                           data-last-month="<?php echo htmlspecialchars($r['lastBillingMonth'] ?? ''); ?>"
-                          data-last-status="<?php echo htmlspecialchars($r['lastStatus'] ?? ''); ?>"
-                          data-expected-ym="<?php echo $r['expectedYm']; ?>"
-                          data-expected-thai="<?php echo htmlspecialchars($r['expectedThai']); ?>"
-                          data-is-first="<?php echo $r['isFirst'] ? '1' : '0'; ?>"
-                          data-prev-thai="<?php echo htmlspecialchars($r['prevThai'] ?? ''); ?>"
-                          data-unpaid-ym="<?php echo htmlspecialchars($r['currentUnpaidYm'] ?? ''); ?>"
-                          data-unpaid-thai="<?php echo htmlspecialchars($r['currentUnpaidThai'] ?? ''); ?>"
                           data-initial-water="<?php echo $r['initialWaterMeter'] ?? '0'; ?>"
                           data-initial-electric="<?php echo $r['initialElectricMeter'] ?? '0'; ?>"
                           data-lease-start="<?php echo !empty($r['leaseStartDate']) ? date('d/m/Y', strtotime($r['leaseStartDate'])) : ''; ?>">
-                    ห้อง <?php echo $r['roomNumber']; ?> (<?php echo htmlspecialchars($r['fullName']); ?>) - รอบบิล: <?php echo $r['expectedThai']; ?>
+                    ห้อง <?php echo $r['roomNumber']; ?> (<?php echo htmlspecialchars($r['fullName']); ?>) - ค่าเช่า ฿<?php echo number_format($r['rentPrice'], 2); ?>
                   </option>
                 <?php endforeach; ?>
                 </select>
@@ -1108,28 +1012,24 @@ if ($step === 2) {
             </div>
 
             <div>
-              <label class="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
-                <span>ประจำเดือน (รอบบิล): <span class="text-rose-500">*</span></span>
-                <div class="flex items-center gap-1.5">
-                  <span id="monthLockBadge" class="hidden text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-full font-bold items-center gap-1 shadow-2xs">
-                    <i data-lucide="check" class="w-3 h-3 text-emerald-600"></i> รอบปัจจุบัน
-                  </span>
-                  <button type="button" id="btnResetMonth" onclick="resetToExpectedMonth()" class="hidden text-[10px] text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-full font-bold items-center gap-1 transition cursor-pointer" title="รีเซ็ตกลับเป็นรอบบิลปัจจุบันตามลำดับ">
-                    <i data-lucide="rotate-ccw" class="w-3 h-3 text-blue-600"></i> รอบปัจจุบัน
-                  </button>
-                </div>
-              </label>
-              <div class="relative">
-                <input type="month" name="billingMonth" id="billingMonthInput" value="" required onchange="handleBillingMonthChange()" class="w-full px-4 py-3 bg-white border-2 border-stone-200 hover:border-rose-400 focus:border-rose-500 rounded-2xl text-xs sm:text-sm font-bold text-slate-800 shadow-xs outline-none transition cursor-pointer">
-                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400">
-                  <i data-lucide="calendar" class="w-4 h-4 text-slate-400"></i>
-                </div>
-              </div>
-              <div id="billingMonthInfoBox" class="mt-1.5">
-                <span class="text-[11px] text-slate-400 italic flex items-center gap-1">
-                  <i data-lucide="info" class="w-3.5 h-3.5 text-slate-400 shrink-0"></i> กรุณาเลือกห้องพักก่อน (สามารถเลือกเดือนย้อนหลังได้ตามคำขอผู้เช่า แต่ไม่อนุญาตให้ออกบิลข้ามเดือนไปในอนาคต)
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="block text-xs font-bold text-slate-700">ประจำเดือน (รอบบิล): <span class="text-rose-500">*</span></label>
+                <span class="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                  <i data-lucide="calendar" class="w-3 h-3 text-emerald-500"></i> ปฏิทินเลือกรอบบิล (เลือกย้อนหลังได้ / ห้ามเลือกล่วงหน้า)
                 </span>
               </div>
+              <div class="relative">
+                <input type="month" 
+                       name="billingMonth" 
+                       id="billingMonthInput" 
+                       value="<?php echo !empty($presetMonth) ? htmlspecialchars($presetMonth) : date('Y-m'); ?>" 
+                       max="<?php echo date('Y-m'); ?>" 
+                       required 
+                       onclick="this.showPicker && this.showPicker()"
+                       onchange="handleBillingMonthChange()" 
+                       class="w-full px-4 py-3 bg-white border-2 border-stone-200 hover:border-rose-400 focus:border-rose-500 rounded-2xl text-xs sm:text-sm font-bold text-slate-800 shadow-xs outline-none transition cursor-pointer">
+              </div>
+              <input type="hidden" name="presetReqId" id="presetReqId" value="<?php echo htmlspecialchars($presetReqId ?? ''); ?>">
             </div>
           </div>
 
@@ -1173,7 +1073,9 @@ if ($step === 2) {
                   <i data-lucide="calculator" class="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2"></i>
                 </div>
                 <div class="mt-1.5 flex justify-end">
-                  <span id="waterRateBadge" class="text-[11px] text-sky-800 bg-sky-100 border border-sky-200/80 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-2xs"><i data-lucide="lock" class="w-3 h-3 text-sky-600"></i> ค่าน้ำต่อหน่วย: 18.00 บาท</span>
+                  <span id="waterRateBadge" class="text-[11px] text-sky-800 bg-sky-100/90 border border-sky-200 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-2xs">
+                    <i data-lucide="lock" class="w-3 h-3 text-sky-600"></i> ค่าน้ำต่อหน่วย: 18.00 บาท
+                  </span>
                 </div>
                 <input type="hidden" name="waterRate" id="waterRate" value="18.00">
               </div>
@@ -1220,7 +1122,9 @@ if ($step === 2) {
                   <i data-lucide="calculator" class="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2"></i>
                 </div>
                 <div class="mt-1.5 flex justify-end">
-                  <span id="electricRateBadge" class="text-[11px] text-amber-800 bg-amber-100 border border-amber-200/80 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-2xs"><i data-lucide="lock" class="w-3 h-3 text-amber-600"></i> ค่าไฟต่อหน่วย: 8.00 บาท</span>
+                  <span id="electricRateBadge" class="text-[11px] text-amber-800 bg-amber-100/90 border border-amber-200 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-2xs">
+                    <i data-lucide="lock" class="w-3 h-3 text-amber-600"></i> ค่าไฟต่อหน่วย: 8.00 บาท
+                  </span>
                 </div>
                 <input type="hidden" name="electricRate" id="electricRate" value="8.00">
               </div>
@@ -1392,11 +1296,12 @@ if ($step === 2) {
                 </div>
               </div>
 
-              <div class="pt-2 border-t border-slate-100 flex items-center justify-between">
-                <span class="text-xs text-slate-600 font-semibold">
-                  รวมค่าส่วนต่าง: <b id="otherFeePopupTotal" class="text-blue-600 font-mono text-sm">฿0.00</b>
+              <!-- Footer with Done button -->
+              <div class="flex items-center justify-between pt-2 border-t border-slate-100">
+                <span class="text-xs font-medium text-slate-600">
+                  รวมค่าส่วนต่าง: <b id="otherFeePopupTotal" class="text-blue-600 font-mono text-sm">฿120.00</b>
                 </span>
-                <button type="button" onclick="toggleOtherFeeDropdown(false)" class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition cursor-pointer">
+                <button type="button" onclick="toggleOtherFeeDropdown(false)" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-xs">
                   ตกลง / ปิด
                 </button>
               </div>
@@ -1422,6 +1327,164 @@ if ($step === 2) {
         </form>
       </div>
       <?php endif; ?>
+
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- 🌟 TAB 3: คำขอรอบเดือนบิลย้อนหลังจากผู้เช่า (อนุมัติ & ยกเลิกคำขอ) 🌟 -->
+    <!-- ========================================================================= -->
+    <div id="tab-content-retro" class="<?php echo ($activeTab === 'retro') ? '' : 'hidden'; ?> space-y-6">
+
+      <div class="bg-white rounded-3xl border border-rose-200/60 p-6 shadow-sm">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-rose-100 gap-3">
+          <div class="flex items-center gap-3">
+            <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-rose-500 to-pink-600 text-white flex items-center justify-center shadow-md shadow-rose-500/20 shrink-0">
+              <i data-lucide="history" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="font-display font-bold text-lg text-slate-800">คำขอรอบเดือนบิลย้อนหลังจากผู้เช่า</h3>
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                  <?php echo count($retroRequests); ?> คำขอ
+                </span>
+              </div>
+              <p class="text-xs text-slate-500 mt-0.5">รายการคำขอที่ผู้เช่ายื่นขอบิลรอบเดือนย้อนหลัง ท่านสามารถกดอนุมัติเพื่อไปออกบิล หรือกดยกเลิกคำขอได้</p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+              <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+              รอการอนุมัติ: <?php echo $pendingRetroCount; ?> รายการ
+            </span>
+          </div>
+        </div>
+
+        <!-- ตารางรายการคำขอ -->
+        <div class="mt-4 overflow-x-auto">
+          <table class="w-full text-left text-xs sm:text-sm">
+            <thead>
+              <tr class="text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100 bg-slate-50/70">
+                <th class="py-3 px-4 rounded-l-xl">ห้องพัก</th>
+                <th class="py-3 px-4">ผู้เช่า</th>
+                <th class="py-3 px-4">รอบเดือนที่ขอ</th>
+                <th class="py-3 px-4">เหตุผลในการขอ</th>
+                <th class="py-3 px-4">วันที่ยื่นคำขอ</th>
+                <th class="py-3 px-4 text-center">สถานะ</th>
+                <th class="py-3 px-4">หมายเหตุแอดมิน</th>
+                <th class="py-3 px-4 text-center rounded-r-xl">การจัดการ</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <?php if(empty($retroRequests)): ?>
+              <tr>
+                <td colspan="8" class="text-center py-12 text-slate-400">
+                  <div class="flex flex-col items-center justify-center gap-2">
+                    <i data-lucide="inbox" class="w-10 h-10 text-slate-300 stroke-1"></i>
+                    <p class="text-sm font-semibold">ยังไม่มีคำขอรอบเดือนบิลย้อนหลังจากผู้เช่า</p>
+                  </div>
+                </td>
+              </tr>
+              <?php else: ?>
+                <?php foreach($retroRequests as $req): 
+                  $st = $req['status'] ?? 'Pending';
+                  // Format requested month in Thai
+                  $reqMonthDisplay = $req['requestedMonth'];
+                  if (preg_match('/^(\d{4})-(\d{2})$/', trim($req['requestedMonth']), $mMatches)) {
+                    $thMonths = [
+                      '01' => 'ม.ค.', '02' => 'ก.พ.', '03' => 'มี.ค.', '04' => 'เม.ย.',
+                      '05' => 'พ.ค.', '06' => 'มิ.ย.', '07' => 'ก.ค.', '08' => 'ส.ค.',
+                      '09' => 'ก.ย.', '10' => 'ต.ค.', '11' => 'พ.ย.', '12' => 'ธ.ค.'
+                    ];
+                    $reqMonthDisplay = ($thMonths[$mMatches[2]] ?? '') . ' ' . $mMatches[1] . ' (' . $req['requestedMonth'] . ')';
+                  }
+                ?>
+                <tr class="hover:bg-slate-50/70 transition">
+                  <td class="py-3 px-4 font-bold text-slate-800">
+                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-rose-50 text-rose-700 font-bold border border-rose-200">
+                      ห้อง <?php echo htmlspecialchars($req['roomNumber']); ?>
+                    </span>
+                  </td>
+                  <td class="py-3 px-4">
+                    <div class="font-bold text-slate-800"><?php echo htmlspecialchars($req['tenantName']); ?></div>
+                    <?php if(!empty($req['tenantPhone'])): ?>
+                      <div class="text-[11px] text-slate-400"><?php echo htmlspecialchars($req['tenantPhone']); ?></div>
+                    <?php endif; ?>
+                  </td>
+                  <td class="py-3 px-4 font-bold text-slate-900 font-mono">
+                    <?php echo htmlspecialchars($reqMonthDisplay); ?>
+                  </td>
+                  <td class="py-3 px-4 text-slate-600 max-w-xs">
+                    <div class="bg-slate-50 p-2 rounded-xl border border-slate-100 text-xs">
+                      <?php echo nl2br(htmlspecialchars($req['reason'] ?: 'ไม่ได้ระบุเหตุผล')); ?>
+                    </div>
+                  </td>
+                  <td class="py-3 px-4 text-xs text-slate-500 whitespace-nowrap">
+                    <?php echo !empty($req['createdAt']) ? date('d/m/Y H:i', strtotime($req['createdAt'])) : '-'; ?>
+                  </td>
+                  <td class="py-3 px-4 text-center whitespace-nowrap">
+                    <?php if($st === 'Pending'): ?>
+                      <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                        <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span> รออนุมัติ
+                      </span>
+                    <?php elseif($st === 'Approved'): ?>
+                      <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> อนุมัติแล้ว
+                      </span>
+                    <?php elseif($st === 'Rejected'): ?>
+                      <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                        <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> ยกเลิกคำขอ
+                      </span>
+                    <?php endif; ?>
+                  </td>
+                  <td class="py-3 px-4 text-xs text-slate-500 max-w-[160px] truncate">
+                    <?php echo htmlspecialchars($req['adminRemark'] ?? '-'); ?>
+                  </td>
+                  <td class="py-3 px-4 text-center whitespace-nowrap">
+                    <div class="inline-flex items-center justify-center gap-1.5">
+                      <?php if($st === 'Pending'): ?>
+                        <!-- ฟอร์มกดอนุมัติ -->
+                        <form action="manage_invoice.php?tab=retro" method="POST" class="m-0" onsubmit="return confirm('ยืนยันอนุมัติคำขอออกบิลย้อนหลังรอบเดือน <?php echo htmlspecialchars($req['requestedMonth']); ?> ห้อง <?php echo htmlspecialchars($req['roomNumber']); ?>?');">
+                          <input type="hidden" name="requestId" value="<?php echo $req['requestId']; ?>">
+                          <button type="submit" name="approve_retro_request" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-2xs transition flex items-center gap-1 cursor-pointer" title="อนุมัติคำขอ">
+                            <i data-lucide="check" class="w-3.5 h-3.5"></i> อนุมัติ
+                          </button>
+                        </form>
+
+                        <!-- ปุ่มยกเลิกคำขอ -->
+                        <button type="button" onclick="openRejectRetroModal(<?php echo $req['requestId']; ?>, '<?php echo htmlspecialchars($req['roomNumber']); ?>', '<?php echo htmlspecialchars($req['tenantName']); ?>', '<?php echo htmlspecialchars($req['requestedMonth']); ?>')" class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer" title="ยกเลิกคำขอ">
+                          <i data-lucide="x" class="w-3.5 h-3.5"></i> ยกเลิกคำขอ
+                        </button>
+
+                      <?php elseif($st === 'Approved'): ?>
+                        <!-- ปุ่มออกบิลตามคำขอนี้ -->
+                        <a href="manage_invoice.php?tab=create&roomId=<?php echo $req['roomId']; ?>&presetMonth=<?php echo urlencode($req['requestedMonth']); ?>&reqId=<?php echo $req['requestId']; ?>" class="px-3 py-1.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1 cursor-pointer" title="ออกใบแจ้งหนี้รอบนี้ทันที">
+                          <i data-lucide="file-plus" class="w-3.5 h-3.5"></i> ออกบิลรอบนี้
+                        </a>
+
+                        <!-- ปุ่มยกเลิกคำขอหากเปลี่ยนใจ -->
+                        <button type="button" onclick="openRejectRetroModal(<?php echo $req['requestId']; ?>, '<?php echo htmlspecialchars($req['roomNumber']); ?>', '<?php echo htmlspecialchars($req['tenantName']); ?>', '<?php echo htmlspecialchars($req['requestedMonth']); ?>')" class="px-2.5 py-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl text-xs font-semibold transition cursor-pointer" title="เปลี่ยนเป็นยกเลิกคำขอ">
+                          <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                        </button>
+
+                      <?php elseif($st === 'Rejected'): ?>
+                        <!-- ฟอร์มเปลี่ยนเป็นอนุมัติหากต้องการ -->
+                        <form action="manage_invoice.php?tab=retro" method="POST" class="m-0" onsubmit="return confirm('ต้องการเปลี่ยนสถานะกลับเป็นอนุมัติคำขอนี้หรือไม่?');">
+                          <input type="hidden" name="requestId" value="<?php echo $req['requestId']; ?>">
+                          <button type="submit" name="approve_retro_request" class="px-3 py-1.5 bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer">
+                            <i data-lucide="refresh-cw" class="w-3 h-3"></i> คืนสถานะอนุมัติ
+                          </button>
+                        </form>
+                      <?php endif; ?>
+                    </div>
+                  </td>
+                </tr>
+                <?php endforeach; ?>
+              <?php endif; ?>
+            </tbody>
+          </table>
+        </div>
+      </div>
 
     </div>
 
@@ -1729,30 +1792,36 @@ if ($step === 2) {
     function switchTab(tab) {
       const listContent = document.getElementById('tab-content-list');
       const createContent = document.getElementById('tab-content-create');
+      const retroContent = document.getElementById('tab-content-retro');
       const btnList = document.getElementById('btn-tab-list');
       const btnCreate = document.getElementById('btn-tab-create');
+      const btnRetro = document.getElementById('btn-tab-retro');
+
+      if (listContent) listContent.classList.add('hidden');
+      if (createContent) createContent.classList.add('hidden');
+      if (retroContent) retroContent.classList.add('hidden');
+
+      const activeClass = "flex-1 sm:flex-none px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer bg-gradient-to-r from-rose-600 via-rose-500 to-pink-600 text-white shadow-md shadow-rose-500/20";
+      const inactiveClass = "flex-1 sm:flex-none px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer text-slate-600 hover:text-slate-900 hover:bg-slate-100/80";
+
+      if (btnList) btnList.className = inactiveClass;
+      if (btnCreate) btnCreate.className = inactiveClass;
+      if (btnRetro) btnRetro.className = inactiveClass;
 
       if (tab === 'list') {
-        listContent.classList.remove('hidden');
-        createContent.classList.add('hidden');
-        
-        btnList.className = "flex-1 sm:flex-none px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer bg-blue-600 text-white shadow-sm";
-        btnCreate.className = "flex-1 sm:flex-none px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer text-slate-600 hover:bg-slate-100";
-        
-        const url = new URL(window.location);
-        url.searchParams.set('tab', 'list');
-        window.history.replaceState({}, '', url);
-      } else {
-        listContent.classList.add('hidden');
-        createContent.classList.remove('hidden');
-        
-        btnCreate.className = "flex-1 sm:flex-none px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer bg-blue-600 text-white shadow-sm";
-        btnList.className = "flex-1 sm:flex-none px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer text-slate-600 hover:bg-slate-100";
-        
-        const url = new URL(window.location);
-        url.searchParams.set('tab', 'create');
-        window.history.replaceState({}, '', url);
+        if (listContent) listContent.classList.remove('hidden');
+        if (btnList) btnList.className = activeClass;
+      } else if (tab === 'create') {
+        if (createContent) createContent.classList.remove('hidden');
+        if (btnCreate) btnCreate.className = activeClass;
+      } else if (tab === 'retro') {
+        if (retroContent) retroContent.classList.remove('hidden');
+        if (btnRetro) btnRetro.className = activeClass;
       }
+
+      const url = new URL(window.location);
+      url.searchParams.set('tab', tab);
+      window.history.replaceState({}, '', url);
       lucide.createIcons();
     }
 
@@ -1920,7 +1989,40 @@ if ($step === 2) {
       // Admin Action Button
       const actionArea = document.getElementById('invDetailActionArea');
       if (actionArea) {
-        if (inv.status === 'Paid') {
+        if (inv.status !== 'Paid') {
+          let rejectBtnHtml = '';
+          if (inv.slipImage && inv.slipImage.trim() !== '') {
+            rejectBtnHtml = `
+              <button type="button" onclick="openRejectSlipModal(${inv.invoiceId})" class="w-full py-2.5 px-4 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-2xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-2xs mt-2">
+                <i data-lucide="x-circle" class="w-4 h-4 text-rose-600"></i> ปฏิเสธสลิป / ส่งกลับให้ลูกบ้านแนบใหม่
+              </button>
+            `;
+          }
+
+          let prevRejectNoteHtml = '';
+          if (inv.slipRejectReason && inv.slipRejectReason.trim() !== '') {
+            prevRejectNoteHtml = `
+              <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-start gap-2 mb-2">
+                <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-600 shrink-0 mt-0.5"></i>
+                <div>
+                  <div class="font-bold text-amber-900">เคยแจ้งให้แนบสลิปใหม่:</div>
+                  <div class="text-amber-700 mt-0.5">${inv.slipRejectReason}</div>
+                </div>
+              </div>
+            `;
+          }
+
+          actionArea.innerHTML = `
+            ${prevRejectNoteHtml}
+            <form action="manage_invoice.php?tab=list" method="POST" class="m-0" onsubmit="return confirm('ยืนยันอนุมัติการชำระเงินสำหรับบิล #INV-${inv.invoiceId} หรือไม่?');">
+              <input type="hidden" name="invoiceId" value="${inv.invoiceId}">
+              <button type="submit" name="update_payment_status" value="Paid" class="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-md shadow-emerald-600/20 transition flex items-center justify-center gap-2 cursor-pointer">
+                <i data-lucide="check-circle" class="w-4 h-4"></i> อนุมัติการชำระเงิน (ตั้งเป็น Paid)
+              </button>
+            </form>
+            ${rejectBtnHtml}
+          `;
+        } else {
           actionArea.innerHTML = `
             <form action="manage_invoice.php?tab=list" method="POST" class="m-0" onsubmit="return confirm('ต้องการยกเลิกสถานะบิล #INV-${inv.invoiceId} กลับเป็นยังไม่ชำระหรือไม่?');">
               <input type="hidden" name="invoiceId" value="${inv.invoiceId}">
@@ -1928,23 +2030,6 @@ if ($step === 2) {
                 <i data-lucide="rotate-ccw" class="w-4 h-4"></i> ยกเลิกสถานะ (เปลี่ยนกลับเป็นรอชำระ)
               </button>
             </form>
-          `;
-        } else if (inv.slipImage && String(inv.slipImage).trim() !== '') {
-          // ลูกบ้านแนบรูปสลิปแล้ว: ขึ้นปุ่มให้อนุมัติ
-          actionArea.innerHTML = `
-            <form action="manage_invoice.php?tab=list" method="POST" class="m-0" onsubmit="return confirm('ยืนยันอนุมัติการชำระเงินสำหรับบิล #INV-${inv.invoiceId} หรือไม่?');">
-              <input type="hidden" name="invoiceId" value="${inv.invoiceId}">
-              <button type="submit" name="update_payment_status" value="Paid" class="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-md shadow-emerald-600/20 transition flex items-center justify-center gap-2 cursor-pointer">
-                <i data-lucide="check-circle" class="w-4 h-4"></i> อนุมัติการชำระเงิน (ตั้งเป็น Paid)
-              </button>
-            </form>
-          `;
-        } else {
-          // ยังไม่มีสลิป: ไม่ขึ้นปุ่มอนุมัติ
-          actionArea.innerHTML = `
-            <div class="w-full py-3 px-4 bg-slate-50 text-slate-500 rounded-2xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 border border-slate-200">
-              <i data-lucide="clock" class="w-4 h-4 text-slate-400"></i> รอลูกบ้านแนบสลิปโอนเงิน (ปุ่มอนุมัติจะปรากฏเมื่อลูกบ้านแนบรูปสลิป)
-            </div>
           `;
         }
       }
@@ -2022,34 +2107,38 @@ if ($step === 2) {
       'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
     ];
 
+    // แปลงชื่อรอบเดือน (ทั้งแบบ YYYY-MM และ ภาษาไทย เช่น "พฤศจิกายน 2026") เป็น {year, month, ymIndex}
     function parseBillingMonthToYm(str) {
-      if (!str) return '';
-      if (/^\d{4}-\d{2}$/.test(str)) return str;
-      const map = {
+      if (!str || typeof str !== 'string') return null;
+      const yyyyMm = str.match(/^(\d{4})-(\d{2})$/);
+      if (yyyyMm) {
+        const y = parseInt(yyyyMm[1], 10);
+        const m = parseInt(yyyyMm[2], 10);
+        return { year: y, month: m, ymIndex: y * 12 + m };
+      }
+      const thaiMonthsMap = {
         'มกราคม': 1, 'กุมภาพันธ์': 2, 'มีนาคม': 3, 'เมษายน': 4,
         'พฤษภาคม': 5, 'มิถุนายน': 6, 'กรกฎาคม': 7, 'สิงหาคม': 8,
         'กันยายน': 9, 'ตุลาคม': 10, 'พฤศจิกายน': 11, 'ธันวาคม': 12
       };
-      let m = 0;
-      for (const [name, num] of Object.entries(map)) {
-        if (str.includes(name)) { m = num; break; }
+      let month = null;
+      for (const [name, num] of Object.entries(thaiMonthsMap)) {
+        if (str.includes(name)) {
+          month = num;
+          break;
+        }
       }
-      const ym = str.match(/\b(20\d\d|25\d\d)\b/);
-      if (m && ym) {
-        let y = parseInt(ym[1], 10);
+      let year = null;
+      const yearMatch = str.match(/\b(20\d\d|25\d\d)\b/);
+      if (yearMatch) {
+        let y = parseInt(yearMatch[1], 10);
         if (y > 2400) y -= 543;
-        return `${y}-${String(m).padStart(2, '0')}`;
+        year = y;
       }
-      return '';
-    }
-
-    function formatYmToThai(yyyyMm) {
-      if (!yyyyMm || !yyyyMm.includes('-')) return yyyyMm || '';
-      const parts = yyyyMm.split('-');
-      const y = parseInt(parts[0], 10);
-      const m = parseInt(parts[1], 10);
-      const thaiName = thaiMonthNames[m - 1] || '';
-      return `${thaiName} ${y}`;
+      if (year && month) {
+        return { year, month, ymIndex: year * 12 + month };
+      }
+      return null;
     }
 
     // คำนวณหาชื่อเดือนก่อนหน้า เช่น "2026-11" -> "ตุลาคม 2026"
@@ -2066,67 +2155,31 @@ if ($step === 2) {
       return `${thaiMonthNames[month - 1]} ${year}`;
     }
 
-    // ฟังก์ชันค้นหามิเตอร์เก่าตามห้องและรอบเดือนที่เลือก (รองรับทั้งรอบปกติและออกบิลย้อนหลัง)
+    // ฟังก์ชันค้นหามิเตอร์เก่าตามห้องและรอบเดือนที่เลือก (ดึงจากบิลเก่าก่อนหน้ารอบที่เลือก)
     function getPrevMeterForRoom(roomId, selectedMonth) {
       const history = window.roomMetersHistory ? window.roomMetersHistory[roomId] : null;
       const opt = document.querySelector(`#roomSelect option[value="${roomId}"]`);
 
-      // 1. ถ้ามีประวัติบิลในระบบ และมีการระบุรอบเดือนที่เลือก
-      if (history && history.length > 0 && selectedMonth) {
-        const parts = selectedMonth.split('-');
-        let targetYear = parseInt(parts[0], 10);
-        let targetMonth = parseInt(parts[1], 10) - 1;
-        if (targetMonth < 1) { targetMonth = 12; targetYear -= 1; }
-        const prevTargetYm = `${targetYear}-${String(targetMonth).padStart(2, '0')}`;
-
-        // 1.1 ค้นหาบิลของเดือนก่อนหน้าเป๊ะๆ
-        const matchExact = history.find(item => {
-          const itemYm = parseBillingMonthToYm(item.billingMonth);
-          return itemYm === prevTargetYm;
-        });
-        if (matchExact) {
-          return {
-            water: matchExact.waterCurr,
-            electric: matchExact.electricCurr,
-            month: matchExact.billingMonth,
-            isInitial: false
-          };
-        }
-
-        // 1.2 ถ้าไม่พบคู่ตรงเดือนเป๊ะ หาบิลล่าสุดที่มีรอบเดือนน้อยกว่า selectedMonth
-        const priorBills = history
-          .map(item => ({ ...item, ym: parseBillingMonthToYm(item.billingMonth) }))
-          .filter(item => item.ym && item.ym < selectedMonth)
-          .sort((a, b) => b.ym.localeCompare(a.ym));
-
-        if (priorBills.length > 0) {
-          return {
-            water: priorBills[0].waterCurr,
-            electric: priorBills[0].electricCurr,
-            month: priorBills[0].billingMonth,
-            isInitial: false
-          };
-        }
-      }
-
-      // 2. ถ้าไม่พบบิลที่มีรอบเดือนก่อนหน้า (เช่น เป็นบิลเดือนแรกของสัญญา หรือย้อนหลังไปถึงเดือนแรก) ให้ดึงเลขตั้งต้นจากสัญญา
+      // ข้อมูลตั้งต้นจากสัญญาเช่า (วันทำสัญญา/วันย้ายเข้า)
+      let leaseInitData = null;
       if (opt) {
         const initWater = opt.getAttribute('data-initial-water');
         const initElectric = opt.getAttribute('data-initial-electric');
         const leaseStart = opt.getAttribute('data-lease-start');
-
-        // ถ้ามีข้อมูลมิเตอร์ตั้งต้นจากสัญญาเช่า (วันย้ายเข้า)
         if (initWater !== null && initWater !== '' && initElectric !== null && initElectric !== '') {
-          return {
+          leaseInitData = {
             water: initWater,
             electric: initElectric,
             month: leaseStart ? `วันทำสัญญา (${leaseStart})` : 'สัญญาเริ่มต้น (วันย้ายเข้า)',
             isInitial: true
           };
         }
+      }
 
-        // Fallback attribute เดิม
-        if (opt.getAttribute('data-water-prev') !== '' && opt.getAttribute('data-water-prev') !== null) {
+      // ถ้าไม่มีประวัติการออกบิลมาก่อนเลย
+      if (!history || history.length === 0) {
+        if (leaseInitData) return leaseInitData;
+        if (opt && opt.getAttribute('data-water-prev') !== '' && opt.getAttribute('data-water-prev') !== null) {
           return {
             water: opt.getAttribute('data-water-prev'),
             electric: opt.getAttribute('data-electric-prev'),
@@ -2134,20 +2187,68 @@ if ($step === 2) {
             isInitial: false
           };
         }
+        return null;
       }
 
-      // 3. Fallback สุดท้าย: หากมีประวัติบิลให้ดึงรายการล่าสุด
-      if (history && history.length > 0) {
-        const latest = history[0];
+      // แปลงรอบเดือนเป้าหมายเป็น ymIndex
+      const targetYm = parseBillingMonthToYm(selectedMonth);
+
+      // ค้นหาบิลเก่าที่มีรอบก่อนหน้า selectedMonth
+      let candidateBills = [];
+      if (targetYm) {
+        candidateBills = history.filter(item => {
+          const itemYm = parseBillingMonthToYm(item.billingMonth);
+          return itemYm && itemYm.ymIndex < targetYm.ymIndex;
+        });
+        // เรียงจากเดือนล่าสุดที่เก่ากว่าเป้าหมาย (descending)
+        candidateBills.sort((a, b) => {
+          const ymA = parseBillingMonthToYm(a.billingMonth);
+          const ymB = parseBillingMonthToYm(b.billingMonth);
+          if (ymB.ymIndex !== ymA.ymIndex) return ymB.ymIndex - ymA.ymIndex;
+          return b.invoiceId - a.invoiceId;
+        });
+      }
+
+      // 1. ถ้าพบบิลเก่าที่มีรอบก่อนหน้า ให้ใช้บิลล่าสุดก่อนหน้ารอบนั้น
+      if (candidateBills.length > 0) {
+        const best = candidateBills[0];
         return {
-          water: latest.waterCurr,
-          electric: latest.electricCurr,
-          month: latest.billingMonth || 'เดือนก่อน',
+          water: best.waterCurr,
+          electric: best.electricCurr,
+          month: best.billingMonth || 'บิลก่อนหน้า',
           isInitial: false
         };
       }
 
-      return null;
+      // 2. ถ้าไม่มีบิลเก่าก่อนหน้าเดือนที่เลือกเลย แต่มีมิเตอร์ตั้งต้นจากสัญญาเช่า
+      if (leaseInitData) {
+        return leaseInitData;
+      }
+
+      // 3. Fallback: ถ้าบิลในระบบเป็นเดือนอนาคตทั้งหมด พยายามหาบิลที่ไม่เกินเดือนปัจจุบัน
+      const nowYm = parseBillingMonthToYm(new Date().toISOString().slice(0, 7));
+      const notFutureBills = history.filter(item => {
+        const itemYm = parseBillingMonthToYm(item.billingMonth);
+        return itemYm && (!nowYm || itemYm.ymIndex <= nowYm.ymIndex);
+      });
+      if (notFutureBills.length > 0) {
+        const best = notFutureBills[0];
+        return {
+          water: best.waterCurr,
+          electric: best.electricCurr,
+          month: best.billingMonth || 'เดือนก่อน',
+          isInitial: false
+        };
+      }
+
+      // 4. กรณีสุดท้าย ใช้บิลที่เก่าที่สุดในระบบ
+      const oldestBill = history[history.length - 1];
+      return {
+        water: oldestBill.waterCurr,
+        electric: oldestBill.electricCurr,
+        month: oldestBill.billingMonth || 'บิลเก่า',
+        isInitial: false
+      };
     }
 
     // ฟังก์ชันดึงมิเตอร์เก่าใส่อัตโนมัติ
@@ -2370,232 +2471,75 @@ if ($step === 2) {
       calculateLiveTotal();
     }
 
+    function getMaxAllowedBillingMonth() {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = now.getMonth() + 1; // รอบเดือนปัจจุบัน (ห้ามเลือกล่วงหน้า)
+      return `${y}-${String(m).padStart(2, '0')}`;
+    }
+
     function getNextBillingMonth(lastBillingMonthStr) {
+      const maxAllowedStr = getMaxAllowedBillingMonth();
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
+      const currentMonthStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+
       if (!lastBillingMonthStr || typeof lastBillingMonthStr !== 'string') {
-        const now = new Date();
-        const y = now.getFullYear();
-        const m = String(now.getMonth() + 1).padStart(2, '0');
-        return `${y}-${m}`;
+        return currentMonthStr;
       }
       
-      const thaiMonthsMap = {
-        'มกราคม': 1, 'กุมภาพันธ์': 2, 'มีนาคม': 3, 'เมษายน': 4,
-        'พฤษภาคม': 5, 'มิถุนายน': 6, 'กรกฎาคม': 7, 'สิงหาคม': 8,
-        'กันยายน': 9, 'ตุลาคม': 10, 'พฤศจิกายน': 11, 'ธันวาคม': 12
-      };
-      
-      let year = null;
-      let month = null;
-      
-      for (const [name, num] of Object.entries(thaiMonthsMap)) {
-        if (lastBillingMonthStr.includes(name)) {
-          month = num;
-          break;
-        }
-      }
-      
-      const yearMatch = lastBillingMonthStr.match(/\b(20\d\d|25\d\d)\b/);
-      if (yearMatch) {
-        let y = parseInt(yearMatch[1], 10);
-        if (y > 2400) y -= 543;
-        year = y;
-      }
-      
-      const yyyyMm = lastBillingMonthStr.match(/^(\d{4})-(\d{2})$/);
-      if (yyyyMm) {
-        year = parseInt(yyyyMm[1], 10);
-        month = parseInt(yyyyMm[2], 10);
-      }
-      
-      if (year && month) {
-        month += 1;
+      const ym = parseBillingMonthToYm(lastBillingMonthStr);
+      if (ym) {
+        let year = ym.year;
+        let month = ym.month + 1;
         if (month > 12) {
           month = 1;
           year += 1;
         }
-        return `${year}-${String(month).padStart(2, '0')}`;
+        const calculated = `${year}-${String(month).padStart(2, '0')}`;
+        // ล็อกไม่ให้เกินรอบเดือนปัจจุบัน (ห้ามเลือกล่วงหน้า)
+        if (calculated > maxAllowedStr) {
+          return maxAllowedStr;
+        }
+        return calculated;
       }
       
-      const now = new Date();
-      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      return currentMonthStr;
+    }
+
+    function setBillingMonthValue(targetValue) {
+      const monthInput = document.getElementById('billingMonthInput');
+      if (!monthInput || !targetValue) return;
+      const maxAllowedStr = getMaxAllowedBillingMonth();
+      if (targetValue > maxAllowedStr) {
+        targetValue = maxAllowedStr;
+      }
+      monthInput.value = targetValue;
     }
 
     function handleRoomChange() {
       const roomSelect = document.getElementById('roomSelect');
       const selectedOpt = roomSelect ? roomSelect.selectedOptions[0] : null;
-      const monthInput = document.getElementById('billingMonthInput');
-      const monthInfoBox = document.getElementById('billingMonthInfoBox');
-      const monthLockBadge = document.getElementById('monthLockBadge');
-      const btnResetMonth = document.getElementById('btnResetMonth');
-
       if (selectedOpt && selectedOpt.value) {
-        const expectedYm = selectedOpt.getAttribute('data-expected-ym');
-
-        if (monthInput && expectedYm) {
-          monthInput.value = expectedYm;
-          monthInput.removeAttribute('min');
-          monthInput.setAttribute('max', expectedYm); // ห้ามออกบิลข้ามเดือนไปในอนาคต แต่เลือกย้อนหลังได้
-          monthInput.readOnly = false;
-          monthInput.classList.remove('bg-slate-100', 'cursor-not-allowed');
-          monthInput.classList.add('bg-white', 'cursor-pointer');
-        }
-
-        updateMonthUI();
-      } else {
-        if (monthInput) {
-          monthInput.value = '';
-          monthInput.removeAttribute('min');
-          monthInput.removeAttribute('max');
-          monthInput.readOnly = true;
-          monthInput.classList.add('bg-slate-100', 'cursor-not-allowed');
-          monthInput.classList.remove('bg-white', 'cursor-pointer');
-        }
-        if (monthLockBadge) monthLockBadge.classList.add('hidden');
-        if (btnResetMonth) btnResetMonth.classList.add('hidden');
-        if (monthInfoBox) {
-          monthInfoBox.innerHTML = `
-            <span class="text-[11px] text-slate-400 italic flex items-center gap-1">
-              <i data-lucide="info" class="w-3.5 h-3.5 text-slate-400 shrink-0"></i> กรุณาเลือกห้องพักก่อน (สามารถเลือกเดือนย้อนหลังได้ตามคำขอผู้เช่า แต่ไม่อนุญาตให้ออกบิลข้ามเดือนไปในอนาคต)
-            </span>
-          `;
-          if (window.lucide) lucide.createIcons();
+        const lastMonth = selectedOpt.getAttribute('data-last-month');
+        if (lastMonth && lastMonth.trim() !== '') {
+          const nextMonth = getNextBillingMonth(lastMonth);
+          setBillingMonthValue(nextMonth);
         }
       }
       autoFillPreviousMeters(true);
     }
 
-    function updateMonthUI() {
-      const roomSelect = document.getElementById('roomSelect');
-      const selectedOpt = roomSelect ? roomSelect.selectedOptions[0] : null;
-      if (!selectedOpt || !selectedOpt.value) return;
-
-      const expectedYm = selectedOpt.getAttribute('data-expected-ym');
-      const expectedThai = selectedOpt.getAttribute('data-expected-thai');
-      const isFirst = selectedOpt.getAttribute('data-is-first') === '1';
-      const prevThai = selectedOpt.getAttribute('data-prev-thai');
-      const unpaidYm = selectedOpt.getAttribute('data-unpaid-ym');
-      const unpaidThai = selectedOpt.getAttribute('data-unpaid-thai');
-
-      const monthInput = document.getElementById('billingMonthInput');
-      const monthInfoBox = document.getElementById('billingMonthInfoBox');
-      const monthLockBadge = document.getElementById('monthLockBadge');
-      const btnResetMonth = document.getElementById('btnResetMonth');
-
-      const currentVal = monthInput ? monthInput.value : '';
-
-      if (currentVal && expectedYm) {
-        if (currentVal > expectedYm) {
-          alert(`❌ ไม่สามารถออกบิลข้ามเดือนล่วงหน้าได้!\nรอบบิลปัจจุบันสูงสุดของห้องนี้คือเดือน ${expectedThai}\nระบบจะปรับกลับเป็นรอบบิลปัจจุบันให้อัตโนมัติ`);
-          monthInput.value = expectedYm;
-          updateMonthUI();
-          return;
-        }
-
-        const isRetroactive = currentVal < expectedYm;
-
-        if (monthLockBadge) {
-          monthLockBadge.classList.remove('hidden');
-          if (isRetroactive) {
-            monthLockBadge.className = 'text-[10px] text-amber-800 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-2xs';
-            monthLockBadge.innerHTML = `<i data-lucide="history" class="w-3 h-3 text-amber-600"></i> ออกบิลย้อนหลัง`;
-          } else {
-            monthLockBadge.className = 'text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-2xs';
-            monthLockBadge.innerHTML = `<i data-lucide="check" class="w-3 h-3 text-emerald-600"></i> รอบปัจจุบัน`;
-          }
-        }
-
-        if (btnResetMonth) {
-          if (isRetroactive) {
-            btnResetMonth.classList.remove('hidden');
-            btnResetMonth.classList.add('inline-flex');
-          } else {
-            btnResetMonth.classList.add('hidden');
-            btnResetMonth.classList.remove('inline-flex');
-          }
-        }
-
-        if (monthInfoBox) {
-          const selectedThai = formatYmToThai(currentVal);
-          if (isRetroactive) {
-            monthInfoBox.innerHTML = `
-              <div class="p-2.5 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 shadow-2xs">
-                <div class="flex items-start justify-between gap-2">
-                  <div class="flex items-start gap-2">
-                    <i data-lucide="history" class="w-4 h-4 text-amber-600 shrink-0 mt-0.5"></i>
-                    <div>
-                      <span class="font-bold text-amber-900">โหมดออกบิลย้อนหลัง (ตามคำขอผู้เช่า):</span> คุณกำลังออกบิลของเดือน <b>${selectedThai}</b> (ระบบดึงเลขมิเตอร์รอบก่อนหน้านั้นให้อัตโนมัติ)
-                    </div>
-                  </div>
-                  <button type="button" onclick="resetToExpectedMonth()" class="shrink-0 text-[11px] font-bold text-amber-800 hover:text-amber-950 underline cursor-pointer">
-                    กลับไปเดือน ${expectedThai}
-                  </button>
-                </div>
-              </div>
-            `;
-          } else if (isFirst) {
-            monthInfoBox.innerHTML = `
-              <div class="p-2.5 bg-cyan-50 border border-cyan-200/80 rounded-xl text-xs text-cyan-800 flex items-start gap-2 shadow-2xs">
-                <i data-lucide="info" class="w-4 h-4 text-cyan-600 shrink-0 mt-0.5"></i>
-                <div>
-                  <span class="font-bold text-cyan-900">รอบบิลแรกของสัญญา:</span> กำหนดเป็น <b>${expectedThai}</b> ตามวันเริ่มสัญญาเช่า (สามารถเลือกเดือนย้อนหลังได้ แต่ห้ามออกข้ามเดือนล่วงหน้า)
-                </div>
-              </div>
-            `;
-          } else {
-            let unpaidNotice = '';
-            if (unpaidYm && unpaidThai) {
-              unpaidNotice = `
-                <div class="mt-2 pt-2 border-t border-amber-200/60 flex items-center justify-between text-[11px] text-amber-900">
-                  <span>⚠️ มีบิลเดือน <b>${unpaidThai}</b> ที่ยังไม่ชำระเงิน</span>
-                  <button type="button" onclick="switchToUnpaidMonth('${unpaidYm}', '${unpaidThai}')" class="underline font-bold text-amber-700 hover:text-amber-900 cursor-pointer">
-                    คลิกเพื่อแก้ไขบิลเดือน ${unpaidThai}
-                  </button>
-                </div>
-              `;
-            }
-            monthInfoBox.innerHTML = `
-              <div class="p-2.5 bg-emerald-50 border border-emerald-200/80 rounded-xl text-xs text-emerald-800 shadow-2xs">
-                <div class="flex items-start gap-2">
-                  <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 shrink-0 mt-0.5"></i>
-                  <div>
-                    <span class="font-bold text-emerald-900">รอบบิลปัจจุบันตามลำดับ:</span> บิลล่าสุดคือ <b>${prevThai}</b> &rarr; รอบนี้คือ <b>${expectedThai}</b> (สามารถเลือกเดือนย้อนหลังได้หากผู้เช่าขอ แต่ไม่อนุญาตให้ออกบิลข้ามเดือนล่วงหน้า)
-                  </div>
-                </div>
-                ${unpaidNotice}
-              </div>
-            `;
-          }
-          if (window.lucide) lucide.createIcons();
-        }
-      }
-    }
-
-    function resetToExpectedMonth() {
-      const roomSelect = document.getElementById('roomSelect');
-      const selectedOpt = roomSelect ? roomSelect.selectedOptions[0] : null;
-      if (!selectedOpt || !selectedOpt.value) return;
-      const expectedYm = selectedOpt.getAttribute('data-expected-ym');
-      const monthInput = document.getElementById('billingMonthInput');
-      if (monthInput && expectedYm) {
-        monthInput.value = expectedYm;
-        handleBillingMonthChange();
-      }
-    }
-
-    function switchToUnpaidMonth(ym, thai) {
-      const monthInput = document.getElementById('billingMonthInput');
-      if (monthInput && ym) {
-        monthInput.value = ym;
-        handleBillingMonthChange();
-      }
-    }
-
-    function switchToNextMonth(expectedYm, expectedThai) {
-      handleRoomChange();
-    }
-
     function handleBillingMonthChange() {
-      updateMonthUI();
+      const monthInput = document.getElementById('billingMonthInput');
+      if (monthInput && monthInput.value) {
+        const maxAllowedStr = getMaxAllowedBillingMonth();
+        if (monthInput.value > maxAllowedStr) {
+          setBillingMonthValue(maxAllowedStr);
+          alert(`สามารถเลือกรอบบิลได้สูงสุดไม่เกินรอบเดือนปัจจุบัน (${maxAllowedStr}) หรือเลือกรอบเดือนย้อนหลังได้ครับ`);
+        }
+      }
       autoFillPreviousMeters(false);
     }
 
@@ -2667,7 +2611,7 @@ if ($step === 2) {
 
       const roomSelect = document.getElementById('roomSelect');
       if (roomSelect && roomSelect.value) {
-        handleRoomChange();
+        autoFillPreviousMeters(false);
       }
 
       const alerts = document.querySelectorAll(".alert-box");
@@ -2698,11 +2642,63 @@ if ($step === 2) {
       if (e.key === 'Escape') {
         toggleOtherFeeDropdown(false);
         closeSlipModal();
+        closeRejectRetroModal();
+        closeRejectSlipModal();
       }
     });
   
+    // Modal สำหรับยกเลิกคำขอออกบิลย้อนหลัง
+    function openRejectRetroModal(reqId, roomNum, tenantName, month) {
+      const modal = document.getElementById('rejectRetroModal');
+      const idInput = document.getElementById('rejectRetroReqId');
+      const sub = document.getElementById('rejectRetroSub');
+      if (idInput) idInput.value = reqId;
+      if (sub) sub.innerText = `ห้อง ${roomNum} (${tenantName}) • รอบเดือนที่ขอ: ${month}`;
+      if (modal) modal.classList.remove('hidden');
+    }
+
+    function closeRejectRetroModal() {
+      const modal = document.getElementById('rejectRetroModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    // Modal สำหรับส่งกลับให้ลูกบ้านแนบสลิปใหม่
+    function openRejectSlipModal(invId) {
+      const inv = invoiceMap[invId];
+      if (!inv) return;
+      const modal = document.getElementById('rejectSlipModal');
+      const idInput = document.getElementById('rejectSlipInvId');
+      const sub = document.getElementById('rejectSlipSub');
+      const reasonInput = document.getElementById('rejectSlipReasonInput');
+      if (idInput) idInput.value = inv.invoiceId;
+      const totalNum = parseFloat(inv.totalAmount || 0).toLocaleString('th-TH', {minimumFractionDigits: 2});
+      if (sub) sub.innerText = `บิล #INV-${inv.invoiceId} • ห้อง ${inv.roomNumber} (${inv.fullName}) • รอบ ${inv.billingMonth} • ยอด ฿${totalNum}`;
+      if (reasonInput) reasonInput.value = 'ยอดเงินในสลิปไม่ตรงกับยอดบิล หรือข้อมูลไม่ถูกต้อง กรุณาตรวจสอบและแนบสลิปใหม่อีกครั้ง';
+      if (modal) modal.classList.remove('hidden');
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function closeRejectSlipModal() {
+      const modal = document.getElementById('rejectSlipModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function setRejectReasonPreset(text) {
+      const reasonInput = document.getElementById('rejectSlipReasonInput');
+      if (reasonInput) {
+        reasonInput.value = text;
+        reasonInput.focus();
+      }
+    }
+
     // คลิกที่แถวใบแจ้งหนี้เพื่อเปิดดูรายละเอียดแบบเต็มจอ
     document.addEventListener("DOMContentLoaded", function() {
+      // หากมีการส่งค่า presetRoomId มาจากคำขอ ให้รัน autoFillPreviousMeters
+      const roomSelect = document.getElementById('roomSelect');
+      if (roomSelect && roomSelect.value) {
+        autoFillPreviousMeters(false);
+      }
+
       document.querySelectorAll('.invoice-row').forEach(row => {
         row.addEventListener('click', function(e) {
           if (e.target.closest('button') || e.target.closest('a') || e.target.closest('form') || e.target.closest('input')) {
@@ -2716,5 +2712,95 @@ if ($step === 2) {
       });
     });
 </script>
+
+<!-- Modal สำหรับยกเลิกคำขอรอบบิลย้อนหลัง -->
+<div id="rejectRetroModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4" onclick="closeRejectRetroModal()">
+  <div class="modal-enter w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden" onclick="event.stopPropagation()">
+    <div class="p-6 border-b border-slate-100 flex items-center justify-between bg-rose-50/50">
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shadow-2xs">
+          <i data-lucide="x-circle" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h4 class="font-display font-bold text-slate-800 text-base">ยกเลิกคำขอรอบบิลย้อนหลัง</h4>
+          <p class="text-xs text-slate-400" id="rejectRetroSub">ห้อง --</p>
+        </div>
+      </div>
+      <button type="button" onclick="closeRejectRetroModal()" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg transition">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <form action="manage_invoice.php?tab=retro" method="POST" class="p-6 space-y-4">
+      <input type="hidden" name="requestId" id="rejectRetroReqId" value="">
+      <div>
+        <label class="block text-xs font-bold text-slate-700 mb-1.5">เหตุผลหรือหมายเหตุในการยกเลิกคำขอ (ส่งให้ผู้เช่าทราบ):</label>
+        <textarea name="adminRemark" rows="3" placeholder="เช่น สัญญาเช่าสิ้นสุดแล้ว หรือ มีการออกบิลให้ช่องทางอื่นแล้ว..." class="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-400 focus:bg-white outline-none font-sans"></textarea>
+      </div>
+      <div class="flex items-center justify-end gap-2 pt-2">
+        <button type="button" onclick="closeRejectRetroModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition cursor-pointer">ยกเลิก</button>
+        <button type="submit" name="reject_retro_request" class="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-sm transition cursor-pointer">ยืนยันยกเลิกคำขอ</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal สำหรับส่งกลับให้ลูกบ้านแนบสลิปใหม่ -->
+<div id="rejectSlipModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4" onclick="closeRejectSlipModal()">
+  <div class="modal-enter w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden" onclick="event.stopPropagation()">
+    <div class="p-6 border-b border-slate-100 flex items-center justify-between bg-rose-50/60">
+      <div class="flex items-center gap-2.5">
+        <div class="w-10 h-10 rounded-2xl bg-rose-500 text-white flex items-center justify-center shadow-md shadow-rose-500/20">
+          <i data-lucide="x-circle" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h4 class="font-display font-bold text-slate-800 text-base">ส่งกลับให้ลูกบ้านแนบสลิปใหม่</h4>
+          <p class="text-xs text-slate-500" id="rejectSlipSub">ใบแจ้งหนี้ #INV--</p>
+        </div>
+      </div>
+      <button type="button" onclick="closeRejectSlipModal()" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg transition">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <form action="manage_invoice.php?tab=list" method="POST" class="p-6 space-y-4">
+      <input type="hidden" name="invoiceId" id="rejectSlipInvId" value="">
+      <div>
+        <label class="block text-xs font-bold text-slate-700 mb-1.5">เลือกเหตุผลด่วน:</label>
+        <div class="flex flex-wrap gap-1.5">
+          <button type="button" onclick="setRejectReasonPreset('ยอดเงินในสลิปไม่ตรงกับยอดบิล (กรุณาตรวจสอบยอดและแนบสลิปใหม่)')" class="text-[11px] px-2.5 py-1 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 rounded-lg transition border border-slate-200">
+            💸 ยอดเงินไม่ตรงกับยอดบิล
+          </button>
+          <button type="button" onclick="setRejectReasonPreset('รูปภาพสลิปไม่ชัดเจน / ข้อมูลเบลอ มองไม่เห็นรายละเอียดการโอน')" class="text-[11px] px-2.5 py-1 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 rounded-lg transition border border-slate-200">
+            🖼️ สลิปไม่ชัด / ภาพเบลอ
+          </button>
+          <button type="button" onclick="setRejectReasonPreset('ชื่อบัญชีหรือธนาคารผู้รับเงินไม่ถูกต้อง')" class="text-[11px] px-2.5 py-1 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 rounded-lg transition border border-slate-200">
+            🏦 บัญชีปลายทางไม่ถูกต้อง
+          </button>
+          <button type="button" onclick="setRejectReasonPreset('สลิปซ้ำ หรือวันเวลาโอนไม่ตรงกับรอบบิลปัจจุบัน')" class="text-[11px] px-2.5 py-1 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 rounded-lg transition border border-slate-200">
+            ⏰ สลิปซ้ำ / ไม่ตรงรอบเดือน
+          </button>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-slate-700 mb-1.5">
+          ระบุเหตุผล / ข้อความแจ้งลูกบ้าน <span class="text-rose-500">*</span>:
+        </label>
+        <textarea name="rejectReason" id="rejectSlipReasonInput" required rows="3" placeholder="ระบุเหตุผลที่สลิปไม่ผ่าน..." class="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-400 focus:bg-white outline-none font-sans"></textarea>
+      </div>
+      <div class="p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl text-xs text-amber-800 flex items-center gap-2">
+        <i data-lucide="info" class="w-4 h-4 text-amber-600 shrink-0"></i>
+        <span>ระบบจะเปลี่ยนสถานะบิลกลับเป็น <b>&quot;รอชำระเงิน&quot;</b> เพื่อให้ลูกบ้านสามารถอัปโหลดสลิปใบใหม่เข้ามาได้ทันที</span>
+      </div>
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+        <button type="button" onclick="closeRejectSlipModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition cursor-pointer">
+          ยกเลิก
+        </button>
+        <button type="submit" name="reject_slip" value="1" class="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-md shadow-rose-600/20 transition cursor-pointer flex items-center gap-1.5">
+          <i data-lucide="send" class="w-3.5 h-3.5"></i> ส่งกลับให้แนบสลิปใหม่
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
 </body>
 </html>
