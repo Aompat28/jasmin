@@ -39,6 +39,28 @@ $stmtHdrRoom->execute([$tenantId]);
 $hdrRoomData = $stmtHdrRoom->fetch(PDO::FETCH_ASSOC);
 $myRoomId = (int)($hdrRoomData['roomId'] ?? 0);
 $myRoomNumber = $hdrRoomData['roomNumber'] ?? '';
+
+// Ensure RetroactiveInvoiceRequests table exists
+try {
+    $conn->exec("
+    CREATE TABLE IF NOT EXISTS RetroactiveInvoiceRequests (
+        requestId INT AUTO_INCREMENT PRIMARY KEY,
+        tenantId INT NOT NULL,
+        roomId INT NOT NULL,
+        requestedMonth VARCHAR(50) NOT NULL,
+        requestType VARCHAR(50) DEFAULT 'PaidInvoice',
+        reason TEXT NOT NULL,
+        slipImage VARCHAR(255) NULL,
+        status ENUM('Pending', 'Approved', 'Rejected') DEFAULT 'Pending',
+        adminRemark TEXT NULL,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updatedAt DATETIME NULL,
+        INDEX (tenantId),
+        INDEX (roomId),
+        INDEX (status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+    ");
+} catch(Throwable $e) {}
 $message = "";
 
 
@@ -118,6 +140,54 @@ if (isset($_POST['upload_slip'])) {
 
 
 
+// --- ระบบยื่นคำขอบิลย้อนหลัง (ขอบิลที่จ่ายแล้ว / ขอให้ออกบิลย้อนหลัง) ---
+if (isset($_POST['submit_retro_request'])) {
+    $requestedRoomId = intval($_POST['room_id'] ?? $myRoomId);
+    $rawReqMonth = trim($_POST['requested_month'] ?? '');
+    $requestType = trim($_POST['request_type'] ?? 'PaidInvoice');
+    if (!in_array($requestType, ['PaidInvoice', 'NewInvoice'], true)) {
+        $requestType = 'PaidInvoice';
+    }
+    $reason = trim($_POST['reason'] ?? '');
+    
+    $maxAllowedMonth = date('Y-m');
+    if (empty($rawReqMonth)) {
+        $message = "<div class='alert-box p-4 mb-6 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-r-xl shadow-sm text-sm font-bold flex items-center gap-2'><i data-lucide='alert-circle' class='w-5 h-5'></i> กรุณาเลือกรอบเดือนที่ต้องการขอบิล</div>";
+    } elseif ($rawReqMonth > $maxAllowedMonth) {
+        $message = "<div class='alert-box p-4 mb-6 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-r-xl shadow-sm text-sm font-bold flex items-center gap-2'><i data-lucide='alert-circle' class='w-5 h-5'></i> ไม่สามารถขอบิลล่วงหน้าได้ (เลือกได้สูงสุดไม่เกินรอบเดือนปัจจุบัน {$maxAllowedMonth})</div>";
+    } elseif (empty($reason)) {
+        $message = "<div class='alert-box p-4 mb-6 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-r-xl shadow-sm text-sm font-bold flex items-center gap-2'><i data-lucide='alert-circle' class='w-5 h-5'></i> กรุณาระบุเหตุผลในการขอบิลย้อนหลัง</div>";
+    } else {
+        $slipImagePath = null;
+        if (isset($_FILES['retro_slip']) && $_FILES['retro_slip']['error'] === UPLOAD_ERR_OK) {
+            $uploadDir = 'uploads/';
+            if (!is_dir($uploadDir)) { mkdir($uploadDir, 0777, true); }
+            $ext = strtolower(pathinfo($_FILES['retro_slip']['name'], PATHINFO_EXTENSION));
+            if (in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'pdf'])) {
+                $newFileName = time() . '_retro_' . uniqid() . '.' . $ext;
+                $targetFile = $uploadDir . $newFileName;
+                if (move_uploaded_file($_FILES['retro_slip']['tmp_name'], $targetFile)) {
+                    $slipImagePath = $targetFile;
+                }
+            }
+        }
+
+        try {
+            $stmtIns = $conn->prepare("
+                INSERT INTO RetroactiveInvoiceRequests 
+                (tenantId, roomId, requestedMonth, requestType, reason, slipImage, status, createdAt)
+                VALUES (?, ?, ?, ?, ?, ?, 'Pending', NOW())
+            ");
+            $stmtIns->execute([$tenantId, $requestedRoomId, $rawReqMonth, $requestType, $reason, $slipImagePath]);
+            $typeLabel = ($requestType === 'PaidInvoice') ? 'ขอบิล/ใบเสร็จที่เคยชำระแล้ว' : 'ขอให้ออกบิลใหม่ย้อนหลัง';
+            $message = "<div class='alert-box p-4 mb-6 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-sm text-sm font-bold flex items-center gap-2'><i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600'></i> ส่งคำขอบิลย้อนหลังรอบเดือน " . htmlspecialchars($rawReqMonth) . " ({$typeLabel}) เรียบร้อยแล้ว! เจ้าหน้าที่จะตรวจสอบข้อมูลให้โดยเร็วครับ</div>";
+            $activeTab = 'retro';
+        } catch(PDOException $e) {
+            $message = "<div class='alert-box p-4 mb-6 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-r-xl shadow-sm text-sm font-bold flex items-center gap-2'><i data-lucide='alert-circle' class='w-5 h-5'></i> เกิดข้อผิดพลาดในการบันทึกคำขอ: " . htmlspecialchars($e->getMessage()) . "</div>";
+        }
+    }
+}
+
 // --- ดึงข้อมูลบิลทั้งหมดของลูกบ้านคนนี้ ---
 $stmt = $conn->prepare("
     SELECT i.*, r.roomNumber 
@@ -144,12 +214,33 @@ foreach ($rawInvoices as $inv) {
     }
 }
 $pendingInvoices = array_merge($unpaidInvoices, $pendingApprovalInvoices);
+// --- ดึงข้อมูลคำขอบิลย้อนหลังของผู้เช่าคนนี้ ---
+$myRetroRequests = [];
+try {
+    $stmtMyRetro = $conn->prepare("
+        SELECT r.*, rm.roomNumber,
+               inv.invoiceId AS matchedInvoiceId, inv.status AS matchedInvoiceStatus, 
+               inv.totalAmount AS matchedTotalAmount, inv.billingMonth AS matchedBillingMonth
+        FROM RetroactiveInvoiceRequests r
+        JOIN Room rm ON r.roomId = rm.roomId
+        LEFT JOIN Invoices inv ON (inv.roomId = r.roomId AND (inv.billingMonth = r.requestedMonth COLLATE utf8mb4_general_ci OR inv.billingMonth LIKE CONCAT('%', r.requestedMonth COLLATE utf8mb4_general_ci, '%')))
+        WHERE r.tenantId = ?
+        ORDER BY r.requestId DESC
+    ");
+    $stmtMyRetro->execute([$tenantId]);
+    $myRetroRequests = $stmtMyRetro->fetchAll(PDO::FETCH_ASSOC);
+} catch(Throwable $e) {}
+
+$pendingMyRetroCount = count(array_filter($myRetroRequests, function($req) {
+    return ($req['status'] ?? '') === 'Pending';
+}));
+
 
 // รับค่าแท็บเริ่มต้นจาก URL (?tab=current, ?tab=pending หรือ ?tab=history)
 // หากไม่ได้ระบุมา: ตรวจสอบตามลำดับความสำคัญ (มีบิลรอชำระ -> current, มีบิลรอตรวจ -> pending, ไม่มีเลย -> history)
-if (isset($_GET['tab']) && in_array($_GET['tab'], ['current', 'pending', 'history'], true)) {
+if (isset($_GET['tab']) && in_array($_GET['tab'], ['current', 'pending', 'history', 'retro'], true)) {
     $activeTab = $_GET['tab'];
-} else {
+} elseif (!isset($activeTab)) {
     if (!empty($unpaidInvoices)) {
         $activeTab = 'current';
     } elseif (!empty($pendingApprovalInvoices)) {
@@ -373,7 +464,11 @@ foreach ($rawInvoices as $inv) {
           </p>
         </div>
 
-        <div class="flex flex-wrap items-center gap-3 shrink-0">
+        <div class="flex flex-wrap items-center gap-2.5 shrink-0">
+          <button type="button" onclick="openRetroRequestModal()" class="px-4 py-2.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white rounded-2xl text-xs sm:text-sm font-bold transition flex items-center gap-2 cursor-pointer shadow-sm shadow-rose-600/25 active:scale-95">
+            <i data-lucide="file-clock" class="w-4 h-4"></i>
+            <span>ขอบิลย้อนหลัง</span>
+          </button>
           <a href="tenant_dashboard.php" class="px-4 py-2.5 bg-white hover:bg-stone-50 text-slate-700 rounded-2xl text-xs sm:text-sm font-bold transition flex items-center gap-2 cursor-pointer border border-stone-200 shadow-2xs active:scale-95">
             <i data-lucide="arrow-left" class="w-4 h-4 text-slate-500"></i>
             <span>กลับแดชบอร์ด</span>
@@ -424,6 +519,20 @@ foreach ($rawInvoices as $inv) {
             <i data-lucide="history" class="w-4 h-4"></i>
             <span>ประวัติการชำระเงิน</span>
             <span class="inline-flex items-center justify-center px-2 py-0.5 text-[10px] font-bold bg-slate-100 text-slate-600 rounded-full"><?php echo count($paymentHistory); ?></span>
+        </button>
+
+        <!-- แท็บ 4: คำขอบิลย้อนหลัง (ขอบิลที่จ่ายแล้ว / ขอออกบิลย้อนหลัง) -->
+        <button onclick="switchTab('retro')" id="tab-retro" class="<?php echo ($activeTab === 'retro') ? 'px-5 py-2.5 text-sm font-bold border-b-2 border-rose-600 text-rose-600 flex items-center gap-2 whitespace-nowrap transition cursor-pointer' : 'px-5 py-2.5 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer'; ?>">
+            <i data-lucide="file-clock" class="w-4 h-4"></i>
+            <span>คำขอบิลย้อนหลัง</span>
+            <?php if(!empty($pendingMyRetroCount) && $pendingMyRetroCount > 0): ?>
+                <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 shadow-2xs">
+                    <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                    <?php echo $pendingMyRetroCount; ?> รอตรวจ
+                </span>
+            <?php else: ?>
+                <span class="inline-flex items-center justify-center px-2 py-0.5 text-[10px] font-bold bg-slate-100 text-slate-600 rounded-full"><?php echo count($myRetroRequests); ?></span>
+            <?php endif; ?>
         </button>
     </div>
 
@@ -798,7 +907,185 @@ foreach ($rawInvoices as $inv) {
         <?php endif; ?>
     </div>
 
+    <!-- ================= แท็บ 4: คำขอบิลย้อนหลัง (Retroactive Bill Requests) ================= -->
+    <div id="content-retro" class="<?php echo ($activeTab === 'retro') ? 'space-y-4' : 'space-y-4 hidden'; ?>">
+        <!-- Header แถบคำขอบิลย้อนหลัง -->
+        <div class="bg-white rounded-2xl border border-rose-100/80 p-4 sm:p-5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+                <div class="flex items-center gap-2">
+                    <h3 class="font-display font-bold text-base sm:text-lg text-slate-800">คำขอบิลย้อนหลังของคุณ</h3>
+                    <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                        <?php echo count($myRetroRequests); ?> รายการ
+                    </span>
+                </div>
+                <p class="text-xs text-slate-500 mt-1">
+                    ขอบิลหรือใบเสร็จรับเงินที่เคยชำระแล้วย้อนหลัง หรือขอให้ออกบิลรอบเดือนที่ผ่านมา
+                </p>
+            </div>
+            <button type="button" onclick="openRetroRequestModal()" class="px-4 py-2.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-sm shadow-rose-600/25 transition flex items-center justify-center gap-2 cursor-pointer shrink-0">
+                <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                <span>ยื่นคำขอบิลย้อนหลัง</span>
+            </button>
+        </div>
 
+        <?php if(!empty($myRetroRequests)): ?>
+            <div class="space-y-3.5">
+                <?php foreach($myRetroRequests as $req): 
+                    $reqType = $req['requestType'] ?? 'PaidInvoice';
+                    $status = $req['status'] ?? 'Pending';
+
+                    // จัดรูปแบบเดือนภาษาไทย
+                    $monthText = $req['requestedMonth'];
+                    if (preg_match('/^(\d{4})-(\d{2})$/', trim($req['requestedMonth']), $mMatches)) {
+                        $thMonths = [
+                            '01' => 'มกราคม', '02' => 'กุมภาพันธ์', '03' => 'มีนาคม', '04' => 'เมษายน',
+                            '05' => 'พฤษภาคม', '06' => 'มิถุนายน', '07' => 'กรกฎาคม', '08' => 'สิงหาคม',
+                            '09' => 'กันยายน', '10' => 'ตุลาคม', '11' => 'พฤศจิกายน', '12' => 'ธันวาคม'
+                        ];
+                        $monthText = ($thMonths[$mMatches[2]] ?? '') . ' ' . $mMatches[1];
+                    }
+                ?>
+                <div class="bg-white rounded-3xl border border-rose-100/90 shadow-sm overflow-hidden p-5 sm:p-6 transition hover:shadow-md hover:border-rose-300">
+                    <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-rose-100/60">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-2xl <?php echo $reqType === 'PaidInvoice' ? 'bg-sky-50 text-sky-600 border border-sky-200' : 'bg-rose-50 text-rose-600 border border-rose-200'; ?> flex items-center justify-center font-bold shrink-0">
+                                <i data-lucide="<?php echo $reqType === 'PaidInvoice' ? 'receipt' : 'file-plus'; ?>" class="w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <h4 class="font-display font-bold text-slate-800 text-base">รอบบิลเดือน: <?php echo htmlspecialchars($monthText); ?></h4>
+                                    <span class="text-xs font-mono font-bold px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600 border border-slate-200">
+                                        (<?php echo htmlspecialchars($req['requestedMonth']); ?>)
+                                    </span>
+                                </div>
+                                <div class="flex items-center gap-2 mt-0.5 text-xs">
+                                    <?php if($reqType === 'PaidInvoice'): ?>
+                                        <span class="inline-flex items-center gap-1 font-semibold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200">
+                                            <i data-lucide="check-check" class="w-3 h-3 text-sky-600"></i> ขอบิลที่จ่ายไปแล้ว (ขอสำเนา/ใบเสร็จ)
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="inline-flex items-center gap-1 font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
+                                            <i data-lucide="file-plus" class="w-3 h-3 text-rose-600"></i> ขอให้ออกบิลใหม่ย้อนหลัง
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Status Badge -->
+                        <div>
+                            <?php if($status === 'Pending'): ?>
+                                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                    <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                                    <i data-lucide="clock" class="w-3.5 h-3.5 text-amber-500"></i> รอเจ้าหน้าที่ตรวจสอบ
+                                </span>
+                            <?php elseif($status === 'Approved'): ?>
+                                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                    <i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-600"></i> ดำเนินการอนุมัติแล้ว
+                                </span>
+                            <?php elseif($status === 'Rejected'): ?>
+                                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                    <i data-lucide="x-circle" class="w-3.5 h-3.5 text-rose-600"></i> ยกเลิกคำขอ / ไม่อนุมัติ
+                                </span>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+
+                    <!-- รายละเอียดเหตุผล -->
+                    <div class="mt-4 space-y-3">
+                        <div class="p-3 bg-slate-50/80 rounded-2xl border border-slate-100 text-xs">
+                            <span class="font-bold text-slate-700 block mb-0.5">เหตุผลที่ขอ:</span>
+                            <p class="text-slate-600 leading-relaxed"><?php echo nl2br(htmlspecialchars($req['reason'])); ?></p>
+                        </div>
+
+                        <?php if(!empty($req['slipImage'])): ?>
+                        <div class="flex items-center gap-2 p-2.5 bg-rose-50/40 rounded-xl border border-rose-100 text-xs">
+                            <i data-lucide="image" class="w-4 h-4 text-rose-500"></i>
+                            <span class="text-slate-600 font-medium">เอกสาร/สลิปที่แนบมา:</span>
+                            <button type="button" onclick="openSlipPreview('<?php echo htmlspecialchars($req['slipImage']); ?>')" class="text-rose-600 hover:text-rose-800 font-bold underline inline-flex items-center gap-1 cursor-pointer">
+                                <i data-lucide="zoom-in" class="w-3 h-3"></i> ดูรูปภาพที่แนบ
+                            </button>
+                        </div>
+                        <?php endif; ?>
+
+                        <?php if(!empty($req['adminRemark'])): ?>
+                        <div class="p-3 rounded-2xl border text-xs <?php echo $status === 'Approved' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'; ?>">
+                            <div class="flex items-center gap-1.5 font-bold mb-0.5">
+                                <i data-lucide="message-square" class="w-3.5 h-3.5"></i>
+                                <span>ข้อความตอบกลับจากผู้ดูแล:</span>
+                            </div>
+                            <p class="leading-relaxed"><?php echo nl2br(htmlspecialchars($req['adminRemark'])); ?></p>
+                        </div>
+                        <?php endif; ?>
+
+                        <!-- การ์ดพบบิลในระบบ -->
+                        <?php if(!empty($req['matchedInvoiceId'])): ?>
+                        <div class="p-4 rounded-2xl bg-gradient-to-r from-emerald-50/90 via-teal-50/60 to-white border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold shrink-0">
+                                    <i data-lucide="receipt" class="w-5 h-5"></i>
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="font-display font-bold text-slate-800 text-sm">พบบิลในระบบ: #INV-<?php echo str_pad($req['matchedInvoiceId'], 5, '0', STR_PAD_LEFT); ?></span>
+                                        <?php if($req['matchedInvoiceStatus'] === 'Paid'): ?>
+                                            <span class="px-2 py-0.5 text-[10px] font-bold rounded-md bg-emerald-100 text-emerald-700">ชำระแล้ว</span>
+                                        <?php else: ?>
+                                            <span class="px-2 py-0.5 text-[10px] font-bold rounded-md bg-amber-100 text-amber-700">รอชำระ</span>
+                                        <?php endif; ?>
+                                    </div>
+                                    <div class="text-xs text-slate-500 font-mono mt-0.5">
+                                        ยอดชำระ: ฿<?php echo number_format($req['matchedTotalAmount'] ?? 0, 2); ?>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <button type="button" onclick="openTenantInvoiceModal(<?php echo $req['matchedInvoiceId']; ?>)" class="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer">
+                                    <i data-lucide="eye" class="w-3.5 h-3.5 text-emerald-600"></i> ดูรายละเอียดบิล
+                                </button>
+                                <?php if($req['matchedInvoiceStatus'] === 'Paid'): ?>
+                                <a href="print_receipt.php?id=<?php echo $req['matchedInvoiceId']; ?>" target="_blank" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer">
+                                    <i data-lucide="printer" class="w-3.5 h-3.5"></i> พิมพ์ใบเสร็จ (PDF)
+                                </a>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- Footer วันที่ -->
+                    <div class="mt-4 pt-3 border-t border-rose-100/60 flex items-center justify-between text-[11px] text-slate-400">
+                        <div class="flex items-center gap-1">
+                            <i data-lucide="calendar" class="w-3 h-3 text-slate-400"></i>
+                            <span>ยื่นเมื่อ: <?php echo !empty($req['createdAt']) ? date('d/m/Y H:i', strtotime($req['createdAt'])) : '-'; ?> น.</span>
+                        </div>
+                        <?php if(!empty($req['updatedAt'])): ?>
+                        <span>อัปเดต: <?php echo date('d/m/Y H:i', strtotime($req['updatedAt'])); ?> น.</span>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        <?php else: ?>
+            <!-- กรณีไม่มีประวัติคำขอ -->
+            <div class="text-center py-14 px-6 bg-white rounded-3xl border border-rose-100 shadow-sm">
+                <div class="w-16 h-16 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-2xs border border-rose-200/60">
+                    <i data-lucide="file-clock" class="w-8 h-8"></i>
+                </div>
+                <h3 class="text-lg font-bold text-slate-800 font-display">ยังไม่มีคำขอบิลย้อนหลัง</h3>
+                <p class="text-xs sm:text-sm text-slate-500 max-w-md mx-auto mt-1 leading-relaxed">
+                    หากคุณต้องการขอสำเนาบิล/ใบเสร็จที่เคยชำระแล้ว หรือต้องการให้ออกบิลรอบเดือนที่ผ่านมา สามารถกดยื่นคำขอได้เลยครับ
+                </p>
+                <div class="mt-5">
+                    <button type="button" onclick="openRetroRequestModal()" class="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-md shadow-rose-600/25 transition inline-flex items-center gap-2 cursor-pointer">
+                        <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                        <span>ยื่นคำขอบิลย้อนหลังทันที</span>
+                    </button>
+                </div>
+            </div>
+        <?php endif; ?>
+    </div>
 
   </main>
 
@@ -1198,7 +1485,7 @@ foreach ($rawInvoices as $inv) {
 
     // ระบบสลับแท็บ (รอบบิลปัจจุบัน / รอตรวจสอบสลิป / ประวัติการชำระเงิน)
     function switchTab(tabId) {
-        ['current', 'pending', 'history'].forEach(function(t) {
+        ['current', 'pending', 'history', 'retro'].forEach(function(t) {
             var el = document.getElementById('content-' + t);
             if (el) el.classList.add('hidden');
             var btn = document.getElementById('tab-' + t);
@@ -1216,6 +1503,57 @@ foreach ($rawInvoices as $inv) {
                 targetBtn.className = "px-5 py-2.5 text-sm font-bold border-b-2 border-amber-500 text-amber-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer";
             } else {
                 targetBtn.className = "px-5 py-2.5 text-sm font-bold border-b-2 border-rose-600 text-rose-600 flex items-center gap-2 whitespace-nowrap transition cursor-pointer";
+            }
+        }
+        if (window.lucide) lucide.createIcons();
+    }
+
+    // ฟังก์ชันสำหรับ Modal ยื่นคำขอบิลย้อนหลัง
+    function openRetroRequestModal() {
+        var modal = document.getElementById('retroRequestModal');
+        if (modal) modal.classList.remove('hidden');
+        if (window.lucide) lucide.createIcons();
+    }
+
+    function closeRetroRequestModal() {
+        var modal = document.getElementById('retroRequestModal');
+        if (modal) modal.classList.add('hidden');
+    }
+
+    function setRetroReasonPreset(txt) {
+        var el = document.getElementById('retroReasonInput');
+        if (el) {
+            el.value = txt;
+            el.focus();
+        }
+    }
+
+    function handleRetroTypeChange(val) {
+        var cardPaid = document.getElementById('card_type_paid');
+        var cardNew = document.getElementById('card_type_new');
+        var iconPaid = document.getElementById('icon_type_paid');
+        var iconNew = document.getElementById('icon_type_new');
+        if (val === 'PaidInvoice') {
+            if (cardPaid) cardPaid.className = 'relative flex flex-col p-3.5 rounded-2xl border-2 border-rose-500 bg-rose-50/40 cursor-pointer transition hover:border-rose-400 request-type-card';
+            if (cardNew) cardNew.className = 'relative flex flex-col p-3.5 rounded-2xl border-2 border-slate-200 bg-white cursor-pointer transition hover:border-slate-300 request-type-card';
+            if (iconPaid) {
+                iconPaid.setAttribute('data-lucide', 'check-circle-2');
+                iconPaid.className = 'w-4 h-4 text-rose-600 font-bold';
+            }
+            if (iconNew) {
+                iconNew.setAttribute('data-lucide', 'circle');
+                iconNew.className = 'w-4 h-4 text-slate-400';
+            }
+        } else {
+            if (cardNew) cardNew.className = 'relative flex flex-col p-3.5 rounded-2xl border-2 border-rose-500 bg-rose-50/40 cursor-pointer transition hover:border-rose-400 request-type-card';
+            if (cardPaid) cardPaid.className = 'relative flex flex-col p-3.5 rounded-2xl border-2 border-slate-200 bg-white cursor-pointer transition hover:border-slate-300 request-type-card';
+            if (iconNew) {
+                iconNew.setAttribute('data-lucide', 'check-circle-2');
+                iconNew.className = 'w-4 h-4 text-rose-600 font-bold';
+            }
+            if (iconPaid) {
+                iconPaid.setAttribute('data-lucide', 'circle');
+                iconPaid.className = 'w-4 h-4 text-slate-400';
             }
         }
         if (window.lucide) lucide.createIcons();
@@ -1395,7 +1733,8 @@ foreach ($rawInvoices as $inv) {
             `;
 
             footerAction.innerHTML = `
-                <button type="button" onclick="closeTenantInvoiceModal(); openUploadModal(${inv.invoiceId}, '${inv.billingMonth}', ${inv.totalAmount})" class="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center gap-1.5 cursor-pointer">
+                <button type="button" onclick="closeTenantInvoiceModal();
+            closeRetroRequestModal(); openUploadModal(${inv.invoiceId}, '${inv.billingMonth}', ${inv.totalAmount})" class="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center gap-1.5 cursor-pointer">
                     <i data-lucide="refresh-cw" class="w-4 h-4"></i> ส่งสลิปใหม่
                 </button>
             `;
@@ -1427,7 +1766,8 @@ foreach ($rawInvoices as $inv) {
                 `;
 
                 footerAction.innerHTML = `
-                    <button type="button" onclick="closeTenantInvoiceModal(); openUploadModal(${inv.invoiceId}, '${inv.billingMonth}', ${inv.totalAmount})" class="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center gap-1.5 cursor-pointer">
+                    <button type="button" onclick="closeTenantInvoiceModal();
+            closeRetroRequestModal(); openUploadModal(${inv.invoiceId}, '${inv.billingMonth}', ${inv.totalAmount})" class="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center gap-1.5 cursor-pointer">
                         <i data-lucide="upload" class="w-4 h-4"></i> แนบสลิปใหม่ทันที
                     </button>
                 `;
@@ -1448,7 +1788,8 @@ foreach ($rawInvoices as $inv) {
                 `;
 
                 footerAction.innerHTML = `
-                    <button type="button" onclick="closeTenantInvoiceModal(); openUploadModal(${inv.invoiceId}, '${inv.billingMonth}', ${inv.totalAmount})" class="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center gap-1.5 cursor-pointer">
+                    <button type="button" onclick="closeTenantInvoiceModal();
+            closeRetroRequestModal(); openUploadModal(${inv.invoiceId}, '${inv.billingMonth}', ${inv.totalAmount})" class="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center gap-1.5 cursor-pointer">
                         <i data-lucide="upload" class="w-4 h-4"></i> ชำระเงิน / แนบสลิป
                     </button>
                 `;
@@ -1560,12 +1901,119 @@ foreach ($rawInvoices as $inv) {
             closeSlipPreview();
 
             closeTenantInvoiceModal();
+            closeRetroRequestModal();
 
         }
 
     });
 
   </script>
+
+
+  <!-- 🌟 MODAL: ยื่นคำขอบิลย้อนหลังสำหรับผู้เช่า 🌟 -->
+  <div id="retroRequestModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onclick="closeRetroRequestModal()">
+      <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden modal-enter border border-rose-100" onclick="event.stopPropagation()">
+          <div class="p-5 border-b border-rose-100 flex justify-between items-center bg-gradient-to-r from-rose-50/90 to-pink-50/60">
+              <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center font-bold shadow-2xs">
+                      <i data-lucide="file-clock" class="w-5 h-5"></i>
+                  </div>
+                  <div>
+                      <h3 class="font-display font-bold text-slate-800 text-base">ยื่นคำขอบิลย้อนหลัง</h3>
+                      <p class="text-xs text-slate-500">ห้อง <?php echo htmlspecialchars($myRoomNumber ?: '-'); ?> (<?php echo htmlspecialchars($tenantName); ?>)</p>
+                  </div>
+              </div>
+              <button type="button" onclick="closeRetroRequestModal()" class="p-2 text-slate-400 hover:text-slate-600 rounded-xl transition cursor-pointer">
+                  <i data-lucide="x" class="w-5 h-5"></i>
+              </button>
+          </div>
+
+          <form action="view_invoices.php" method="POST" enctype="multipart/form-data" class="p-6 space-y-4">
+              <input type="hidden" name="room_id" value="<?php echo $myRoomId; ?>">
+
+              <!-- เลือกประเภทคำขอ -->
+              <div>
+                  <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">ประเภทคำขอ <span class="text-rose-500">*</span></label>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <label class="relative flex flex-col p-3.5 rounded-2xl border-2 border-rose-500 bg-rose-50/40 cursor-pointer transition hover:border-rose-400 request-type-card" id="card_type_paid">
+                          <input type="radio" name="request_type" value="PaidInvoice" class="sr-only" checked onchange="handleRetroTypeChange(this.value)">
+                          <div class="flex items-center gap-2 mb-1">
+                              <i data-lucide="check-circle-2" class="w-4 h-4 text-rose-600 font-bold" id="icon_type_paid"></i>
+                              <span class="text-xs font-bold text-slate-800">ขอบิลที่จ่ายแล้ว</span>
+                          </div>
+                          <span class="text-[11px] text-slate-500 leading-tight">ขอสำเนาบิลหรือใบเสร็จที่เคยชำระแล้ว นำไปเบิก/เป็นหลักฐาน</span>
+                      </label>
+
+                      <label class="relative flex flex-col p-3.5 rounded-2xl border-2 border-slate-200 bg-white cursor-pointer transition hover:border-slate-300 request-type-card" id="card_type_new">
+                          <input type="radio" name="request_type" value="NewInvoice" class="sr-only" onchange="handleRetroTypeChange(this.value)">
+                          <div class="flex items-center gap-2 mb-1">
+                              <i data-lucide="circle" class="w-4 h-4 text-slate-400" id="icon_type_new"></i>
+                              <span class="text-xs font-bold text-slate-800">ขอให้ออกบิลย้อนหลัง</span>
+                          </div>
+                          <span class="text-[11px] text-slate-500 leading-tight">รอบเดือนดังกล่าวในอดีตยังไม่เคยได้รับบิลค่าเช่าในระบบ</span>
+                      </label>
+                  </div>
+              </div>
+
+              <!-- เลือกรอบเดือน -->
+              <div>
+                  <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      รอบเดือนที่ต้องการขอบิล <span class="text-rose-500">*</span>
+                  </label>
+                  <input type="month" name="requested_month" max="<?php echo date('Y-m'); ?>" value="<?php echo date('Y-m', strtotime('-1 month')); ?>" required class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-400 focus:border-rose-400 transition cursor-pointer">
+                  <span class="text-[11px] text-slate-400 mt-1 block">* เลือกได้สูงสุดไม่เกินเดือนปัจจุบัน (<?php echo date('Y-m'); ?>)</span>
+              </div>
+
+              <!-- เหตุผลในการขอ พร้อมปุ่มตัวเลือกด่วน -->
+              <div>
+                  <div class="flex items-center justify-between mb-1.5">
+                      <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                          เหตุผลในการขอ <span class="text-rose-500">*</span>
+                      </label>
+                      <span class="text-[11px] text-rose-500 font-medium">กดปุ่มด่วนได้</span>
+                  </div>
+
+                  <!-- Quick Chips -->
+                  <div class="flex flex-wrap gap-1.5 mb-2">
+                      <button type="button" onclick="setRetroReasonPreset('ต้องการนำใบเสร็จไปเบิกค่าเช่ากับบริษัท/หน่วยงาน')" class="px-2.5 py-1 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 rounded-lg text-[11px] font-semibold border border-slate-200 transition cursor-pointer">
+                          🏢 เบิกบริษัท/หน่วยงาน
+                      </button>
+                      <button type="button" onclick="setRetroReasonPreset('ขอสำเนาใบเสร็จรับเงินรอบเดือนเดิมย้อนหลัง')" class="px-2.5 py-1 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 rounded-lg text-[11px] font-semibold border border-slate-200 transition cursor-pointer">
+                          📑 ขอสำเนาใบเสร็จเดิม
+                      </button>
+                      <button type="button" onclick="setRetroReasonPreset('ต้องการบิลรอบเดือนที่ผ่านมาเพื่อทำบัญชีรายรับ-รายจ่าย')" class="px-2.5 py-1 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 rounded-lg text-[11px] font-semibold border border-slate-200 transition cursor-pointer">
+                          📊 ทำบัญชีส่วนตัว
+                      </button>
+                      <button type="button" onclick="setRetroReasonPreset('ยังไม่ได้รับบิลค่าเช่าในรอบเดือนดังกล่าว')" class="px-2.5 py-1 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 rounded-lg text-[11px] font-semibold border border-slate-200 transition cursor-pointer">
+                          📬 ยังไม่เคยได้บิล
+                      </button>
+                  </div>
+
+                  <textarea id="retroReasonInput" name="reason" rows="3" required placeholder="ระบุเหตุผลหรือรายละเอียดที่ต้องการขอบิล..." class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 focus:border-rose-400 transition placeholder:text-slate-400"></textarea>
+              </div>
+
+              <!-- แนบสลิปหรือหลักฐานเดิม (ไม่บังคับ) -->
+              <div>
+                  <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      แนบภาพสลิปโอนเงินเดิม / หลักฐาน (ถ้ามี)
+                  </label>
+                  <input type="file" name="retro_slip" accept="image/*,.pdf" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-rose-50 file:text-rose-700 hover:file:bg-rose-100 cursor-pointer border border-slate-200 rounded-xl p-1 bg-slate-50">
+                  <span class="text-[11px] text-slate-400 mt-1 block">* ไม่บังคับ หากมีสลิปที่เคยโอน สามารถแนบเพื่อให้เจ้าหน้าที่ตรวจสอบได้เร็วขึ้น</span>
+              </div>
+
+              <!-- Action buttons -->
+              <div class="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                  <button type="button" onclick="closeRetroRequestModal()" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer">
+                      ยกเลิก
+                  </button>
+                  <button type="submit" name="submit_retro_request" class="px-5 py-2.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white rounded-xl text-xs font-bold shadow-md shadow-rose-600/25 transition flex items-center gap-2 cursor-pointer active:scale-95">
+                      <i data-lucide="send" class="w-4 h-4"></i>
+                      <span>ส่งคำขอบิลย้อนหลัง</span>
+                  </button>
+              </div>
+          </form>
+      </div>
+  </div>
 
 </body>
 

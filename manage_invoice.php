@@ -317,11 +317,17 @@ if (isset($_POST['reject_slip'])) {
 if (isset($_POST['approve_retro_request'])) {
     $activeTab = 'retro';
     $requestId = intval($_POST['requestId'] ?? 0);
+    $customRemark = trim($_POST['adminRemark'] ?? '');
     if ($requestId > 0) {
         try {
-            $stmtApprove = $conn->prepare("UPDATE RetroactiveInvoiceRequests SET status = 'Approved', updatedAt = NOW() WHERE requestId = ?");
-            $stmtApprove->execute([$requestId]);
-            $message = "<div class='alert-box p-4 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600'></i> อนุมัติคำขอออกบิลย้อนหลังเรียบร้อยแล้ว ท่านสามารถกดปุ่ม 'ออกบิลรอบนี้' เพื่อออกบิลได้ทันที</div>";
+            if (!empty($customRemark)) {
+                $stmtApprove = $conn->prepare("UPDATE RetroactiveInvoiceRequests SET status = 'Approved', adminRemark = ?, updatedAt = NOW() WHERE requestId = ?");
+                $stmtApprove->execute([$customRemark, $requestId]);
+            } else {
+                $stmtApprove = $conn->prepare("UPDATE RetroactiveInvoiceRequests SET status = 'Approved', adminRemark = COALESCE(adminRemark, 'อนุมัติคำขอเรียบร้อยแล้ว ตรวจสอบประวัติบิลในระบบได้ทันที'), updatedAt = NOW() WHERE requestId = ?");
+                $stmtApprove->execute([$requestId]);
+            }
+            $message = "<div class='alert-box p-4 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600'></i> อนุมัติคำขอบิลย้อนหลังเรียบร้อยแล้ว</div>";
         } catch(PDOException $e) {
             $message = "<div class='alert-box p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'>❌ เกิดข้อผิดพลาด: " . $e->getMessage() . "</div>";
         }
@@ -356,10 +362,13 @@ if ($presetRoomId && $presetMonth) {
 $retroRequests = [];
 try {
     $stmtRetro = $conn->query("
-        SELECT r.*, rm.roomNumber, u.fullName AS tenantName, u.phone AS tenantPhone
+        SELECT r.*, rm.roomNumber, u.fullName AS tenantName, u.phone AS tenantPhone,
+               inv.invoiceId AS matchedInvoiceId, inv.status AS matchedInvoiceStatus, 
+               inv.totalAmount AS matchedTotalAmount, inv.billingMonth AS matchedBillingMonth
         FROM RetroactiveInvoiceRequests r
         JOIN Room rm ON r.roomId = rm.roomId
         JOIN User u ON r.tenantId = u.userId
+        LEFT JOIN Invoices inv ON (inv.roomId = r.roomId AND (inv.billingMonth = r.requestedMonth COLLATE utf8mb4_general_ci OR inv.billingMonth LIKE CONCAT('%', r.requestedMonth COLLATE utf8mb4_general_ci, '%')))
         ORDER BY CASE WHEN r.status = 'Pending' THEN 1 WHEN r.status = 'Approved' THEN 2 ELSE 3 END, r.requestId DESC
     ");
     if ($stmtRetro) {
@@ -1409,9 +1418,11 @@ if ($step === 2) {
               <tr class="text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100 bg-slate-50/70">
                 <th class="py-3 px-4 rounded-l-xl">ห้องพัก</th>
                 <th class="py-3 px-4">ผู้เช่า</th>
+                <th class="py-3 px-4">ประเภทคำขอ</th>
                 <th class="py-3 px-4">รอบเดือนที่ขอ</th>
-                <th class="py-3 px-4">เหตุผลในการขอ</th>
-                <th class="py-3 px-4">วันที่ยื่นคำขอ</th>
+                <th class="py-3 px-4">เหตุผล & เอกสารแนบ</th>
+                <th class="py-3 px-4">บิลในระบบ</th>
+                <th class="py-3 px-4">วันที่ยื่น</th>
                 <th class="py-3 px-4 text-center">สถานะ</th>
                 <th class="py-3 px-4">หมายเหตุแอดมิน</th>
                 <th class="py-3 px-4 text-center rounded-r-xl">การจัดการ</th>
@@ -3061,6 +3072,22 @@ if ($step === 2) {
         });
       });
     });
+
+    function openSlipPreviewModal(src) {
+        var img = document.getElementById('retroSlipPreviewImage');
+        var modal = document.getElementById('retroSlipPreviewModal');
+        if (img && modal) {
+            img.src = src;
+            modal.classList.remove('hidden');
+        }
+        if (window.lucide) lucide.createIcons();
+    }
+    function closeSlipPreviewModal() {
+        var modal = document.getElementById('retroSlipPreviewModal');
+        if (modal) modal.classList.add('hidden');
+        var img = document.getElementById('retroSlipPreviewImage');
+        if (img) img.src = '';
+    }
 </script>
 
 <!-- Modal สำหรับยกเลิกคำขอรอบบิลย้อนหลัง -->
@@ -3093,6 +3120,17 @@ if ($step === 2) {
     </form>
   </div>
 </div>
+
+
+  <!-- 🌟 MODAL: ดูรูปภาพสลิปที่แนบมากับคำขอบิลย้อนหลัง 🌟 -->
+  <div id="retroSlipPreviewModal" class="hidden fixed inset-0 z-[99999] bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4" onclick="closeSlipPreviewModal()">
+      <div class="relative max-w-lg w-full flex flex-col items-center justify-center" onclick="event.stopPropagation()">
+          <button type="button" onclick="closeSlipPreviewModal()" class="absolute -top-12 right-0 text-white hover:text-rose-400 p-2 text-xs font-bold flex items-center gap-1 bg-white/10 hover:bg-white/20 rounded-full px-3.5 py-1.5 transition cursor-pointer">
+              <i data-lucide="x" class="w-4 h-4"></i> ปิดหน้าต่าง
+          </button>
+          <img id="retroSlipPreviewImage" src="" alt="ภาพสลิปที่แนบมา" class="max-w-full max-h-[85vh] rounded-2xl shadow-2xl object-contain border border-white/20 bg-black">
+      </div>
+  </div>
 
 </body>
 </html>

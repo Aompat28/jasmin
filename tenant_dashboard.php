@@ -2079,10 +2079,16 @@ try {
 
                 <span class="text-xs text-slate-500 font-medium">ประวัติการชำระเงินค่าห้องพักและค่าน้ำค่าไฟ</span>
 
-                <a href="view_invoices.php?tab=history" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
-                  <i data-lucide="history" class="w-3.5 h-3.5"></i>
-                  <span>ดูประวัติบิลทั้งหมด</span>
-                </a>
+                <div class="flex items-center gap-2">
+                  <a href="view_invoices.php?tab=retro" class="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs" title="ยื่นคำขอบิลหรือใบเสร็จย้อนหลัง">
+                    <i data-lucide="file-clock" class="w-3.5 h-3.5"></i>
+                    <span>ขอบิลย้อนหลัง</span>
+                  </a>
+                  <a href="view_invoices.php?tab=history" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
+                    <i data-lucide="history" class="w-3.5 h-3.5"></i>
+                    <span>ดูประวัติบิลทั้งหมด</span>
+                  </a>
+                </div>
 
               </div>
 
