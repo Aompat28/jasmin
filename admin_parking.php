@@ -23,6 +23,21 @@ if (isset($_POST['approve_parking'])) {
             WHERE id = ?
         ");
         $stmt->execute([$adminRemark, $reqId]);
+
+        // ซิงค์ข้อมูลสิทธิ์ที่จอดรถเข้าสัญญาเช่า (Lease) ของลูกบ้านอัตโนมัติ
+        try {
+            $stmtSync = $conn->prepare("
+                UPDATE Lease l
+                JOIN parking_requests pr ON l.tenantId = pr.tenantId
+                SET l.parkingPlan = 'Monthly',
+                    l.parkingFee = 100.00,
+                    l.vehicleType = IFNULL(pr.vehicleType, 'Car'),
+                    l.vehiclePlate = pr.additionalPlate
+                WHERE pr.id = ? AND l.status = 'Active' AND (l.parkingPlan = 'None' OR l.parkingPlan IS NULL OR l.parkingFee = 0)
+            ");
+            $stmtSync->execute([$reqId]);
+        } catch(Throwable $syncErr) {}
+
         $message = "<div class='p-4 mb-6 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-2xl shadow-sm text-sm font-bold flex items-center gap-2'><i data-lucide='check-circle-2' class='w-5 h-5 shrink-0 text-emerald-600'></i> อนุมัติคำขอเพิ่มรถและสิทธิ์ที่จอดรถเรียบร้อยแล้ว! ข้อมูลได้รับการอัปเดตเข้าระบบ</div>";
     } catch(PDOException $e) {
         $message = "<div class='p-4 mb-6 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-2xl shadow-sm text-sm font-bold flex items-center gap-2'><i data-lucide='alert-circle' class='w-5 h-5 shrink-0'></i> เกิดข้อผิดพลาด: " . htmlspecialchars($e->getMessage()) . "</div>";

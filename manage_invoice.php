@@ -369,11 +369,12 @@ try {
 $pendingRetroCount = count(array_filter($retroRequests, function($req) {
     return ($req['status'] ?? '') === 'Pending';
 }));
-// ดึงรายการห้องที่มีผู้เช่าอยู่จริง พร้อมเลขมิเตอร์น้ำ-ไฟล่าสุดของแต่ละห้อง
+// ดึงรายการห้องที่มีผู้เช่าอยู่จริง พร้อมเลขมิเตอร์น้ำ-ไฟล่าสุดของแต่ละห้อง และข้อมูลสัญญาค่าบริการ (ที่จอดรถ, เน็ต)
 $rooms = $conn->query("
     SELECT r.roomId, r.roomNumber, r.rentPrice, u.fullName, l.tenantId,
            l.initialWaterMeter, l.initialElectricMeter, l.startDate AS leaseStartDate,
            l.parkingPlan, l.parkingFee, l.internetPlan, l.internetFee, l.vehicleType,
+           pr.prVehicleType, pr.prPlate, pr.prStatus,
            latestInv.waterCurr AS lastWater,
            latestInv.electricCurr AS lastElectric,
            latestInv.billingMonth AS lastBillingMonth,
@@ -381,6 +382,16 @@ $rooms = $conn->query("
     FROM Room r 
     JOIN Lease l ON r.roomId = l.roomId AND l.status = 'Active'
     JOIN User u ON l.tenantId = u.userId
+    LEFT JOIN (
+        SELECT pr1.tenantId, pr1.vehicleType AS prVehicleType, pr1.additionalPlate AS prPlate, 'Approved' AS prStatus
+        FROM parking_requests pr1
+        JOIN (
+            SELECT tenantId, MAX(id) AS maxPrId
+            FROM parking_requests
+            WHERE status = 'Approved'
+            GROUP BY tenantId
+        ) pr2 ON pr1.id = pr2.maxPrId
+    ) pr ON l.tenantId = pr.tenantId
     LEFT JOIN (
         SELECT i1.roomId, i1.waterCurr, i1.electricCurr, i1.billingMonth, i1.invoiceId
         FROM Invoices i1
@@ -392,6 +403,20 @@ $rooms = $conn->query("
     ) latestInv ON r.roomId = latestInv.roomId
     ORDER BY r.roomNumber ASC
 ")->fetchAll(PDO::FETCH_ASSOC);
+
+foreach ($rooms as &$r) {
+    $r['parkingSource'] = 'lease';
+    // หากสัญญาเช่าระบุ None หรือ 0 แต่ผู้เช่ามีรายการที่จอดรถที่ได้รับอนุมัติแล้วใน parking_requests
+    if (($r['parkingPlan'] === 'None' || empty($r['parkingPlan']) || (float)$r['parkingFee'] <= 0) && !empty($r['prStatus'])) {
+        $r['parkingPlan'] = 'Monthly';
+        $r['parkingFee'] = 100.00;
+        if (!empty($r['prVehicleType'])) {
+            $r['vehicleType'] = $r['prVehicleType'];
+        }
+        $r['parkingSource'] = 'approved';
+    }
+}
+unset($r);
 
 // ดึงประวัติเลขมิเตอร์ตามห้องและรอบเดือน เพื่อให้ระบบเปลี่ยนเลขมิเตอร์เก่าตามรอบเดือนที่เลือกได้แบบไดนามิก
 $roomMetersHistory = [];
@@ -1013,6 +1038,7 @@ if ($step === 2) {
                 <?php foreach($rooms as $r): ?>
                   <option value="<?php echo $r['roomId']; ?>" 
                           <?php echo ($presetRoomId == $r['roomId']) ? 'selected' : ''; ?>
+                          data-room="<?php echo htmlspecialchars($r['roomNumber']); ?>"
                           data-rent="<?php echo $r['rentPrice']; ?>" 
                           data-tenant="<?php echo htmlspecialchars($r['fullName']); ?>"
                           data-water-prev="<?php echo $r['lastWater'] ?? ''; ?>"
@@ -1025,7 +1051,8 @@ if ($step === 2) {
                           data-parking-fee="<?php echo (float)($r['parkingFee'] ?? 0); ?>"
                           data-internet-plan="<?php echo htmlspecialchars($r['internetPlan'] ?? 'None'); ?>"
                           data-internet-fee="<?php echo (float)($r['internetFee'] ?? 0); ?>"
-                          data-vehicle-type="<?php echo htmlspecialchars($r['vehicleType'] ?? 'Car'); ?>">
+                          data-vehicle-type="<?php echo htmlspecialchars($r['vehicleType'] ?? 'Car'); ?>"
+                          data-parking-source="<?php echo htmlspecialchars($r['parkingSource'] ?? 'lease'); ?>">
                     ห้อง <?php echo $r['roomNumber']; ?> (<?php echo htmlspecialchars($r['fullName']); ?>) - ค่าเช่า ฿<?php echo number_format($r['rentPrice'], 2); ?>
                   </option>
                 <?php endforeach; ?>
@@ -1215,8 +1242,16 @@ if ($step === 2) {
                 </button>
               </div>
 
+              <!-- Context Notice Bar (ดึงสัญญาของห้อง) -->
+              <div id="otherFeeRoomNotice" class="p-2.5 rounded-xl text-xs flex items-center justify-between border bg-slate-50 border-slate-200 text-slate-600 transition">
+                <span class="flex items-center gap-1.5">
+                  <i data-lucide="info" class="w-3.5 h-3.5 text-blue-500 shrink-0"></i>
+                  <span>กรุณาเลือกห้องพักด้านบน ระบบจะดึง<b>ค่าที่จอดรถและค่าอินเทอร์เน็ตตามสัญญา</b>มาให้อัตโนมัติ</span>
+                </span>
+              </div>
+
               <!-- Checkbox List -->
-              <div class="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+              <div class="space-y-1.5 max-h-64 overflow-y-auto pr-1">
                 <!-- ค่าบริการประจำเดือน & ตามสัญญา (ล็อกจ่ายทุกเดือน - ไม่มีช่องติ๊ก ล็อกตามราคาที่คิด) -->
                 <div class="p-3 bg-gradient-to-br from-amber-50/80 via-orange-50/30 to-amber-50/80 rounded-2xl border border-amber-200/90 mb-2.5 shadow-2xs">
                   <div class="flex items-center justify-between text-[11px] font-bold text-amber-900 mb-2.5">
@@ -1231,31 +1266,6 @@ if ($step === 2) {
 
                   <div class="space-y-1.5" id="lockedServicesContainer">
                     <!-- รายการล็อกจะถูกสร้างและแสดงผลอัตโนมัติตามสัญญาของห้องที่เลือก -->
-                    <div class="flex items-center justify-between p-2.5 bg-white rounded-xl border border-amber-200 shadow-2xs select-none">
-                      <div class="flex items-center gap-2.5">
-                        <div class="w-6 h-6 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
-                          <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                        </div>
-                        <div class="flex items-center gap-1.5">
-                          <span class="text-xs font-bold text-slate-800">ค่าขยะ</span>
-                          <span class="inline-flex items-center gap-0.5 text-[9px] text-amber-800 bg-amber-100 font-bold px-1.5 py-0.5 rounded-md">ล็อกจ่ายทุกเดือน</span>
-                        </div>
-                      </div>
-                      <span class="text-xs font-mono font-bold text-amber-900 bg-amber-100/90 border border-amber-200 px-2.5 py-1 rounded-lg shadow-2xs">+20 ฿</span>
-                    </div>
-
-                    <div class="flex items-center justify-between p-2.5 bg-white rounded-xl border border-amber-200 shadow-2xs select-none">
-                      <div class="flex items-center gap-2.5">
-                        <div class="w-6 h-6 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
-                          <i data-lucide="layers" class="w-3.5 h-3.5"></i>
-                        </div>
-                        <div class="flex items-center gap-1.5">
-                          <span class="text-xs font-bold text-slate-800">ค่าส่วนกลาง</span>
-                          <span class="inline-flex items-center gap-0.5 text-[9px] text-amber-800 bg-amber-100 font-bold px-1.5 py-0.5 rounded-md">ล็อกจ่ายทุกเดือน</span>
-                        </div>
-                      </div>
-                      <span class="text-xs font-mono font-bold text-amber-900 bg-amber-100/90 border border-amber-200 px-2.5 py-1 rounded-lg shadow-2xs">+100 ฿</span>
-                    </div>
                   </div>
                 </div>
 
@@ -1267,11 +1277,38 @@ if ($step === 2) {
                   </span>
                 </div>
 
+                <!-- ค่าที่จอดรถยนต์ (กรณีไม่มีในสัญญา) -->
+                <label id="optParkingCarLabel" class="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 cursor-pointer border border-transparent hover:border-slate-200 transition">
+                  <div class="flex items-center gap-2.5">
+                    <input type="checkbox" id="cbOptCarPark" class="other-fee-checkbox w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer" data-category="parking" data-name="ค่าที่จอดรถยนต์" data-amount="100" onchange="recalculateOtherFees()">
+                    <span class="text-xs font-semibold text-slate-700 flex items-center gap-1.5"><i data-lucide="car" class="w-3.5 h-3.5 text-slate-500"></i> ค่าที่จอดรถยนต์</span>
+                  </div>
+                  <span class="text-xs font-mono font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">+100 ฿</span>
+                </label>
+
+                <!-- ค่าที่จอดมอเตอร์ไซค์ (กรณีไม่มีในสัญญา) -->
+                <label id="optParkingMotoLabel" class="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 cursor-pointer border border-transparent hover:border-slate-200 transition">
+                  <div class="flex items-center gap-2.5">
+                    <input type="checkbox" id="cbOptMotoPark" class="other-fee-checkbox w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer" data-category="parking" data-name="ค่าที่จอดมอเตอร์ไซค์" data-amount="100" onchange="recalculateOtherFees()">
+                    <span class="text-xs font-semibold text-slate-700 flex items-center gap-1.5"><i data-lucide="bike" class="w-3.5 h-3.5 text-slate-500"></i> ค่าที่จอดมอเตอร์ไซค์</span>
+                  </div>
+                  <span class="text-xs font-mono font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">+100 ฿</span>
+                </label>
+
+                <!-- ค่าอินเทอร์เน็ต / Wi-Fi (กรณีไม่มีในสัญญา) -->
+                <label id="optInternetLabel" class="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 cursor-pointer border border-transparent hover:border-slate-200 transition">
+                  <div class="flex items-center gap-2.5">
+                    <input type="checkbox" id="cbOptInternet" class="other-fee-checkbox w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer" data-category="internet" data-name="ค่าอินเทอร์เน็ต / Wi-Fi" data-amount="150" onchange="recalculateOtherFees()">
+                    <span class="text-xs font-semibold text-slate-700 flex items-center gap-1.5"><i data-lucide="wifi" class="w-3.5 h-3.5 text-slate-500"></i> ค่าอินเทอร์เน็ต / Wi-Fi</span>
+                  </div>
+                  <span class="text-xs font-mono font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">+150 ฿</span>
+                </label>
+
                 <!-- ค่าล้างแอร์ / บำรุงรักษา -->
                 <label class="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 cursor-pointer border border-transparent hover:border-slate-200 transition">
                   <div class="flex items-center gap-2.5">
                     <input type="checkbox" class="other-fee-checkbox w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer" data-name="ค่าล้างแอร์ / บำรุงรักษา" data-amount="300" onchange="recalculateOtherFees()">
-                    <span class="text-xs font-semibold text-slate-700">ค่าล้างแอร์ / บำรุงรักษา</span>
+                    <span class="text-xs font-semibold text-slate-700 flex items-center gap-1.5"><i data-lucide="wind" class="w-3.5 h-3.5 text-slate-500"></i> ค่าล้างแอร์ / บำรุงรักษา</span>
                   </div>
                   <span class="text-xs font-mono font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">+300 ฿</span>
                 </label>
@@ -1280,7 +1317,7 @@ if ($step === 2) {
                 <label class="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 cursor-pointer border border-transparent hover:border-slate-200 transition">
                   <div class="flex items-center gap-2.5">
                     <input type="checkbox" class="other-fee-checkbox w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer" data-name="ค่าปรับชำระล่าช้า" data-amount="100" onchange="recalculateOtherFees()">
-                    <span class="text-xs font-semibold text-slate-700">ค่าปรับชำระล่าช้า</span>
+                    <span class="text-xs font-semibold text-slate-700 flex items-center gap-1.5"><i data-lucide="clock" class="w-3.5 h-3.5 text-slate-500"></i> ค่าปรับชำระล่าช้า</span>
                   </div>
                   <span class="text-xs font-mono font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">+100 ฿</span>
                 </label>
@@ -2522,6 +2559,7 @@ if ($step === 2) {
       
       const shouldOpen = forceState !== null ? forceState : menu.classList.contains('hidden');
       if (shouldOpen) {
+        recalculateOtherFees();
         menu.classList.remove('hidden');
         if (chevron) chevron.classList.add('rotate-180');
       } else {
@@ -2532,14 +2570,42 @@ if ($step === 2) {
 
     function recalculateOtherFees() {
       const roomSelect = document.getElementById('roomSelect');
-      const selectedOpt = (roomSelect && roomSelect.selectedIndex > 0) ? roomSelect.selectedOptions[0] : null;
+      const selectedOpt = (roomSelect && roomSelect.value) ? (roomSelect.selectedOptions[0] || roomSelect.querySelector(`option[value="${roomSelect.value}"]`)) : null;
 
       // 1. ดึงข้อมูลสัญญาของห้องที่เลือก (ถ้ามี)
+      const roomNumber = selectedOpt ? (selectedOpt.getAttribute('data-room') || '') : '';
+      const tenantName = selectedOpt ? (selectedOpt.getAttribute('data-tenant') || '') : '';
       const parkingPlan = selectedOpt ? (selectedOpt.getAttribute('data-parking-plan') || 'None') : 'None';
       const parkingFee = selectedOpt ? parseFloat(selectedOpt.getAttribute('data-parking-fee') || 0) : 0;
       const internetPlan = selectedOpt ? (selectedOpt.getAttribute('data-internet-plan') || 'None') : 'None';
       const internetFee = selectedOpt ? parseFloat(selectedOpt.getAttribute('data-internet-fee') || 0) : 0;
       const vehicleType = selectedOpt ? (selectedOpt.getAttribute('data-vehicle-type') || 'Car') : 'Car';
+      const parkingSource = selectedOpt ? (selectedOpt.getAttribute('data-parking-source') || 'lease') : 'lease';
+
+      // อัปเดต Notice Bar แสดงว่ากำลังดึงข้อมูลห้องไหน
+      const noticeBar = document.getElementById('otherFeeRoomNotice');
+      if (noticeBar) {
+        if (selectedOpt && roomNumber) {
+          noticeBar.className = 'p-2.5 rounded-xl text-xs flex items-center justify-between border bg-blue-50/80 border-blue-200 text-blue-900 transition';
+          noticeBar.innerHTML = `
+            <span class="flex items-center gap-1.5 font-bold">
+              <i data-lucide="home" class="w-3.5 h-3.5 text-blue-600 shrink-0"></i>
+              <span>สัญญาห้อง ${roomNumber} (${tenantName})</span>
+            </span>
+            <span class="text-[10px] text-blue-700 bg-blue-100 font-bold px-2 py-0.5 rounded-md flex items-center gap-1">
+              <i data-lucide="check" class="w-3 h-3 text-blue-600"></i> ดึงสัญญาเรียบร้อย
+            </span>
+          `;
+        } else {
+          noticeBar.className = 'p-2.5 rounded-xl text-xs flex items-center justify-between border bg-slate-50 border-slate-200 text-slate-600 transition';
+          noticeBar.innerHTML = `
+            <span class="flex items-center gap-1.5">
+              <i data-lucide="info" class="w-3.5 h-3.5 text-blue-500 shrink-0"></i>
+              <span>กรุณาเลือกห้องพักด้านบน ระบบจะดึง<b>ค่าที่จอดรถและค่าอินเทอร์เน็ตตามสัญญา</b>มาให้อัตโนมัติ</span>
+            </span>
+          `;
+        }
+      }
 
       // 2. รายการบริการล็อกประจำเดือน (ค่าขยะ 20 บาท + ค่าส่วนกลาง 100 บาท)
       const lockedFees = [
@@ -2548,9 +2614,13 @@ if ($step === 2) {
       ];
 
       // หากห้องพักมีสัญญาบริการอินเทอร์เน็ต (ล็อกตามสัญญา ทั้งรายเดือนและรายปี)
-      const hasLeaseInternet = (internetPlan && internetPlan !== 'None' && internetFee > 0);
+      const hasLeaseInternet = (selectedOpt && internetPlan && internetPlan !== 'None');
       if (hasLeaseInternet) {
-        let netAmt = (internetPlan === 'Yearly' && internetFee >= 1000) ? 150 : internetFee;
+        let netAmt = internetFee > 0 ? internetFee : 150;
+        // ถ้ารายปีระบุ 1500 คิดเฉลี่ยรายเดือนตามรอบบิลเป็น 150 บาท
+        if (internetPlan === 'Yearly' && netAmt >= 1000) {
+          netAmt = 150;
+        }
         if (netAmt <= 0) netAmt = 150;
         const netBadge = (internetPlan === 'Yearly') ? 'ล็อกตามสัญญา (รายปี)' : 'ล็อกตามสัญญา';
         lockedFees.push({
@@ -2562,8 +2632,8 @@ if ($step === 2) {
         });
       }
 
-      // หากห้องพักมีสัญญาเช่าที่จอดรถ (ล็อกตามสัญญา ทั้งรายเดือนและรายปี)
-      const hasLeaseParking = (parkingPlan && parkingPlan !== 'None' && parkingFee > 0);
+      // หากห้องพักมีสัญญาเช่าที่จอดรถ หรือมีสิทธิ์ที่จอดรถที่ได้รับอนุมัติแล้ว
+      const hasLeaseParking = (selectedOpt && parkingPlan && parkingPlan !== 'None');
       if (hasLeaseParking) {
         let pLabel = 'ค่าที่จอดรถยนต์';
         let pIcon = 'car';
@@ -2578,9 +2648,16 @@ if ($step === 2) {
           pIcon = 'truck';
         }
 
-        let pAmt = (parkingPlan === 'Yearly' && parkingFee >= 1000) ? 100 : parkingFee;
+        let pAmt = parkingFee > 0 ? parkingFee : 100;
+        if (parkingPlan === 'Yearly' && pAmt >= 1000) {
+          pAmt = 100;
+        }
         if (pAmt <= 0) pAmt = 100;
-        const pBadge = (parkingPlan === 'Yearly') ? 'ล็อกตามสัญญา (รายปี)' : 'ล็อกตามสัญญา';
+
+        let pBadge = (parkingPlan === 'Yearly') ? 'ล็อกตามสัญญา (รายปี)' : 'ล็อกตามสัญญา';
+        if (parkingSource === 'approved') {
+          pBadge = 'ล็อกตามสิทธิ์อนุมัติ';
+        }
 
         lockedFees.push({
           name: pLabel,
@@ -2614,6 +2691,31 @@ if ($step === 2) {
         lockedContainer.innerHTML = lockedHtml;
       }
 
+      // จัดการตัวเลือกเพิ่มเติมใน Optional Checkboxes: ซ่อนตัวเลือกที่ซ้ำกับสัญญา
+      const optCarPark = document.getElementById('optParkingCarLabel');
+      const optMotoPark = document.getElementById('optParkingMotoLabel');
+      const optInternet = document.getElementById('optInternetLabel');
+      const cbCarPark = document.getElementById('cbOptCarPark');
+      const cbMotoPark = document.getElementById('cbOptMotoPark');
+      const cbInternet = document.getElementById('cbOptInternet');
+
+      if (hasLeaseParking) {
+        if (optCarPark) optCarPark.style.display = 'none';
+        if (optMotoPark) optMotoPark.style.display = 'none';
+        if (cbCarPark) cbCarPark.checked = false;
+        if (cbMotoPark) cbMotoPark.checked = false;
+      } else {
+        if (optCarPark) optCarPark.style.display = 'flex';
+        if (optMotoPark) optMotoPark.style.display = 'flex';
+      }
+
+      if (hasLeaseInternet) {
+        if (optInternet) optInternet.style.display = 'none';
+        if (cbInternet) cbInternet.checked = false;
+      } else {
+        if (optInternet) optInternet.style.display = 'flex';
+      }
+
       let sum = 0;
       let notes = [];
       const pillsContainer = document.getElementById('otherFeePills');
@@ -2627,7 +2729,7 @@ if ($step === 2) {
         if (pillsContainer) {
           const pill = document.createElement('span');
           pill.className = 'inline-flex items-center gap-1.5 text-[10px] bg-amber-50 text-amber-900 border border-amber-200/90 px-2.5 py-0.5 rounded-full font-bold shadow-2xs select-none';
-          pill.innerHTML = `<i data-lucide="${fee.icon || 'lock'}" class="w-3 h-3 text-amber-600 shrink-0"></i><span>${fee.name} ฿${fee.amount.toFixed(0)}</span><span class="text-[9px] text-amber-700 bg-amber-200/70 px-1.5 py-0.2 rounded-full font-semibold">${fee.badge.indexOf('สัญญา') !== -1 ? 'ตามสัญญา' : 'ล็อก'}</span>`;
+          pill.innerHTML = `<i data-lucide="${fee.icon || 'lock'}" class="w-3 h-3 text-amber-600 shrink-0"></i><span>${fee.name} ฿${fee.amount.toFixed(0)}</span><span class="text-[9px] text-amber-700 bg-amber-200/70 px-1.5 py-0.2 rounded-full font-semibold">${fee.badge.indexOf('สัญญา') !== -1 || fee.badge.indexOf('สิทธิ์') !== -1 ? 'ตามสัญญา' : 'ล็อก'}</span>`;
           pillsContainer.appendChild(pill);
         }
       });
@@ -2796,7 +2898,7 @@ if ($step === 2) {
 
     function handleRoomChange() {
       const roomSelect = document.getElementById('roomSelect');
-      const selectedOpt = roomSelect ? roomSelect.selectedOptions[0] : null;
+      const selectedOpt = (roomSelect && roomSelect.value) ? (roomSelect.selectedOptions[0] || roomSelect.querySelector(`option[value="${roomSelect.value}"]`)) : null;
       if (selectedOpt && selectedOpt.value) {
         const lastMonth = selectedOpt.getAttribute('data-last-month');
         if (lastMonth && lastMonth.trim() !== '') {
@@ -2804,8 +2906,8 @@ if ($step === 2) {
           setBillingMonthValue(nextMonth);
         }
       }
-      autoFillPreviousMeters(true);
       recalculateOtherFees();
+      autoFillPreviousMeters(true);
     }
 
     function handleBillingMonthChange() {
