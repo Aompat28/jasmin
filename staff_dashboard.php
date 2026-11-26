@@ -2669,7 +2669,7 @@ function previewCompletionImage(event) {
 
 
 
-                  <div class="rounded-3xl p-5 sm:p-6 border-2 border-blue-200 bg-gradient-to-b from-blue-50/50 to-slate-50/30 flex flex-col justify-between shadow-2xs space-y-4">
+                  <div class="rounded-3xl p-5 sm:p-6 border-2 border-blue-200 bg-gradient-to-b from-blue-50/50 to-slate-50/30 flex flex-col shadow-2xs">
 
 
 
@@ -2861,7 +2861,7 @@ function previewCompletionImage(event) {
 
 
 
-                          <div class="bg-white p-4 rounded-2xl border border-rose-100/80/80 shadow-2xs mb-4">
+                          <div class="bg-white p-4 rounded-2xl border border-blue-100 shadow-2xs mb-4">
 
 
 
@@ -3005,7 +3005,7 @@ function previewCompletionImage(event) {
 
 
 
-                  <div class="rounded-3xl p-5 sm:p-6 border-2 border-emerald-200 bg-gradient-to-b from-emerald-50/50 to-slate-50/30 flex flex-col justify-between shadow-2xs space-y-4">
+                  <div class="rounded-3xl p-5 sm:p-6 border-2 border-emerald-200 bg-gradient-to-b from-emerald-50/50 to-slate-50/30 flex flex-col shadow-2xs">
 
 
 
@@ -3277,7 +3277,20 @@ function previewCompletionImage(event) {
 
 
 
-                          <!-- 📝 รายงาน/บันทึกปัญหาเพิ่มเติมถึงแอดมิน (เห็นเฉพาะแอดมิน) - กล่องพิมพ์และแก้ไขได้ทันทีในหน้าเดียวกัน (แสดงเมื่อสถานะเสร็จสิ้นแล้ว) -->
+                          <!-- ✨ รูปหลังทำ (ผลงานที่ช่างส่งมอบ) AFTER (แสดงเมื่อสถานะเสร็จสิ้นแล้ว) -->
+                      <div id="staff_detail_after_img_section" class="bg-white border-2 border-dashed border-emerald-300 rounded-2xl p-3.5 shadow-2xs mb-4">
+                          <div class="flex items-center justify-between mb-2.5">
+                              <span class="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                                  <i data-lucide="sparkles" class="w-4 h-4 text-emerald-600"></i> รูปผลงานการซ่อม (หลังทำ)
+                              </span>
+                              <span class="text-[10px] bg-emerald-100 text-emerald-900 font-extrabold px-2.5 py-0.5 rounded-lg border border-emerald-200">AFTER</span>
+                          </div>
+                          <div id="staff_detail_after_img_container" class="min-h-[160px] flex items-center justify-center">
+                              <!-- Dynamic After Image -->
+                          </div>
+                      </div>
+
+<!-- 📝 รายงาน/บันทึกปัญหาเพิ่มเติมถึงแอดมิน (เห็นเฉพาะแอดมิน) - กล่องพิมพ์และแก้ไขได้ทันทีในหน้าเดียวกัน (แสดงเมื่อสถานะเสร็จสิ้นแล้ว) -->
                           <div id="staff_detail_inline_comment_box" class="bg-amber-50/70 border-2 border-dashed border-amber-300 rounded-2xl p-4 shadow-2xs space-y-2.5 mb-4">
                               <div class="flex items-center justify-between flex-wrap gap-2">
                                   <span class="text-xs font-bold text-amber-950 flex items-center gap-1.5">
@@ -3379,18 +3392,7 @@ function previewCompletionImage(event) {
                           </form>
                       </div>
 
-                      <!-- ✨ รูปหลังทำ (ผลงานที่ช่างส่งมอบ) AFTER (แสดงเมื่อสถานะเสร็จสิ้นแล้ว) -->
-                      <div id="staff_detail_after_img_section" class="bg-white border-2 border-dashed border-emerald-300 rounded-2xl p-3.5 shadow-2xs mt-2">
-                          <div class="flex items-center justify-between mb-2.5">
-                              <span class="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
-                                  <i data-lucide="sparkles" class="w-4 h-4 text-emerald-600"></i> รูปผลงานการซ่อม (หลังทำ)
-                              </span>
-                              <span class="text-[10px] bg-emerald-100 text-emerald-900 font-extrabold px-2.5 py-0.5 rounded-lg border border-emerald-200">AFTER</span>
-                          </div>
-                          <div id="staff_detail_after_img_container" class="min-h-[160px] flex items-center justify-center">
-                              <!-- Dynamic After Image -->
-                          </div>
-                      </div>
+                      
 
 
 
