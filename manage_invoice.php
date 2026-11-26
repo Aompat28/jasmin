@@ -313,7 +313,7 @@ if (isset($_POST['reject_slip'])) {
     }
 }
 
-// 4. เมื่อแอดมินกดอนุมัติคำขอออกบิลย้อนหลัง
+// 5. เมื่อแอดมินกดอนุมัติคำขอออกบิลย้อนหลัง
 if (isset($_POST['approve_retro_request'])) {
     $activeTab = 'retro';
     $requestId = intval($_POST['requestId'] ?? 0);
@@ -328,7 +328,7 @@ if (isset($_POST['approve_retro_request'])) {
     }
 }
 
-// 5. เมื่อแอดมินกดยกเลิกคำขอออกบิลย้อนหลัง
+// 6. เมื่อแอดมินกดยกเลิกคำขอออกบิลย้อนหลัง
 if (isset($_POST['reject_retro_request'])) {
     $activeTab = 'retro';
     $requestId = intval($_POST['requestId'] ?? 0);
@@ -2090,40 +2090,7 @@ if ($step === 2) {
       // Admin Action Button
       const actionArea = document.getElementById('invDetailActionArea');
       if (actionArea) {
-        if (inv.status !== 'Paid') {
-          let rejectBtnHtml = '';
-          if (inv.slipImage && inv.slipImage.trim() !== '') {
-            rejectBtnHtml = `
-              <button type="button" onclick="openRejectSlipModal(${inv.invoiceId})" class="w-full py-2.5 px-4 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-2xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-2xs mt-2">
-                <i data-lucide="x-circle" class="w-4 h-4 text-rose-600"></i> ปฏิเสธสลิป / ส่งกลับให้ลูกบ้านแนบใหม่
-              </button>
-            `;
-          }
-
-          let prevRejectNoteHtml = '';
-          if (inv.slipRejectReason && inv.slipRejectReason.trim() !== '') {
-            prevRejectNoteHtml = `
-              <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-start gap-2 mb-2">
-                <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-600 shrink-0 mt-0.5"></i>
-                <div>
-                  <div class="font-bold text-amber-900">เคยแจ้งให้แนบสลิปใหม่:</div>
-                  <div class="text-amber-700 mt-0.5">${inv.slipRejectReason}</div>
-                </div>
-              </div>
-            `;
-          }
-
-          actionArea.innerHTML = `
-            ${prevRejectNoteHtml}
-            <form action="manage_invoice.php?tab=list" method="POST" class="m-0" onsubmit="return confirm('ยืนยันอนุมัติการชำระเงินสำหรับบิล #INV-${inv.invoiceId} หรือไม่?');">
-              <input type="hidden" name="invoiceId" value="${inv.invoiceId}">
-              <button type="submit" name="update_payment_status" value="Paid" class="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-md shadow-emerald-600/20 transition flex items-center justify-center gap-2 cursor-pointer">
-                <i data-lucide="check-circle" class="w-4 h-4"></i> อนุมัติการชำระเงิน (ตั้งเป็น Paid)
-              </button>
-            </form>
-            ${rejectBtnHtml}
-          `;
-        } else {
+        if (inv.status === 'Paid') {
           actionArea.innerHTML = `
             <form action="manage_invoice.php?tab=list" method="POST" class="m-0" onsubmit="return confirm('ต้องการยกเลิกสถานะบิล #INV-${inv.invoiceId} กลับเป็นยังไม่ชำระหรือไม่?');">
               <input type="hidden" name="invoiceId" value="${inv.invoiceId}">
@@ -2132,7 +2099,47 @@ if ($step === 2) {
               </button>
             </form>
           `;
-        }
+        } else if (inv.slipImage && String(inv.slipImage).trim() !== '') {
+          // ลูกบ้านแนบรูปสลิปแล้ว: ขึ้นทั้งปุ่มอนุมัติ และปุ่มปฏิเสธสลิป / ส่งกลับให้แนบใหม่
+          actionArea.innerHTML = `
+            <div class="flex flex-col sm:flex-row gap-2.5">
+              <form action="manage_invoice.php?tab=list" method="POST" class="flex-1 m-0" onsubmit="return confirm('ยืนยันอนุมัติการชำระเงินสำหรับบิล #INV-${inv.invoiceId} หรือไม่?');">
+                <input type="hidden" name="invoiceId" value="${inv.invoiceId}">
+                <button type="submit" name="update_payment_status" value="Paid" class="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-md shadow-emerald-600/20 transition flex items-center justify-center gap-2 cursor-pointer">
+                  <i data-lucide="check-circle" class="w-4 h-4"></i> อนุมัติการชำระเงิน (ตั้งเป็น Paid)
+                </button>
+              </form>
+              <button type="button" onclick="openRejectSlipModal(${inv.invoiceId})" class="w-full sm:w-auto py-3 px-4 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-2xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 cursor-pointer shrink-0">
+                <i data-lucide="x-circle" class="w-4 h-4 text-rose-600"></i> ปฏิเสธสลิป / ส่งกลับให้แนบใหม่
+              </button>
+            </div>
+          `;
+        } else if (inv.slipRejectReason && String(inv.slipRejectReason).trim() !== '') {
+          // สลิปเดิมถูกปฏิเสธแล้ว
+          actionArea.innerHTML = `
+            <div class="w-full p-4 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 space-y-2">
+              <div class="font-bold flex items-center gap-1.5 text-rose-900 text-sm">
+                <i data-lucide="alert-triangle" class="w-4 h-4 text-rose-600"></i> สลิปเดิมถูกปฏิเสธแล้ว (ส่งกลับให้ลูกบ้านแนบใหม่)
+              </div>
+              <div class="bg-white/80 p-2.5 rounded-xl border border-rose-100 font-medium">
+                <strong>เหตุผลที่ระบุ:</strong> ${inv.slipRejectReason}
+              </div>
+              <div class="text-slate-500 text-[11px] flex flex-wrap items-center justify-between gap-2 pt-1">
+                <span>${inv.slipRejectedAt ? `ปฏิเสธเมื่อ: ${inv.slipRejectedAt}` : ''}</span>
+                ${inv.oldSlipImage ? `
+                  <button type="button" onclick="window.open('${inv.oldSlipImage}', '_blank')" class="text-xs text-rose-700 hover:text-rose-900 font-bold underline inline-flex items-center gap-1 cursor-pointer">
+                    <i data-lucide="image" class="w-3.5 h-3.5"></i> ดูสลิปเดิมที่เคยปฏิเสธ
+                  </button>` : ''}
+              </div>
+            </div>
+          `;
+        } else {
+          // ยังไม่มีสลิป: ไม่ขึ้นปุ่มอนุมัติ
+          actionArea.innerHTML = `
+            <div class="w-full py-3 px-4 bg-slate-50 text-slate-500 rounded-2xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 border border-slate-200">
+              <i data-lucide="clock" class="w-4 h-4 text-slate-400"></i> รอลูกบ้านแนบสลิปโอนเงิน (ปุ่มอนุมัติและปฏิเสธจะปรากฏเมื่อลูกบ้านแนบสลิป)
+            </div>
+          `;
         }
       }
 
@@ -2932,35 +2939,6 @@ if ($step === 2) {
       if (modal) modal.classList.add('hidden');
     }
 
-    // Modal สำหรับส่งกลับให้ลูกบ้านแนบสลิปใหม่
-    function openRejectSlipModal(invId) {
-      const inv = invoiceMap[invId];
-      if (!inv) return;
-      const modal = document.getElementById('rejectSlipModal');
-      const idInput = document.getElementById('rejectSlipInvId');
-      const sub = document.getElementById('rejectSlipSub');
-      const reasonInput = document.getElementById('rejectSlipReasonInput');
-      if (idInput) idInput.value = inv.invoiceId;
-      const totalNum = parseFloat(inv.totalAmount || 0).toLocaleString('th-TH', {minimumFractionDigits: 2});
-      if (sub) sub.innerText = `บิล #INV-${inv.invoiceId} • ห้อง ${inv.roomNumber} (${inv.fullName}) • รอบ ${inv.billingMonth} • ยอด ฿${totalNum}`;
-      if (reasonInput) reasonInput.value = 'ยอดเงินในสลิปไม่ตรงกับยอดบิล หรือข้อมูลไม่ถูกต้อง กรุณาตรวจสอบและแนบสลิปใหม่อีกครั้ง';
-      if (modal) modal.classList.remove('hidden');
-      if (window.lucide) lucide.createIcons();
-    }
-
-    function closeRejectSlipModal() {
-      const modal = document.getElementById('rejectSlipModal');
-      if (modal) modal.classList.add('hidden');
-    }
-
-    function setRejectReasonPreset(text) {
-      const reasonInput = document.getElementById('rejectSlipReasonInput');
-      if (reasonInput) {
-        reasonInput.value = text;
-        reasonInput.focus();
-      }
-    }
-
     // คลิกที่แถวใบแจ้งหนี้เพื่อเปิดดูรายละเอียดแบบเต็มจอ
     document.addEventListener("DOMContentLoaded", function() {
       // หากมีการส่งค่า presetRoomId มาจากคำขอ ให้รัน autoFillPreviousMeters
@@ -3009,64 +2987,6 @@ if ($step === 2) {
       <div class="flex items-center justify-end gap-2 pt-2">
         <button type="button" onclick="closeRejectRetroModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition cursor-pointer">ยกเลิก</button>
         <button type="submit" name="reject_retro_request" class="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-sm transition cursor-pointer">ยืนยันยกเลิกคำขอ</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<!-- Modal สำหรับส่งกลับให้ลูกบ้านแนบสลิปใหม่ -->
-<div id="rejectSlipModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4" onclick="closeRejectSlipModal()">
-  <div class="modal-enter w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden" onclick="event.stopPropagation()">
-    <div class="p-6 border-b border-slate-100 flex items-center justify-between bg-rose-50/60">
-      <div class="flex items-center gap-2.5">
-        <div class="w-10 h-10 rounded-2xl bg-rose-500 text-white flex items-center justify-center shadow-md shadow-rose-500/20">
-          <i data-lucide="x-circle" class="w-5 h-5"></i>
-        </div>
-        <div>
-          <h4 class="font-display font-bold text-slate-800 text-base">ส่งกลับให้ลูกบ้านแนบสลิปใหม่</h4>
-          <p class="text-xs text-slate-500" id="rejectSlipSub">ใบแจ้งหนี้ #INV--</p>
-        </div>
-      </div>
-      <button type="button" onclick="closeRejectSlipModal()" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg transition">
-        <i data-lucide="x" class="w-4 h-4"></i>
-      </button>
-    </div>
-    <form action="manage_invoice.php?tab=list" method="POST" class="p-6 space-y-4">
-      <input type="hidden" name="invoiceId" id="rejectSlipInvId" value="">
-      <div>
-        <label class="block text-xs font-bold text-slate-700 mb-1.5">เลือกเหตุผลด่วน:</label>
-        <div class="flex flex-wrap gap-1.5">
-          <button type="button" onclick="setRejectReasonPreset('ยอดเงินในสลิปไม่ตรงกับยอดบิล (กรุณาตรวจสอบยอดและแนบสลิปใหม่)')" class="text-[11px] px-2.5 py-1 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 rounded-lg transition border border-slate-200">
-            💸 ยอดเงินไม่ตรงกับยอดบิล
-          </button>
-          <button type="button" onclick="setRejectReasonPreset('รูปภาพสลิปไม่ชัดเจน / ข้อมูลเบลอ มองไม่เห็นรายละเอียดการโอน')" class="text-[11px] px-2.5 py-1 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 rounded-lg transition border border-slate-200">
-            🖼️ สลิปไม่ชัด / ภาพเบลอ
-          </button>
-          <button type="button" onclick="setRejectReasonPreset('ชื่อบัญชีหรือธนาคารผู้รับเงินไม่ถูกต้อง')" class="text-[11px] px-2.5 py-1 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 rounded-lg transition border border-slate-200">
-            🏦 บัญชีปลายทางไม่ถูกต้อง
-          </button>
-          <button type="button" onclick="setRejectReasonPreset('สลิปซ้ำ หรือวันเวลาโอนไม่ตรงกับรอบบิลปัจจุบัน')" class="text-[11px] px-2.5 py-1 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 rounded-lg transition border border-slate-200">
-            ⏰ สลิปซ้ำ / ไม่ตรงรอบเดือน
-          </button>
-        </div>
-      </div>
-      <div>
-        <label class="block text-xs font-bold text-slate-700 mb-1.5">
-          ระบุเหตุผล / ข้อความแจ้งลูกบ้าน <span class="text-rose-500">*</span>:
-        </label>
-        <textarea name="rejectReason" id="rejectSlipReasonInput" required rows="3" placeholder="ระบุเหตุผลที่สลิปไม่ผ่าน..." class="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-400 focus:bg-white outline-none font-sans"></textarea>
-      </div>
-      <div class="p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl text-xs text-amber-800 flex items-center gap-2">
-        <i data-lucide="info" class="w-4 h-4 text-amber-600 shrink-0"></i>
-        <span>ระบบจะเปลี่ยนสถานะบิลกลับเป็น <b>&quot;รอชำระเงิน&quot;</b> เพื่อให้ลูกบ้านสามารถอัปโหลดสลิปใบใหม่เข้ามาได้ทันที</span>
-      </div>
-      <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-        <button type="button" onclick="closeRejectSlipModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition cursor-pointer">
-          ยกเลิก
-        </button>
-        <button type="submit" name="reject_slip" value="1" class="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-md shadow-rose-600/20 transition cursor-pointer flex items-center gap-1.5">
-          <i data-lucide="send" class="w-3.5 h-3.5"></i> ส่งกลับให้แนบสลิปใหม่
-        </button>
       </div>
     </form>
   </div>
