@@ -251,7 +251,6 @@ if (isset($_POST['update_payment_status'])) {
     }
 }
 
-<<<<<<< HEAD
 // 4. เมื่อแอดมินกดยกเลิก/ปฏิเสธสลิป เพื่อส่งกลับให้ลูกบ้านแนบใหม่
 if (isset($_POST['reject_slip'])) {
     $activeTab = 'list';
@@ -263,30 +262,12 @@ if (isset($_POST['reject_slip'])) {
 
     $stmtChk = $conn->prepare("
         SELECT i.*, u.fullName, u.email, r.roomNumber 
-=======
-// 3.1 เมื่อแอดมินส่งกลับให้ลูกบ้านแนบสลิปใหม่ (กรณีสลิปไม่ถูกต้อง/ยอดไม่ตรง)
-if (isset($_POST['reject_slip'])) {
-    $activeTab = 'list';
-    $invoiceId = intval($_POST['invoiceId'] ?? 0);
-    $reason = trim($_POST['rejectReason'] ?? '');
-    if (empty($reason)) {
-        $reason = 'สลิปไม่ถูกต้อง หรือยอดเงินไม่ครบถ้วน กรุณาตรวจสอบยอดเงินและแนบสลิปใหม่อีกครั้ง';
-    }
-
-    $stmtUp = $conn->prepare("UPDATE Invoices SET status = 'Unpaid', slipRejectReason = ? WHERE invoiceId = ?");
-    $stmtUp->execute([$reason, $invoiceId]);
-
-    // ดึงข้อมูลส่งเมลแจ้งเตือน
-    $stmtInv = $conn->prepare("
-        SELECT i.billingMonth, i.totalAmount, u.fullName, u.email, r.roomNumber
->>>>>>> 6ab0c59e8926fc890ffa225b44db40234f7c45b1
         FROM Invoices i
         JOIN User u ON i.tenantId = u.userId
         LEFT JOIN Room r ON i.roomId = r.roomId
         WHERE i.invoiceId = ?
         LIMIT 1
     ");
-<<<<<<< HEAD
     $stmtChk->execute([$invoiceId]);
     $invInfo = $stmtChk->fetch(PDO::FETCH_ASSOC);
 
@@ -330,34 +311,6 @@ if (isset($_POST['reject_slip'])) {
 
         $message = "<div class='alert-box p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-800 rounded-2xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='alert-circle' class='w-5 h-5 text-rose-600'></i> ปฏิเสธสลิปบิล #INV-{$invoiceId} เรียบร้อยแล้ว (สถานะถูกส่งกลับให้ผู้เช่าแนบสลิปใหม่)</div>";
     }
-}
-
-=======
-    $stmtInv->execute([$invoiceId]);
-    $invInfo = $stmtInv->fetch(PDO::FETCH_ASSOC);
-
-    if ($invInfo && !empty($invInfo['email'])) {
-        $safeName = htmlspecialchars($invInfo['fullName'] ?? '', ENT_QUOTES, 'UTF-8');
-        $safeMonth = htmlspecialchars($invInfo['billingMonth'] ?? '', ENT_QUOTES, 'UTF-8');
-        $safeRoom = htmlspecialchars($invInfo['roomNumber'] ?? '', ENT_QUOTES, 'UTF-8');
-        $safeTotal = number_format((float)($invInfo['totalAmount'] ?? 0), 2);
-        $safeReason = htmlspecialchars($reason, ENT_QUOTES, 'UTF-8');
-
-        sendMail(
-            $invInfo['email'],
-            "[หอพักจัสมิน] แจ้งให้ส่งสลิปชำระเงินใหม่สำหรับบิล {$safeMonth} (ห้อง {$safeRoom})",
-            "<h2>สวัสดีคุณ {$safeName}</h2>
-            <p style='color: #dc2626; font-weight: bold;'>⚠️ สลิปชำระเงินของท่านไม่ผ่านการอนุมัติ</p>
-            <p><b>เหตุผลจากผู้ดูแลระบบ:</b> {$safeReason}</p>
-            <p><b>ห้องพัก:</b> {$safeRoom}<br>
-            <b>รอบบิล:</b> {$safeMonth}<br>
-            <b>ยอดที่ต้องชำระ:</b> {$safeTotal} บาท</p>
-            <p>กรุณาเข้าสู่ระบบหอพักจัสมิน เพื่อตรวจสอบยอดเงินและแนบสลิปชำระเงินใหม่อีกครั้งครับ</p>"
-        );
-    }
-
-    $roomNo = htmlspecialchars($invInfo['roomNumber'] ?? '');
-    $message = "<div class='alert-box p-4 bg-amber-50 border-l-4 border-amber-500 text-amber-800 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='alert-triangle' class='w-5 h-5 text-amber-600'></i> ส่งกลับให้ผู้เช่าห้อง {$roomNo} แนบสลิปใหม่เรียบร้อยแล้ว</div>";
 }
 
 // 4. เมื่อแอดมินกดอนุมัติคำขอออกบิลย้อนหลัง
@@ -416,8 +369,6 @@ try {
 $pendingRetroCount = count(array_filter($retroRequests, function($req) {
     return ($req['status'] ?? '') === 'Pending';
 }));
-
->>>>>>> 6ab0c59e8926fc890ffa225b44db40234f7c45b1
 // ดึงรายการห้องที่มีผู้เช่าอยู่จริง พร้อมเลขมิเตอร์น้ำ-ไฟล่าสุดของแต่ละห้อง
 $rooms = $conn->query("
     SELECT r.roomId, r.roomNumber, r.rentPrice, u.fullName, l.tenantId,
@@ -885,7 +836,6 @@ if ($step === 2) {
                 <!-- จัดการ (ตรวจสอบบิล) -->
                 <td class="py-3.5 px-4 text-center">
                   <div class="flex items-center justify-center gap-1.5 flex-wrap">
-<<<<<<< HEAD
                     <?php if($inv['status'] === 'Paid'): ?>
                       <!-- ฟอร์มเปลี่ยนสถานะกลับเป็น Unpaid -->
                       <form action="manage_invoice.php?tab=list" method="POST" class="inline-flex items-center justify-center gap-1.5 m-0" onsubmit="return handleStatusSubmit(event, this)">
@@ -916,26 +866,6 @@ if ($step === 2) {
                         <i data-lucide="clock" class="w-3.5 h-3.5 text-slate-400"></i> รอลูกบ้านแนบสลิป
                       </span>
                     <?php endif; ?>
-=======
-                    <!-- ฟอร์มเปลี่ยนสถานะ -->
-                    <form action="manage_invoice.php?tab=list" method="POST" class="inline-flex items-center justify-center gap-1.5 m-0" onsubmit="return handleStatusSubmit(event, this)">
-                      <input type="hidden" name="invoiceId" value="<?php echo $inv['invoiceId']; ?>">
-                      <?php if($inv['status'] !== 'Paid'): ?>
-                        <button type="submit" name="update_payment_status" value="Paid" onclick="event.stopPropagation()" class="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition cursor-pointer">
-                          <i data-lucide="check" class="w-3.5 h-3.5"></i> อนุมัติยอด
-                        </button>
-                        <?php if(!empty($inv['slipImage'])): ?>
-                          <button type="button" onclick="event.stopPropagation(); openRejectSlipModal(<?php echo $inv['invoiceId']; ?>)" class="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition cursor-pointer" title="สลิปไม่ถูกต้อง / แจ้งให้ส่งสลิปใหม่">
-                            <i data-lucide="x" class="w-3.5 h-3.5 text-rose-600"></i> ขอสลิปใหม่
-                          </button>
-                        <?php endif; ?>
-                      <?php else: ?>
-                        <button type="submit" name="update_payment_status" value="Unpaid" onclick="event.stopPropagation()" class="inline-flex items-center gap-1 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition cursor-pointer">
-                          <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> ยกเลิกสถานะ
-                        </button>
-                      <?php endif; ?>
-                    </form>
->>>>>>> 6ab0c59e8926fc890ffa225b44db40234f7c45b1
                   </div>
                 </td>
 
@@ -1090,18 +1020,13 @@ if ($step === 2) {
                           data-last-month="<?php echo htmlspecialchars($r['lastBillingMonth'] ?? ''); ?>"
                           data-initial-water="<?php echo $r['initialWaterMeter'] ?? '0'; ?>"
                           data-initial-electric="<?php echo $r['initialElectricMeter'] ?? '0'; ?>"
-<<<<<<< HEAD
                           data-lease-start="<?php echo !empty($r['leaseStartDate']) ? date('d/m/Y', strtotime($r['leaseStartDate'])) : ''; ?>"
                           data-parking-plan="<?php echo htmlspecialchars($r['parkingPlan'] ?? 'None'); ?>"
                           data-parking-fee="<?php echo (float)($r['parkingFee'] ?? 0); ?>"
                           data-internet-plan="<?php echo htmlspecialchars($r['internetPlan'] ?? 'None'); ?>"
                           data-internet-fee="<?php echo (float)($r['internetFee'] ?? 0); ?>"
                           data-vehicle-type="<?php echo htmlspecialchars($r['vehicleType'] ?? 'Car'); ?>">
-                    ห้อง <?php echo $r['roomNumber']; ?> (<?php echo htmlspecialchars($r['fullName']); ?>) - รอบบิล: <?php echo $r['expectedThai']; ?>
-=======
-                          data-lease-start="<?php echo !empty($r['leaseStartDate']) ? date('d/m/Y', strtotime($r['leaseStartDate'])) : ''; ?>">
                     ห้อง <?php echo $r['roomNumber']; ?> (<?php echo htmlspecialchars($r['fullName']); ?>) - ค่าเช่า ฿<?php echo number_format($r['rentPrice'], 2); ?>
->>>>>>> 6ab0c59e8926fc890ffa225b44db40234f7c45b1
                   </option>
                 <?php endforeach; ?>
                 </select>
@@ -2207,50 +2132,7 @@ if ($step === 2) {
               </button>
             </form>
           `;
-<<<<<<< HEAD
-        } else if (inv.slipImage && String(inv.slipImage).trim() !== '') {
-          // ลูกบ้านแนบรูปสลิปแล้ว: ขึ้นทั้งปุ่มอนุมัติ และปุ่มปฏิเสธสลิป / ส่งกลับให้แนบใหม่
-          actionArea.innerHTML = `
-            <div class="flex flex-col sm:flex-row gap-2.5">
-              <form action="manage_invoice.php?tab=list" method="POST" class="flex-1 m-0" onsubmit="return confirm('ยืนยันอนุมัติการชำระเงินสำหรับบิล #INV-${inv.invoiceId} หรือไม่?');">
-                <input type="hidden" name="invoiceId" value="${inv.invoiceId}">
-                <button type="submit" name="update_payment_status" value="Paid" class="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-md shadow-emerald-600/20 transition flex items-center justify-center gap-2 cursor-pointer">
-                  <i data-lucide="check-circle" class="w-4 h-4"></i> อนุมัติการชำระเงิน (ตั้งเป็น Paid)
-                </button>
-              </form>
-              <button type="button" onclick="openRejectSlipModal(${inv.invoiceId})" class="w-full sm:w-auto py-3 px-4 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-2xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 cursor-pointer shrink-0">
-                <i data-lucide="x-circle" class="w-4 h-4 text-rose-600"></i> ปฏิเสธสลิป / ส่งกลับให้แนบใหม่
-              </button>
-            </div>
-          `;
-        } else if (inv.slipRejectReason && String(inv.slipRejectReason).trim() !== '') {
-          // สลิปเดิมถูกปฏิเสธแล้ว
-          actionArea.innerHTML = `
-            <div class="w-full p-4 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 space-y-2">
-              <div class="font-bold flex items-center gap-1.5 text-rose-900 text-sm">
-                <i data-lucide="alert-triangle" class="w-4 h-4 text-rose-600"></i> สลิปเดิมถูกปฏิเสธแล้ว (ส่งกลับให้ลูกบ้านแนบใหม่)
-              </div>
-              <div class="bg-white/80 p-2.5 rounded-xl border border-rose-100 font-medium">
-                <strong>เหตุผลที่ระบุ:</strong> ${inv.slipRejectReason}
-              </div>
-              <div class="text-slate-500 text-[11px] flex flex-wrap items-center justify-between gap-2 pt-1">
-                <span>${inv.slipRejectedAt ? `ปฏิเสธเมื่อ: ${inv.slipRejectedAt}` : ''}</span>
-                ${inv.oldSlipImage ? `
-                  <button type="button" onclick="window.open('${inv.oldSlipImage}', '_blank')" class="text-xs text-rose-700 hover:text-rose-900 font-bold underline inline-flex items-center gap-1 cursor-pointer">
-                    <i data-lucide="image" class="w-3.5 h-3.5"></i> ดูสลิปเดิมที่เคยปฏิเสธ
-                  </button>` : ''}
-              </div>
-            </div>
-          `;
-        } else {
-          // ยังไม่มีสลิป: ไม่ขึ้นปุ่มอนุมัติ
-          actionArea.innerHTML = `
-            <div class="w-full py-3 px-4 bg-slate-50 text-slate-500 rounded-2xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 border border-slate-200">
-              <i data-lucide="clock" class="w-4 h-4 text-slate-400"></i> รอลูกบ้านแนบสลิปโอนเงิน (ปุ่มอนุมัติและปฏิเสธจะปรากฏเมื่อลูกบ้านแนบสลิป)
-            </div>
-          `;
-=======
->>>>>>> 6ab0c59e8926fc890ffa225b44db40234f7c45b1
+        }
         }
       }
 
