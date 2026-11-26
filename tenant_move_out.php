@@ -998,6 +998,22 @@ if ($myLease && !empty($myLease['settledAt'])) {
 
     <?php echo $message; ?>
 
+    <!-- 🌟 Status Indicator Bar (แบบหน้าแจ้งงาน) 🌟 -->
+    <div class="flex items-center gap-2 mb-6 overflow-x-auto pb-1">
+      <span class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap <?php echo (empty($myLease['moveOutRequestDate']) && !$clearanceLease) ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 border border-slate-200'; ?>">
+        📝 แบบฟอร์มคำขอ
+      </span>
+      <span class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap <?php echo (!empty($myLease['moveOutRequestDate']) && !$clearanceLease) ? 'bg-slate-800 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200'; ?>">
+        ⏳ รอตรวจสอบคำขอ <?php echo (!empty($myLease['moveOutRequestDate']) && !$clearanceLease) ? '(1)' : '(0)'; ?>
+      </span>
+      <span class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap <?php echo ($clearanceLease && $clearanceLease['status'] !== 'Inactive') ? 'bg-slate-800 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200'; ?>">
+        ⚙️ รอตรวจสอบสลิป/เคลียร์ห้อง <?php echo ($clearanceLease && $clearanceLease['status'] !== 'Inactive') ? '(1)' : '(0)'; ?>
+      </span>
+      <span class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap <?php echo ($clearanceLease && $clearanceLease['status'] === 'Inactive') ? 'bg-slate-800 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200'; ?>">
+        ✅ ย้ายออกสมบูรณ์ <?php echo ($clearanceLease && $clearanceLease['status'] === 'Inactive') ? '(1)' : '(0)'; ?>
+      </span>
+    </div>
+
 
 
     <?php if($clearanceLease): ?>

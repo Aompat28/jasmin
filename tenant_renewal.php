@@ -402,6 +402,17 @@ $extMonthsLabel = ($calcExtMonths == 12) ? '1 ปี (12 เดือน)' : $ca
 
           <!-- ================= TAB 2: ประวัติคำขอ ================= -->
           <div id="content-renewal-history" class="<?php echo ($activeTab === 'history') ? '' : 'hidden'; ?>">
+              <?php 
+              $countRenewalTotal = count($historyRenewals);
+              $countRenewalPending = 0;
+              $countRenewalApproved = 0;
+              $countRenewalRejected = 0;
+              foreach($historyRenewals as $hr) {
+                  if ($hr['status'] === 'Pending') $countRenewalPending++;
+                  elseif ($hr['status'] === 'Approved') $countRenewalApproved++;
+                  elseif ($hr['status'] === 'Rejected') $countRenewalRejected++;
+              }
+              ?>
               <?php if(empty($historyRenewals)): ?>
                   <div class="p-8 text-center bg-white rounded-3xl border border-rose-100 text-slate-400 text-xs shadow-xs">
                       <div class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-2">
@@ -411,6 +422,24 @@ $extMonthsLabel = ($calcExtMonths == 12) ? '1 ปี (12 เดือน)' : $ca
                       <p class="text-[11px] text-slate-400 mt-1">เมื่อคุณส่งคำขอต่อสัญญา ประวัติจะแสดงที่นี่</p>
                   </div>
               <?php else: ?>
+                  <!-- 🌟 Status Filter Tabs (แบบหน้าแจ้งงาน) 🌟 -->
+                  <div class="flex items-center gap-2 mb-4 overflow-x-auto pb-1" id="renewalFilterTabs">
+                    <button type="button" onclick="filterRenewal('all')" class="renewal-filter-btn active px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-slate-800 text-white cursor-pointer" data-filter="all">
+                      ทั้งหมด (<?php echo $countRenewalTotal; ?>)
+                    </button>
+                    <button type="button" onclick="filterRenewal('Pending')" class="renewal-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-100 border border-rose-100/80 cursor-pointer" data-filter="Pending">
+                      ⏳ รอพิจารณา (<?php echo $countRenewalPending; ?>)
+                    </button>
+                    <button type="button" onclick="filterRenewal('Approved')" class="renewal-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-100 border border-rose-100/80 cursor-pointer" data-filter="Approved">
+                      ✅ อนุมัติแล้ว (<?php echo $countRenewalApproved; ?>)
+                    </button>
+                    <?php if($countRenewalRejected > 0): ?>
+                    <button type="button" onclick="filterRenewal('Rejected')" class="renewal-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-100 border border-rose-100/80 cursor-pointer" data-filter="Rejected">
+                      ❌ ไม่อนุมัติ (<?php echo $countRenewalRejected; ?>)
+                    </button>
+                    <?php endif; ?>
+                  </div>
+
                   <div class="space-y-3">
                       <?php foreach($historyRenewals as $h): 
                           $hExt = (int)$h['extensionMonths'];
@@ -421,7 +450,7 @@ $extMonthsLabel = ($calcExtMonths == 12) ? '1 ปี (12 เดือน)' : $ca
                           $oldDocFile = !empty($h['oldLeaseImage']) ? $h['oldLeaseImage'] : ($activeLease['leaseImage'] ?? '');
                       ?>
                       <!-- การ์ดประวัติแบบพอคราวๆ (คลิกแล้วเปิดดูรายละเอียดเต็ม) -->
-                      <div onclick='openRenewalModal({
+                      <div data-status="<?php echo htmlspecialchars($hStatus); ?>" onclick='openRenewalModal({
                           roomNumber: "<?php echo htmlspecialchars($activeLease["roomNumber"]); ?>",
                           tenantName: "<?php echo htmlspecialchars($tenantName); ?>",
                           extensionMonths: <?php echo $hExt; ?>,
@@ -432,7 +461,7 @@ $extMonthsLabel = ($calcExtMonths == 12) ? '1 ปี (12 เดือน)' : $ca
                           adminRemark: "<?php echo addslashes($h["adminRemark"] ?? ""); ?>",
                           oldDoc: "<?php echo htmlspecialchars($oldDocFile, ENT_QUOTES); ?>",
                           newDoc: "<?php echo htmlspecialchars($newDocFile, ENT_QUOTES); ?>"
-                      })' class="p-4 rounded-2xl border border-stone-200/80 bg-white hover:border-amber-300 hover:shadow-xs transition-all cursor-pointer flex items-center justify-between gap-3 text-xs group">
+                      })' class="renewal-card p-4 rounded-2xl border border-stone-200/80 bg-white hover:border-amber-300 hover:shadow-xs transition-all cursor-pointer flex items-center justify-between gap-3 text-xs group">
                           <div>
                               <div class="font-bold text-slate-800 text-sm flex items-center gap-1.5">
                                   <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-rose-500"></i>
@@ -986,6 +1015,29 @@ $extMonthsLabel = ($calcExtMonths == 12) ? '1 ปี (12 เดือน)' : $ca
     document.addEventListener("DOMContentLoaded", function() {
         calculateNewEnd(6);
     });
+
+    // Filter tabs in Renewal History (แบบหน้าแจ้งงาน)
+    function filterRenewal(status) {
+      document.querySelectorAll('#renewalFilterTabs .renewal-filter-btn').forEach(btn => {
+        if (btn.getAttribute('data-filter') === status) {
+          btn.classList.add('bg-slate-800', 'text-white');
+          btn.classList.remove('bg-white', 'text-slate-600');
+        } else {
+          btn.classList.remove('bg-slate-800', 'text-white');
+          btn.classList.add('bg-white', 'text-slate-600');
+        }
+      });
+
+      const cards = document.querySelectorAll('.renewal-card');
+      cards.forEach(card => {
+        const cStatus = card.getAttribute('data-status');
+        if (status === 'all' || cStatus === status) {
+          card.style.display = '';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+    }
 
     // แจ้งเตือนขึ้นแปปเดียว
     document.addEventListener('DOMContentLoaded', function() {

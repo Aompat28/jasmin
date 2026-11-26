@@ -170,11 +170,10 @@ foreach ($parkingRequests as $pr) {
         }
     } elseif ($pr['status'] === 'Approved') {
         $approvedCount++;
-        $historyRequests[] = $pr;
     } elseif (in_array($pr['status'], ['Cancelled', 'Rejected'])) {
         $cancelledCount++;
-        $historyRequests[] = $pr;
     }
+    $historyRequests[] = $pr;
 
     if (empty($latestCurrentPlate) && !empty($pr['currentPlate'])) {
         $latestCurrentPlate = $pr['currentPlate'];
@@ -653,17 +652,22 @@ $activeTab = isset($_GET['tab']) && $_GET['tab'] === 'history' ? 'history' : 're
             <p class="text-xs text-slate-500">ตรวจสอบรายละเอียดผลการพิจารณาและข้อมูลรถที่ขอเพิ่ม</p>
           </div>
 
-          <!-- Status Filter Tabs -->
-          <div class="inline-flex p-1 bg-slate-100/90 rounded-2xl text-xs font-semibold" id="filterTabs">
-            <button type="button" onclick="filterList('all')" class="tab-btn px-3 py-1.5 rounded-xl bg-white text-slate-800 shadow-sm transition cursor-pointer" data-tab="all">
+          <!-- Status Filter Tabs (แบบหน้าแจ้งงาน) -->
+          <div class="flex items-center gap-2 overflow-x-auto pb-1" id="filterTabs">
+            <button type="button" onclick="filterList('all')" class="filter-btn active px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-slate-800 text-white cursor-pointer" data-tab="all">
               ทั้งหมด (<?php echo count($historyRequests); ?>)
             </button>
-            <button type="button" onclick="filterList('Approved')" class="tab-btn px-3 py-1.5 rounded-xl text-slate-500 hover:text-slate-800 transition cursor-pointer" data-tab="Approved">
-              อนุมัติแล้ว (<?php echo $approvedCount; ?>)
+            <button type="button" onclick="filterList('Pending')" class="filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 cursor-pointer" data-tab="Pending">
+              ⏳ รอตรวจสอบ (<?php echo $pendingCount; ?>)
             </button>
-            <button type="button" onclick="filterList('Cancelled')" class="tab-btn px-3 py-1.5 rounded-xl text-slate-500 hover:text-slate-800 transition cursor-pointer" data-tab="Cancelled">
-              ยกเลิก / ไม่ผ่าน (<?php echo $cancelledCount; ?>)
+            <button type="button" onclick="filterList('Approved')" class="filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 cursor-pointer" data-tab="Approved">
+              ✅ อนุมัติแล้ว (<?php echo $approvedCount; ?>)
             </button>
+            <?php if ($cancelledCount > 0): ?>
+            <button type="button" onclick="filterList('Cancelled')" class="filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 cursor-pointer" data-tab="Cancelled">
+              ❌ ไม่ผ่าน/ยกเลิก (<?php echo $cancelledCount; ?>)
+            </button>
+            <?php endif; ?>
           </div>
         </div>
 
@@ -1047,15 +1051,15 @@ $activeTab = isset($_GET['tab']) && $_GET['tab'] === 'history' ? 'history' : 're
       lucide.createIcons();
     }
 
-    // Filter tabs in History
+    // Filter tabs in History (แบบหน้าแจ้งงาน)
     function filterList(status) {
-      document.querySelectorAll('#filterTabs .tab-btn').forEach(btn => {
+      document.querySelectorAll('#filterTabs .filter-btn').forEach(btn => {
         if (btn.getAttribute('data-tab') === status) {
-          btn.classList.add('bg-white', 'text-slate-800', 'shadow-sm');
-          btn.classList.remove('text-slate-500');
+          btn.classList.add('bg-slate-800', 'text-white');
+          btn.classList.remove('bg-white', 'text-slate-600');
         } else {
-          btn.classList.remove('bg-white', 'text-slate-800', 'shadow-sm');
-          btn.classList.add('text-slate-500');
+          btn.classList.remove('bg-slate-800', 'text-white');
+          btn.classList.add('bg-white', 'text-slate-600');
         }
       });
 

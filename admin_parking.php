@@ -261,20 +261,22 @@ $countTotal = count($requests);
             class="w-full pl-10 pr-4 py-2.5 text-xs sm:text-sm bg-slate-50 rounded-2xl border border-slate-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition">
         </div>
 
-        <!-- Filter Status Tabs -->
-        <div class="inline-flex p-1 bg-slate-100 rounded-2xl text-xs font-semibold overflow-x-auto" id="adminFilterTabs">
-          <button type="button" onclick="setAdminTab('all')" class="tab-btn px-3 py-1.5 rounded-xl bg-white text-slate-800 shadow-sm transition whitespace-nowrap cursor-pointer" data-tab="all">
+        <!-- Filter Status Tabs (แบบหน้าแจ้งงาน) -->
+        <div class="flex items-center gap-2 overflow-x-auto pb-1" id="adminFilterTabs">
+          <button type="button" onclick="setAdminTab('all')" class="filter-btn active px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-slate-800 text-white cursor-pointer" data-tab="all">
             ทั้งหมด (<?php echo $countTotal; ?>)
           </button>
-          <button type="button" onclick="setAdminTab('Pending')" class="tab-btn px-3 py-1.5 rounded-xl text-slate-500 hover:text-slate-800 transition whitespace-nowrap cursor-pointer" data-tab="Pending">
-            รออนุมัติ (<?php echo $countPending; ?>)
+          <button type="button" onclick="setAdminTab('Pending')" class="filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 cursor-pointer" data-tab="Pending">
+            ⏳ รออนุมัติ (<?php echo $countPending; ?>)
           </button>
-          <button type="button" onclick="setAdminTab('Approved')" class="tab-btn px-3 py-1.5 rounded-xl text-slate-500 hover:text-slate-800 transition whitespace-nowrap cursor-pointer" data-tab="Approved">
-            อนุมัติแล้ว (<?php echo $countApproved; ?>)
+          <button type="button" onclick="setAdminTab('Approved')" class="filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 cursor-pointer" data-tab="Approved">
+            ✅ อนุมัติแล้ว (<?php echo $countApproved; ?>)
           </button>
-          <button type="button" onclick="setAdminTab('Cancelled')" class="tab-btn px-3 py-1.5 rounded-xl text-slate-500 hover:text-slate-800 transition whitespace-nowrap cursor-pointer" data-tab="Cancelled">
-            ยกเลิกแล้ว (<?php echo $countCancelled; ?>)
+          <?php if($countCancelled > 0): ?>
+          <button type="button" onclick="setAdminTab('Cancelled')" class="filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 cursor-pointer" data-tab="Cancelled">
+            ❌ ยกเลิกแล้ว (<?php echo $countCancelled; ?>)
           </button>
+          <?php endif; ?>
         </div>
 
       </div>
@@ -622,13 +624,13 @@ $countTotal = count($requests);
 
     function setAdminTab(tab) {
       currentAdminTab = tab;
-      document.querySelectorAll('#adminFilterTabs .tab-btn').forEach(btn => {
+      document.querySelectorAll('#adminFilterTabs .filter-btn').forEach(btn => {
         if (btn.getAttribute('data-tab') === tab) {
-          btn.classList.add('bg-white', 'text-slate-800', 'shadow-sm');
-          btn.classList.remove('text-slate-500');
+          btn.classList.add('bg-slate-800', 'text-white');
+          btn.classList.remove('bg-white', 'text-slate-600');
         } else {
-          btn.classList.remove('bg-white', 'text-slate-800', 'shadow-sm');
-          btn.classList.add('text-slate-500');
+          btn.classList.remove('bg-slate-800', 'text-white');
+          btn.classList.add('bg-white', 'text-slate-600');
         }
       });
       applyAdminFilters();

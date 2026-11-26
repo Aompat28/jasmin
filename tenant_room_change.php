@@ -174,7 +174,7 @@ if ($myRoom) {
 
         LEFT JOIN Room r_target ON rcr.targetRoomId = r_target.roomId
 
-        WHERE rcr.tenantId = ? AND rcr.status != 'Pending'
+        WHERE rcr.tenantId = ?
 
         ORDER BY rcr.requestId DESC
 
@@ -888,19 +888,44 @@ $pendingRequest = null;
 
           <!-- ================= TAB 2: ประวัติคำขอ ================= -->
           <div id="content-rc-history" class="<?php echo ($activeTab === 'history') ? '' : 'hidden'; ?>">
-<div class="bg-white p-5 rounded-3xl shadow-sm border border-rose-100/80">
+            <div class="bg-white p-5 rounded-3xl shadow-sm border border-rose-100/80">
+              <?php
+              $countRcTotal = count($requestHistory);
+              $countRcPending = 0;
+              $countRcApproved = 0;
+              $countRcRejected = 0;
+              foreach($requestHistory as $rch) {
+                  if ($rch['status'] === 'Pending') $countRcPending++;
+                  elseif ($rch['status'] === 'Approved') $countRcApproved++;
+                  elseif (in_array($rch['status'], ['Rejected', 'Cancelled'])) $countRcRejected++;
+              }
+              ?>
 
               <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-
                 <i data-lucide="history" class="w-4 h-4 text-slate-500"></i> ประวัติคำขอย้ายห้องพัก
-
               </h3>
 
+              <!-- 🌟 Status Filter Tabs (แบบหน้าแจ้งงาน) 🌟 -->
+              <div class="flex items-center gap-2 mb-4 overflow-x-auto pb-1" id="rcFilterTabs">
+                <button type="button" onclick="filterRoomChange('all')" class="rc-filter-btn active px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-slate-800 text-white cursor-pointer" data-filter="all">
+                  ทั้งหมด (<?php echo $countRcTotal; ?>)
+                </button>
+                <button type="button" onclick="filterRoomChange('Pending')" class="rc-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-100 border border-rose-100/80 cursor-pointer" data-filter="Pending">
+                  ⏳ รออนุมัติ (<?php echo $countRcPending; ?>)
+                </button>
+                <button type="button" onclick="filterRoomChange('Approved')" class="rc-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-100 border border-rose-100/80 cursor-pointer" data-filter="Approved">
+                  ✅ อนุมัติแล้ว (<?php echo $countRcApproved; ?>)
+                </button>
+                <?php if($countRcRejected > 0): ?>
+                <button type="button" onclick="filterRoomChange('Rejected')" class="rc-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-100 border border-rose-100/80 cursor-pointer" data-filter="Rejected">
+                  ❌ ไม่อนุมัติ/ยกเลิก (<?php echo $countRcRejected; ?>)
+                </button>
+                <?php endif; ?>
+              </div>
+
               <div class="space-y-3">
-
                 <?php foreach($requestHistory as $h): ?>
-
-                  <div class="p-3.5 rounded-2xl border border-rose-100/60 bg-rose-50/30/60 flex items-start justify-between gap-3 text-xs">
+                  <div data-status="<?php echo htmlspecialchars($h['status']); ?>" class="rc-card p-3.5 rounded-2xl border border-rose-100/60 bg-rose-50/30/60 flex items-start justify-between gap-3 text-xs">
 
                     <div class="flex-1">
 
@@ -1523,6 +1548,39 @@ $pendingRequest = null;
         } else {
             document.getElementById('rcModalRemarkWrap').classList.add('hidden');
         }
+    }
+
+    // Filter tabs in Room Change History (แบบหน้าแจ้งงาน)
+    function filterRoomChange(status) {
+      document.querySelectorAll('#rcFilterTabs .rc-filter-btn').forEach(btn => {
+        if (btn.getAttribute('data-filter') === status) {
+          btn.classList.add('bg-slate-800', 'text-white');
+          btn.classList.remove('bg-white', 'text-slate-600');
+        } else {
+          btn.classList.remove('bg-slate-800', 'text-white');
+          btn.classList.add('bg-white', 'text-slate-600');
+        }
+      });
+
+      const cards = document.querySelectorAll('.rc-card');
+      cards.forEach(card => {
+        const cStatus = card.getAttribute('data-status');
+        if (status === 'all') {
+          card.style.display = '';
+        } else if (status === 'Rejected') {
+          if (cStatus === 'Rejected' || cStatus === 'Cancelled') {
+            card.style.display = '';
+          } else {
+            card.style.display = 'none';
+          }
+        } else {
+          if (cStatus === status) {
+            card.style.display = '';
+          } else {
+            card.style.display = 'none';
+          }
+        }
+      });
     }
 
     function closeRoomChangeModal() {

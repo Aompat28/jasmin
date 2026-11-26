@@ -733,6 +733,26 @@ foreach($coresidents as $c) {
 
       </div>
 
+      <?php if(!empty($coresidents)): ?>
+      <!-- 🌟 Status Filter Tabs (แบบหน้าแจ้งงาน) 🌟 -->
+      <div class="px-6 py-3.5 bg-slate-50/60 border-b border-slate-100 flex items-center gap-2 overflow-x-auto pb-2" id="coresidentFilterTabs">
+        <button type="button" onclick="filterCoresidents('all')" class="coresident-filter-btn active px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-slate-800 text-white cursor-pointer" data-filter="all">
+          ทั้งหมด (<?php echo count($coresidents); ?>)
+        </button>
+        <button type="button" onclick="filterCoresidents('Pending')" class="coresident-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 cursor-pointer" data-filter="Pending">
+          ⏳ รออนุมัติ (<?php echo $countPending; ?>)
+        </button>
+        <button type="button" onclick="filterCoresidents('Approved')" class="coresident-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 cursor-pointer" data-filter="Approved">
+          ✅ อนุมัติแล้ว (<?php echo $countApproved; ?>)
+        </button>
+        <?php if($countRejected > 0): ?>
+        <button type="button" onclick="filterCoresidents('Rejected')" class="coresident-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 cursor-pointer" data-filter="Rejected">
+          ❌ ไม่อนุมัติ (<?php echo $countRejected; ?>)
+        </button>
+        <?php endif; ?>
+      </div>
+      <?php endif; ?>
+
 
 
       <?php if(empty($coresidents)): ?>
@@ -775,7 +795,7 @@ foreach($coresidents as $c) {
 
           ?>
 
-          <div class="p-4 sm:p-6 hover:bg-rose-50/30/60 transition flex flex-col md:flex-row md:items-center justify-between gap-3.5 sm:gap-4">
+          <div data-status="<?php echo ($status === 'Cancel_Pending' ? 'Pending' : htmlspecialchars($status)); ?>" class="coresident-item p-4 sm:p-6 hover:bg-rose-50/30/60 transition flex flex-col md:flex-row md:items-center justify-between gap-3.5 sm:gap-4">
 
             <div class="flex items-start gap-3 sm:gap-4">
 
@@ -1582,6 +1602,39 @@ foreach($coresidents as $c) {
         }
     });
 
+
+    // Filter tabs in Coresidents (แบบหน้าแจ้งงาน)
+    function filterCoresidents(status) {
+      document.querySelectorAll('#coresidentFilterTabs .coresident-filter-btn').forEach(btn => {
+        if (btn.getAttribute('data-filter') === status) {
+          btn.classList.add('bg-slate-800', 'text-white');
+          btn.classList.remove('bg-white', 'text-slate-600');
+        } else {
+          btn.classList.remove('bg-slate-800', 'text-white');
+          btn.classList.add('bg-white', 'text-slate-600');
+        }
+      });
+
+      const items = document.querySelectorAll('.coresident-item');
+      items.forEach(item => {
+        const itemStatus = item.getAttribute('data-status');
+        if (status === 'all') {
+          item.style.display = '';
+        } else if (status === 'Pending') {
+          if (itemStatus === 'Pending' || itemStatus === 'Cancel_Pending') {
+            item.style.display = '';
+          } else {
+            item.style.display = 'none';
+          }
+        } else {
+          if (itemStatus === status) {
+            item.style.display = '';
+          } else {
+            item.style.display = 'none';
+          }
+        }
+      });
+    }
 </script>
 
 </body>
