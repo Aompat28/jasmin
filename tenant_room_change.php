@@ -626,68 +626,6 @@ if ($myRoom) {
 
               <?php else: ?>
 
-                  <?php if($latestApprovedRequest): 
-                      $approvedTargetDisp = !empty($latestApprovedRequest['targetRoomNumber']) 
-                        ? ('ห้อง ' . $latestApprovedRequest['targetRoomNumber'] . ' (' . (($latestApprovedRequest['targetRoomTypeSpecific'] === 'Air') ? 'ห้องแอร์' : 'ห้องพัดลม') . ')')
-                        : (($latestApprovedRequest['targetRoomType'] === 'Air') ? '❄️ ห้องแอร์' : '🌀 ห้องพัดลม');
-                      $approvedPayload = [
-                        'roomNumber' => $myRoom['roomNumber'] ?? '',
-                        'targetDisplay' => $approvedTargetDisp,
-                        'tenantName' => $tenantName,
-                        'reason' => $latestApprovedRequest['reason'] ?? '',
-                        'preferredMoveDate' => !empty($latestApprovedRequest['preferredMoveDate']) ? date('d/m/Y', strtotime($latestApprovedRequest['preferredMoveDate'])) : '-',
-                        'createdAt' => date('d/m/Y H:i', strtotime($latestApprovedRequest['created_at'])) . ' น.',
-                        'status' => 'Approved',
-                        'slipUrl' => !empty($latestApprovedRequest['paymentSlip']) ? $latestApprovedRequest['paymentSlip'] : '',
-                        'adminRemark' => $latestApprovedRequest['adminRemark'] ?? ''
-                      ];
-                      $approvedPayloadJson = htmlspecialchars(json_encode($approvedPayload, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
-                  ?>
-                      <!-- 🌟 การ์ดแสดงคำขอย้ายห้องล่าสุดที่ได้รับการอนุมัติแล้ว -->
-                      <div onclick='openRoomChangeModal(<?php echo $approvedPayloadJson; ?>)' 
-                           class="cursor-pointer transition-all duration-200 hover:shadow-lg hover:border-emerald-400 select-none bg-gradient-to-br from-emerald-50/70 via-white to-teal-50/40 text-slate-800 p-5 rounded-3xl border border-emerald-200 shadow-xs mb-6 space-y-3.5 group">
-                          
-                          <!-- Header แถบสถานะแบบย่อ -->
-                          <div class="flex items-center justify-between border-b border-emerald-100/80 pb-2.5">
-                              <div class="flex items-center gap-2">
-                                  <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                                  <span class="font-bold text-sm text-slate-800">คำขอย้ายห้องพัก (ย้ายเข้าห้อง <?php echo htmlspecialchars($myRoom['roomNumber'] ?? ''); ?> สำเร็จ)</span>
-                              </div>
-                              <span class="px-2.5 py-0.5 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-full font-bold text-[11px] shadow-2xs">
-                                  ✓ อนุมัติแล้ว
-                              </span>
-                          </div>
-
-                          <!-- ข้อมูลสรุปพอคราวๆ (2 ช่อง) -->
-                          <div class="grid grid-cols-2 gap-2.5 bg-emerald-50/60 p-3 rounded-2xl border border-emerald-100 text-xs">
-                              <div>
-                                  <span class="text-slate-500 text-[11px] flex items-center gap-1 mb-0.5">
-                                      <i data-lucide="door-open" class="w-3 h-3 text-emerald-600"></i> ย้ายเข้าห้อง:
-                                  </span>
-                                  <strong class="text-emerald-900 font-bold text-sm">ห้อง <?php echo htmlspecialchars($myRoom['roomNumber'] ?? ''); ?></strong>
-                              </div>
-                              <div>
-                                  <span class="text-slate-500 text-[11px] flex items-center gap-1 mb-0.5">
-                                      <i data-lucide="calendar" class="w-3 h-3 text-emerald-600"></i> วันที่ยื่นคำขอ:
-                                  </span>
-                                  <span class="font-mono text-slate-800 font-bold"><?php echo date("d/m/Y H:i", strtotime($latestApprovedRequest['created_at'])); ?> น.</span>
-                              </div>
-                          </div>
-
-                          <!-- แถบล่างชวนคลิกดูรายละเอียด -->
-                          <div class="flex items-center justify-between pt-1 text-xs">
-                              <span class="text-slate-500 text-[11px] flex items-center gap-1">
-                                  <i data-lucide="info" class="w-3.5 h-3.5 text-emerald-600"></i>
-                                  <span>คลิกที่นี่เพื่อดูรายละเอียด & ไทม์ไลน์ขั้นตอน</span>
-                              </span>
-                              <span class="inline-flex items-center gap-1 px-3 py-1 bg-emerald-100/80 group-hover:bg-emerald-600 group-hover:text-white text-emerald-900 font-bold rounded-xl text-xs transition-colors">
-                                  <span>ดูรายละเอียด</span>
-                                  <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
-                              </span>
-                          </div>
-                      </div>
-                  <?php endif; ?>
-
                   <!-- ฟอร์มขอย้ายห้อง -->
                   <div class="bg-white p-5 rounded-3xl shadow-sm border border-rose-100/80 mb-6">
 
