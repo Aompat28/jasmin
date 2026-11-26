@@ -1026,7 +1026,7 @@ if ($step === 2) {
                           data-internet-plan="<?php echo htmlspecialchars($r['internetPlan'] ?? 'None'); ?>"
                           data-internet-fee="<?php echo (float)($r['internetFee'] ?? 0); ?>"
                           data-vehicle-type="<?php echo htmlspecialchars($r['vehicleType'] ?? 'Car'); ?>">
-                    ห้อง <?php echo $r['roomNumber']; ?> (<?php echo htmlspecialchars($r['fullName']); ?>) - รอบบิล: <?php echo $r['expectedThai']; ?>
+                    ห้อง <?php echo $r['roomNumber']; ?> (<?php echo htmlspecialchars($r['fullName']); ?>) - ค่าเช่า ฿<?php echo number_format($r['rentPrice'], 2); ?>
                   </option>
                 <?php endforeach; ?>
                 </select>
@@ -2141,7 +2141,6 @@ if ($step === 2) {
             </div>
           `;
         }
-      }
       }
 
       // Show modal
