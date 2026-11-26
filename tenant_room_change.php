@@ -218,7 +218,7 @@ if ($myRoom) {
 
         // ส่งคำขอย้ายห้องใหม่ (กรณีไม่มีคำขออนุมัติแล้ว และไม่มีคำขอรออนุมัติ)
 
-        if (($_SERVER['REQUEST_METHOD'] === 'POST' || isset($_POST['submit_room_change'])) && !$pendingRequest) {
+        if ((($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' || isset($_POST['submit_room_change'])) && !$pendingRequest) {
 
             $changeTypeChoice = $_POST['changeTypeChoice'] ?? 'type';
 
@@ -548,30 +548,30 @@ $pendingRequest = null;
                     <i data-lucide="door-open" class="w-6 h-6"></i>
                   </div>
               </div>
-          </div>
 
-          <!-- 🌟 แท็บสลับหน้า: คำขอย้ายห้อง vs ประวัติคำขอ 🌟 -->
-          <div class="mb-5 flex gap-2 border-b border-rose-100/80 pb-px overflow-x-auto hide-scrollbar">
-              <!-- แท็บ 1: คำขอย้ายห้อง -->
-              <button type="button" onclick="switchRoomChangeTab('request')" id="tab-rc-request" class="<?php echo ($activeTab === 'request') ? 'px-5 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-rose-600 text-rose-600 flex items-center gap-2 whitespace-nowrap transition cursor-pointer' : 'px-5 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer'; ?>">
-                  <i data-lucide="repeat" class="w-4 h-4"></i>
-                  <span>คำขอย้ายห้อง</span>
-                  <?php if($pendingRequest): ?>
-                      <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-800 rounded-full border border-amber-300">
-                          <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-                          รออนุมัติ
+              <!-- 🌟 แท็บสลับหน้า: คำขอย้ายห้อง vs ประวัติคำขอ (อยู่ด้านล่างภายในการ์ดห้องพัก) 🌟 -->
+              <div class="mt-5 pt-3 border-t border-rose-100/80 flex gap-2 overflow-x-auto hide-scrollbar">
+                  <!-- แท็บ 1: คำขอย้ายห้อง -->
+                  <button type="button" onclick="switchRoomChangeTab('request')" id="tab-rc-request" class="<?php echo ($activeTab === 'request') ? 'px-4 py-2 text-xs sm:text-sm font-bold border-b-2 border-rose-600 text-rose-600 flex items-center gap-2 whitespace-nowrap transition cursor-pointer' : 'px-4 py-2 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer'; ?>">
+                      <i data-lucide="repeat" class="w-4 h-4"></i>
+                      <span>คำขอย้ายห้อง</span>
+                      <?php if($pendingRequest): ?>
+                          <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-800 rounded-full border border-amber-300">
+                              <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                              รออนุมัติ
+                          </span>
+                      <?php endif; ?>
+                  </button>
+
+                  <!-- แท็บ 2: ประวัติคำขอ -->
+                  <button type="button" onclick="switchRoomChangeTab('history')" id="tab-rc-history" class="<?php echo ($activeTab === 'history') ? 'px-4 py-2 text-xs sm:text-sm font-bold border-b-2 border-rose-600 text-rose-600 flex items-center gap-2 whitespace-nowrap transition cursor-pointer' : 'px-4 py-2 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer'; ?>">
+                      <i data-lucide="history" class="w-4 h-4"></i>
+                      <span>ประวัติคำขอ</span>
+                      <span class="inline-flex items-center justify-center px-2 py-0.5 text-[10px] font-bold bg-slate-100 text-slate-600 rounded-full">
+                          <?php echo count($requestHistory); ?>
                       </span>
-                  <?php endif; ?>
-              </button>
-
-              <!-- แท็บ 2: ประวัติคำขอ -->
-              <button type="button" onclick="switchRoomChangeTab('history')" id="tab-rc-history" class="<?php echo ($activeTab === 'history') ? 'px-5 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-rose-600 text-rose-600 flex items-center gap-2 whitespace-nowrap transition cursor-pointer' : 'px-5 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer'; ?>">
-                  <i data-lucide="history" class="w-4 h-4"></i>
-                  <span>ประวัติคำขอ</span>
-                  <span class="inline-flex items-center justify-center px-2 py-0.5 text-[10px] font-bold bg-slate-100 text-slate-600 rounded-full">
-                      <?php echo count($requestHistory); ?>
-                  </span>
-              </button>
+                  </button>
+              </div>
           </div>
 
           <!-- ================= TAB 1: คำขอย้ายห้อง ================= -->
@@ -616,7 +616,7 @@ $pendingRequest = null;
                                   <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
                                   <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
                               </span>
-                              <span class="font-bold text-sm text-slate-800">คำขอย้ายห้องพัก (ห้อง <?php echo htmlspecialchars($activeLease['roomNumber'] ?? ''); ?>)</span>
+                              <span class="font-bold text-sm text-slate-800">คำขอย้ายห้องพัก (ห้อง <?php echo htmlspecialchars($myRoom['roomNumber'] ?? ''); ?>)</span>
                           </div>
                           <span id="pendingRoomChangeCardStatus" class="px-2.5 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded-full font-bold text-[11px] shadow-2xs">
                               ⏳ รอแอดมินอนุมัติ
@@ -912,19 +912,25 @@ $pendingRequest = null;
                   </div>
 
                   <div class="space-y-3">
-                    <?php foreach($requestHistory as $h): ?>
+                    <?php foreach($requestHistory as $h): 
+                      $rcTargetDisp = !empty($h['targetRoomNumber']) 
+                        ? ('ห้อง ' . $h['targetRoomNumber'] . ' (' . (($h['targetRoomTypeSpecific'] === 'Air') ? 'ห้องแอร์' : 'ห้องพัดลม') . ')')
+                        : (($h['targetRoomType'] === 'Air') ? '❄️ ห้องแอร์' : '🌀 ห้องพัดลม');
+                      $rcModalPayload = [
+                        'roomNumber' => $myRoom['roomNumber'] ?? '',
+                        'targetDisplay' => $rcTargetDisp,
+                        'tenantName' => $tenantName,
+                        'reason' => $h['reason'] ?? '',
+                        'preferredMoveDate' => !empty($h['preferredMoveDate']) ? date('d/m/Y', strtotime($h['preferredMoveDate'])) : '-',
+                        'createdAt' => date('d/m/Y H:i', strtotime($h['created_at'])) . ' น.',
+                        'status' => $h['status'],
+                        'slipUrl' => !empty($h['paymentSlip']) ? $h['paymentSlip'] : '',
+                        'adminRemark' => $h['adminRemark'] ?? ''
+                      ];
+                      $rcPayloadJson = htmlspecialchars(json_encode($rcModalPayload, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
+                    ?>
                       <div data-status="<?php echo htmlspecialchars($h['status']); ?>" 
-                           onclick='openRoomChangeModal({
-                             roomNumber: "<?php echo htmlspecialchars($activeLease["roomNumber"] ?? ""); ?>",
-                             targetDisplay: "<?php echo !empty($h["targetRoomNumber"]) ? "ห้อง " . htmlspecialchars($h["targetRoomNumber"]) . " (" . (($h["targetRoomTypeSpecific"] === "Air") ? "ห้องแอร์" : "ห้องพัดลม") . ")" : (($h["targetRoomType"] === "Air") ? "❄️ ห้องแอร์" : "🌀 ห้องพัดลม"); ?>",
-                             tenantName: "<?php echo htmlspecialchars($tenantName); ?>",
-                             reason: "<?php echo addslashes($h["reason"] ?? ""); ?>",
-                             preferredMoveDate: "<?php echo !empty($h["preferredMoveDate"]) ? date("d/m/Y", strtotime($h["preferredMoveDate"])) : "-"; ?>",
-                             createdAt: "<?php echo date("d/m/Y H:i", strtotime($h["created_at"])); ?> น.",
-                             status: "<?php echo $h["status"]; ?>",
-                             slipUrl: "<?php echo !empty($h["paymentSlip"]) ? htmlspecialchars($h["paymentSlip"], ENT_QUOTES) : ""; ?>",
-                             adminRemark: "<?php echo addslashes($h["adminRemark"] ?? ""); ?>"
-                           })'
+                           onclick='openRoomChangeModal(<?php echo $rcPayloadJson; ?>)'
                            class="rc-card p-3.5 rounded-2xl border border-rose-100/60 bg-white hover:border-amber-300 hover:shadow-xs transition-all cursor-pointer flex items-start justify-between gap-3 text-xs group">
 
                         <div class="flex-1">
@@ -953,17 +959,7 @@ $pendingRequest = null;
                           <div class="text-[11px] text-slate-400 mt-1 font-mono">ยื่นเมื่อ: <?php echo date("d/m/Y H:i", strtotime($h['created_at'])); ?> น.</div>
 
                           <div class="mt-2 flex flex-wrap gap-2" onclick="event.stopPropagation()">
-                            <button type="button" onclick='openRoomChangeModal({
-                              roomNumber: "<?php echo htmlspecialchars($activeLease["roomNumber"] ?? ""); ?>",
-                              targetDisplay: "<?php echo !empty($h["targetRoomNumber"]) ? "ห้อง " . htmlspecialchars($h["targetRoomNumber"]) . " (" . (($h["targetRoomTypeSpecific"] === "Air") ? "ห้องแอร์" : "ห้องพัดลม") . ")" : (($h["targetRoomType"] === "Air") ? "❄️ ห้องแอร์" : "🌀 ห้องพัดลม"); ?>",
-                              tenantName: "<?php echo htmlspecialchars($tenantName); ?>",
-                              reason: "<?php echo addslashes($h["reason"] ?? ""); ?>",
-                              preferredMoveDate: "<?php echo !empty($h["preferredMoveDate"]) ? date("d/m/Y", strtotime($h["preferredMoveDate"])) : "-"; ?>",
-                              createdAt: "<?php echo date("d/m/Y H:i", strtotime($h["created_at"])); ?> น.",
-                              status: "<?php echo $h["status"]; ?>",
-                              slipUrl: "<?php echo !empty($h["paymentSlip"]) ? htmlspecialchars($h["paymentSlip"], ENT_QUOTES) : ""; ?>",
-                              adminRemark: "<?php echo addslashes($h["adminRemark"] ?? ""); ?>"
-                            })' class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200 rounded-lg text-[11px] font-bold transition cursor-pointer">
+                            <button type="button" onclick='openRoomChangeModal(<?php echo $rcPayloadJson; ?>)' class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200 rounded-lg text-[11px] font-bold transition cursor-pointer">
                               <i data-lucide="eye" class="w-3.5 h-3.5 text-amber-600"></i> ดูรายละเอียด & ขั้นตอน
                             </button>
                             <?php if(!empty($h['paymentSlip'])): ?>
@@ -1204,13 +1200,13 @@ $pendingRequest = null;
         const contentHist = document.getElementById('content-rc-history');
 
         if (tab === 'request') {
-            if (tabReq) tabReq.className = 'px-5 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-rose-600 text-rose-600 flex items-center gap-2 whitespace-nowrap transition cursor-pointer';
-            if (tabHist) tabHist.className = 'px-5 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer';
+            if (tabReq) tabReq.className = 'px-4 py-2 text-xs sm:text-sm font-bold border-b-2 border-rose-600 text-rose-600 flex items-center gap-2 whitespace-nowrap transition cursor-pointer';
+            if (tabHist) tabHist.className = 'px-4 py-2 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer';
             if (contentReq) contentReq.classList.remove('hidden');
             if (contentHist) contentHist.classList.add('hidden');
         } else {
-            if (tabHist) tabHist.className = 'px-5 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-rose-600 text-rose-600 flex items-center gap-2 whitespace-nowrap transition cursor-pointer';
-            if (tabReq) tabReq.className = 'px-5 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer';
+            if (tabHist) tabHist.className = 'px-4 py-2 text-xs sm:text-sm font-bold border-b-2 border-rose-600 text-rose-600 flex items-center gap-2 whitespace-nowrap transition cursor-pointer';
+            if (tabReq) tabReq.className = 'px-4 py-2 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer';
             if (contentHist) contentHist.classList.remove('hidden');
             if (contentReq) contentReq.classList.add('hidden');
         }
@@ -1408,17 +1404,19 @@ $pendingRequest = null;
     let currentModalRcData = null;
 
     function openPendingRoomChangeModal() {
+        <?php if($pendingRequest): ?>
         openRoomChangeModal({
-            roomNumber: '<?php echo htmlspecialchars($activeLease['roomNumber'] ?? ''); ?>',
-            tenantName: '<?php echo htmlspecialchars($tenantName); ?>',
-            targetDisplay: '<?php echo addslashes($targetTypeLabel); ?>',
-            createdAt: '<?php echo !empty($pendingRequest['created_at']) ? date("d/m/Y H:i", strtotime($pendingRequest['created_at'])) . " น." : "-"; ?>',
-            preferredMoveDate: '<?php echo !empty($pendingRequest['preferredMoveDate']) ? $formatThaiDateRc($pendingRequest['preferredMoveDate']) : "-"; ?>',
-            reason: '<?php echo addslashes($pendingRequest['reason'] ?? ""); ?>',
-            slipUrl: '<?php echo !empty($pendingRequest['paymentSlip']) ? htmlspecialchars($pendingRequest['paymentSlip'], ENT_QUOTES) : (!empty($pendingRequest['cleaningFeeSlip']) ? "uploads/slips/" . htmlspecialchars($pendingRequest['cleaningFeeSlip'], ENT_QUOTES) : ""); ?>',
-            status: '<?php echo $pendingRequest['status'] ?? "Pending"; ?>',
-            adminRemark: '<?php echo addslashes($pendingRequest['adminRemark'] ?? ""); ?>'
+            roomNumber: <?php echo json_encode($myRoom['roomNumber'] ?? '', JSON_UNESCAPED_UNICODE); ?>,
+            tenantName: <?php echo json_encode($tenantName ?? '', JSON_UNESCAPED_UNICODE); ?>,
+            targetDisplay: <?php echo json_encode($targetTypeLabel ?? '', JSON_UNESCAPED_UNICODE); ?>,
+            createdAt: <?php echo json_encode(!empty($pendingRequest['created_at']) ? date("d/m/Y H:i", strtotime($pendingRequest['created_at'])) . " น." : "-", JSON_UNESCAPED_UNICODE); ?>,
+            preferredMoveDate: <?php echo json_encode(!empty($pendingRequest['preferredMoveDate']) ? (isset($formatThaiDateRc) ? $formatThaiDateRc($pendingRequest['preferredMoveDate']) : date("d/m/Y", strtotime($pendingRequest['preferredMoveDate']))) : "-", JSON_UNESCAPED_UNICODE); ?>,
+            reason: <?php echo json_encode($pendingRequest['reason'] ?? "", JSON_UNESCAPED_UNICODE); ?>,
+            slipUrl: <?php echo json_encode(!empty($pendingRequest['paymentSlip']) ? $pendingRequest['paymentSlip'] : (!empty($pendingRequest['cleaningFeeSlip']) ? "uploads/slips/" . $pendingRequest['cleaningFeeSlip'] : ""), JSON_UNESCAPED_UNICODE); ?>,
+            status: <?php echo json_encode($pendingRequest['status'] ?? "Pending", JSON_UNESCAPED_UNICODE); ?>,
+            adminRemark: <?php echo json_encode($pendingRequest['adminRemark'] ?? "", JSON_UNESCAPED_UNICODE); ?>
         });
+        <?php endif; ?>
     }
 
     function openRoomChangeModal(data) {
