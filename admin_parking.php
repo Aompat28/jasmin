@@ -433,39 +433,39 @@ $countTotal = count($requests);
 
   </main>
 
-  <!-- ==================== Large Admin Interactive Modal ==================== -->
-  <div id="adminModal" class="fixed inset-0 z-50 hidden overflow-y-auto bg-slate-900/60 backdrop-blur-sm p-4 sm:p-6 flex items-center justify-center">
-    <div class="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden modal-enter">
-      
-      <!-- Modal Header -->
-      <div class="p-6 bg-gradient-to-r from-slate-900 via-cyan-950 to-slate-900 text-white flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-2xl bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center text-cyan-300">
-            <i data-lucide="car" class="w-5 h-5"></i>
-          </div>
-          <div>
-            <div class="flex items-center gap-2">
-              <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/30" id="modalRoomBadge">ห้อง -</span>
-              <span class="text-xs text-slate-400" id="modalReqCode">#REQ-CAR-000</span>
-            </div>
-            <h3 class="font-display font-bold text-lg text-white mt-0.5">ตรวจสอบคำขอเพิ่มรถ & จัดการสิทธิ์ที่จอดรถ</h3>
-          </div>
-        </div>
-        <button type="button" onclick="closeAdminModal()" class="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition cursor-pointer">
-          <i data-lucide="x" class="w-5 h-5"></i>
+  <!-- ==================== Large Admin Interactive Modal (Full Screen) ==================== -->
+  <div id="adminModal" class="fixed inset-0 z-50 hidden bg-white flex flex-col w-full h-full min-h-screen overflow-hidden">
+    
+    <!-- Modal Header (Full Width Top Bar) -->
+    <div class="p-4 sm:px-8 sm:py-4.5 bg-gradient-to-r from-slate-900 via-cyan-950 to-slate-900 text-white flex items-center justify-between shrink-0 shadow-md">
+      <div class="flex items-center gap-3">
+        <button type="button" onclick="closeAdminModal()" class="w-9 h-9 rounded-2xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition cursor-pointer shadow-xs shrink-0" title="ย้อนกลับ">
+          <i data-lucide="arrow-left" class="w-5 h-5"></i>
         </button>
+        <div>
+          <div class="flex items-center gap-2 mb-1">
+            <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/30" id="modalRoomBadge">ห้อง -</span>
+            <span class="text-xs text-slate-400 font-mono" id="modalReqCode">#REQ-CAR-000</span>
+          </div>
+          <h3 class="font-display font-bold text-lg sm:text-2xl text-white">ตรวจสอบคำขอเพิ่มรถ & จัดการสิทธิ์ที่จอดรถ</h3>
+        </div>
       </div>
+      <button type="button" onclick="closeAdminModal()" class="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-white font-bold text-xs transition cursor-pointer shadow-xs">
+        <i data-lucide="x" class="w-4 h-4"></i> ปิดหน้าต่าง
+      </button>
+    </div>
 
-      <!-- Modal Body (2 Columns layout matching user screenshots) -->
-      <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[75vh] overflow-y-auto">
+    <!-- Modal Body (Full Width Scrollable, Centered 2 Columns layout) -->
+    <div class="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-gradient-to-b from-cyan-50/20 via-slate-50/50 to-white">
+      <div class="max-w-5xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-6">
         
         <!-- Left Column: ส่วนข้อมูลของผู้เช่า & รูปถ่าย -->
         <div class="space-y-4">
-          <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+          <div class="p-5 rounded-3xl bg-white border border-slate-200 shadow-sm">
             <div class="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
               <i data-lucide="user" class="w-4 h-4 text-cyan-600"></i> ข้อมูลผู้เช่า & ห้องพัก
             </div>
-            <div class="space-y-2 text-xs">
+            <div class="space-y-2.5 text-xs sm:text-sm">
               <div class="flex justify-between">
                 <span class="text-slate-400">ชื่อ-นามสกุล:</span>
                 <span class="font-bold text-slate-800" id="mTenantName">-</span>
@@ -480,19 +480,19 @@ $countTotal = count($requests);
               </div>
               <div class="flex justify-between">
                 <span class="text-slate-400">วันที่ยื่นคำขอ:</span>
-                <span class="font-medium text-slate-700" id="mCreatedAt">-</span>
+                <span class="font-medium text-slate-700 font-mono" id="mCreatedAt">-</span>
               </div>
             </div>
           </div>
 
           <!-- รูปภาพรถยนต์ / เอกสารแนบ -->
-          <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+          <div class="p-5 rounded-3xl bg-white border border-slate-200 shadow-sm">
             <div class="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
               <i data-lucide="image" class="w-4 h-4 text-cyan-600"></i> รูปถ่ายยานพาหนะ / เอกสารแนบ
             </div>
             <div id="mImageWrapper" class="text-center">
-              <a id="mImageLink" href="#" target="_blank" class="block group relative overflow-hidden rounded-xl bg-slate-100 border border-slate-200">
-                <img id="mVehicleImage" src="#" alt="Vehicle" class="max-h-48 mx-auto object-contain group-hover:scale-105 transition duration-300">
+              <a id="mImageLink" href="#" target="_blank" class="block group relative overflow-hidden rounded-2xl bg-slate-100 border border-slate-200">
+                <img id="mVehicleImage" src="#" alt="Vehicle" class="max-h-64 mx-auto object-contain group-hover:scale-102 transition duration-300">
                 <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-xs font-bold gap-1.5">
                   <i data-lucide="maximize-2" class="w-4 h-4"></i> คลิกดูภาพขยาย
                 </div>
@@ -506,23 +506,23 @@ $countTotal = count($requests);
         <div class="space-y-4">
           
           <!-- Plates Comparison Card -->
-          <div class="p-4 rounded-2xl bg-cyan-50/70 border border-cyan-200 space-y-3">
+          <div class="p-5 rounded-3xl bg-cyan-50/70 border border-cyan-200 shadow-sm space-y-3">
             <div class="text-xs font-bold text-cyan-900 flex items-center gap-1.5">
               <i data-lucide="tag" class="w-4 h-4 text-cyan-600"></i> ป้ายทะเบียนรถ
             </div>
             
             <div class="grid grid-cols-2 gap-3 text-xs">
-              <div class="bg-white p-3 rounded-xl border border-slate-200">
+              <div class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
                 <span class="text-slate-400 block text-[10px]">คันปัจจุบัน (คันหลัก)</span>
-                <span class="font-extrabold text-slate-800 text-sm" id="mCurrentPlate">-</span>
+                <span class="font-extrabold text-slate-800 text-sm sm:text-base" id="mCurrentPlate">-</span>
               </div>
-              <div class="bg-white p-3 rounded-xl border border-cyan-300 shadow-sm">
+              <div class="bg-white p-3.5 rounded-2xl border-2 border-cyan-300 shadow-xs">
                 <span class="text-cyan-600 block text-[10px] font-bold">คันที่ขอเพิ่ม (คันที่ 2+)</span>
-                <span class="font-extrabold text-cyan-900 text-sm" id="mAdditionalPlate">-</span>
+                <span class="font-extrabold text-cyan-900 text-sm sm:text-base" id="mAdditionalPlate">-</span>
               </div>
             </div>
 
-            <div class="text-xs text-slate-600 space-y-1 pt-1">
+            <div class="text-xs sm:text-sm text-slate-600 space-y-1.5 pt-1">
               <div><strong>จังหวัด:</strong> <span id="mProvince">-</span></div>
               <div><strong>ประเภท:</strong> <span id="mVehicleType">-</span></div>
               <div><strong>ยี่ห้อ / รุ่น / สี:</strong> <span id="mBrandModel">-</span></div>
@@ -530,23 +530,23 @@ $countTotal = count($requests);
           </div>
 
           <!-- เหตุผลที่ลูกบ้านระบุ -->
-          <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs">
-            <div class="font-bold text-slate-700 mb-1 flex items-center gap-1.5">
-              <i data-lucide="help-circle" class="w-3.5 h-3.5 text-slate-400"></i> เหตุผลความจำเป็นในการขอเพิ่มที่จอดรถ
+          <div class="p-5 rounded-3xl bg-white border border-slate-200 shadow-sm text-xs sm:text-sm">
+            <div class="font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
+              <i data-lucide="help-circle" class="w-4 h-4 text-slate-400"></i> เหตุผลความจำเป็นในการขอเพิ่มที่จอดรถ
             </div>
-            <p class="text-slate-800 bg-white p-2.5 rounded-xl border border-slate-200 leading-relaxed font-medium" id="mReason">
+            <p class="text-slate-800 bg-slate-50/70 p-3 rounded-2xl border border-slate-200/80 leading-relaxed font-medium" id="mReason">
               -
             </p>
           </div>
 
           <!-- สถานะปัจจุบัน -->
-          <div id="mStatusBadgeContainer" class="p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-between">
+          <div id="mStatusBadgeContainer" class="p-4 rounded-2xl border text-xs sm:text-sm font-bold flex items-center justify-between">
             <span id="mStatusText">สถานะ: -</span>
-            <span class="text-[11px] font-normal text-slate-500" id="mActionDate"></span>
+            <span class="text-xs font-normal text-slate-500 font-mono" id="mActionDate"></span>
           </div>
 
           <!-- บันทึกแอดมินหรือเหตุผลยกเลิกถ้ามี -->
-          <div id="mRemarksContainer" class="hidden text-xs p-3.5 rounded-2xl border bg-slate-50 space-y-1">
+          <div id="mRemarksContainer" class="hidden text-xs sm:text-sm p-4 rounded-2xl border bg-slate-50 space-y-1">
             <div class="font-bold text-slate-700">บันทึกของแอดมิน:</div>
             <p class="text-slate-800" id="mRemarksText">-</p>
           </div>
@@ -561,10 +561,10 @@ $countTotal = count($requests);
               <div>
                 <input type="text" name="admin_remark" id="mApproveRemark"
                   placeholder="หมายเหตุการอนุมัติ (เช่น อนุญาตให้จอดช่อง P-10)"
-                  class="w-full px-3 py-2 text-xs bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition">
+                  class="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition">
               </div>
               <button type="submit" name="approve_parking"
-                class="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 transition flex items-center justify-center gap-1.5 cursor-pointer">
+                class="w-full py-3 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-emerald-600/20 transition flex items-center justify-center gap-1.5 cursor-pointer">
                 <i data-lucide="check" class="w-4 h-4"></i> อนุมัติคำขอ & บันทึกสิทธิ์เข้าจอด
               </button>
             </form>
@@ -575,10 +575,10 @@ $countTotal = count($requests);
               <div>
                 <input type="text" name="cancel_reason" id="mCancelReason"
                   placeholder="ระบุเหตุผลการยกเลิก / ปฏิเสธ (เช่น ที่จอดรถเต็ม, ข้อมูลไม่ถูกต้อง)"
-                  class="w-full px-3 py-2 text-xs bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition">
+                  class="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition">
               </div>
               <button type="submit" name="cancel_parking"
-                class="w-full py-2 px-4 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs border border-rose-200/80 transition flex items-center justify-center gap-1.5 cursor-pointer">
+                class="w-full py-2.5 px-4 rounded-2xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs sm:text-sm border border-rose-200/80 transition flex items-center justify-center gap-1.5 cursor-pointer">
                 <i data-lucide="x" class="w-4 h-4"></i> ยกเลิกคำขอ / เพิกถอนสิทธิ์ที่จอดรถ
               </button>
             </form>
@@ -588,15 +588,15 @@ $countTotal = count($requests);
         </div>
 
       </div>
-
-      <!-- Modal Footer -->
-      <div class="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end">
-        <button type="button" onclick="closeAdminModal()" class="px-5 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs transition cursor-pointer">
-          ปิดหน้าต่าง
-        </button>
-      </div>
-
     </div>
+
+    <!-- Modal Footer -->
+    <div class="p-4 sm:p-5 bg-white border-t border-slate-200 shrink-0 flex items-center justify-end shadow-lg">
+      <button type="button" onclick="closeAdminModal()" class="px-6 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs sm:text-sm transition cursor-pointer">
+        ปิดหน้าต่าง
+      </button>
+    </div>
+
   </div>
 
   <!-- Hidden Forms for Quick Action triggers -->
@@ -729,11 +729,13 @@ $countTotal = count($requests);
       document.getElementById('mCancelId').value = data.id;
 
       document.getElementById('adminModal').classList.remove('hidden');
+      document.body.style.overflow = 'hidden';
       lucide.createIcons();
     }
 
     function closeAdminModal() {
       document.getElementById('adminModal').classList.add('hidden');
+      document.body.style.overflow = '';
     }
 
     // Quick Approve

@@ -585,6 +585,26 @@ $rooms = $conn->query("
 
            l.netRefundAmount,
 
+           l.vehiclePlate,
+
+           l.vehicleProvince,
+
+           l.vehicleType,
+
+           l.parkingPlan,
+
+           l.parkingFee,
+
+           l.internetPlan,
+
+           l.internetFee,
+
+           u.vehiclePlate AS userVehiclePlate,
+
+           u.vehicleProvince AS userVehicleProvince,
+
+           u.vehicleType AS userVehicleType,
+
            u.fullName AS tenantName,
 
            u.phone,
@@ -1427,11 +1447,22 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
 
                             $searchKeywords = mb_strtolower($r['roomNumber'] . ' ' . ($r['tenantName'] ?? '') . ' ' . ($r['phone'] ?? '') . ' ' . ($r['roomType'] == 'Air' ? 'ห้องแอร์ air' : 'ห้องพัดลม fan') . ' ชั้น ' . $r['floor'] . ($hasMoveOut ? ' ย้ายออก moveout' : '') . ($hasRenewal ? ' ต่อสัญญา renew' : ''), 'UTF-8');
 
+                            $serviceDetails = [
+                                'vehiclePlate' => !empty($r['vehiclePlate']) ? $r['vehiclePlate'] : ($r['userVehiclePlate'] ?? ''),
+                                'vehicleProvince' => !empty($r['vehicleProvince']) ? $r['vehicleProvince'] : ($r['userVehicleProvince'] ?? ''),
+                                'vehicleType' => !empty($r['vehicleType']) ? $r['vehicleType'] : ($r['userVehicleType'] ?? 'Car'),
+                                'parkingPlan' => $r['parkingPlan'] ?? 'None',
+                                'parkingFee' => (float)($r['parkingFee'] ?? 0),
+                                'internetPlan' => $r['internetPlan'] ?? 'None',
+                                'internetFee' => (float)($r['internetFee'] ?? 0)
+                            ];
+                            $serviceDetailsJson = htmlspecialchars(json_encode($serviceDetails), ENT_QUOTES, 'UTF-8');
+
                         ?>
 
                         <tr class="room-row hover:bg-rose-50/30/70 transition <?php echo ($r['status'] == 'Occupied' && !empty($r['tenantName'])) ? 'cursor-pointer' : ''; ?> <?php echo $hasRenewal ? 'bg-rose-50/30' : ($hasMoveOut ? 'bg-rose-50/30' : ''); ?>" 
                             <?php if($r['status'] == 'Occupied' && !empty($r['tenantName'])): ?>
-                            onclick="openTenantModal('<?php echo $r['roomNumber']; ?>', '<?php echo htmlspecialchars($r['tenantName'], ENT_QUOTES, 'UTF-8'); ?>', '<?php echo htmlspecialchars($r['phone'], ENT_QUOTES, 'UTF-8'); ?>', '<?php echo htmlspecialchars($r['email'] ?? '', ENT_QUOTES, 'UTF-8'); ?>', '<?php echo htmlspecialchars($r['emergencyName'] ?? '', ENT_QUOTES, 'UTF-8'); ?>', '<?php echo htmlspecialchars($r['emergencyPhone'] ?? '', ENT_QUOTES, 'UTF-8'); ?>', '<?php echo date('d/m/Y', strtotime($r['startDate'])); ?>', '<?php echo date('d/m/Y', strtotime($r['endDate'])); ?>', '<?php echo number_format($r['rentPrice']); ?>', '<?php echo number_format($r['depositAmount'] ?? 0); ?>', '<?php echo htmlspecialchars($r['leaseImage'] ?? '', ENT_QUOTES, 'UTF-8'); ?>', <?php echo htmlspecialchars(json_encode($coresidentsByRoom[$r['roomId']] ?? []), ENT_QUOTES, 'UTF-8'); ?>, '<?php echo $r['roomId']; ?>')"
+                            onclick="openTenantModal('<?php echo $r['roomNumber']; ?>', '<?php echo htmlspecialchars($r['tenantName'], ENT_QUOTES, 'UTF-8'); ?>', '<?php echo htmlspecialchars($r['phone'], ENT_QUOTES, 'UTF-8'); ?>', '<?php echo htmlspecialchars($r['email'] ?? '', ENT_QUOTES, 'UTF-8'); ?>', '<?php echo htmlspecialchars($r['emergencyName'] ?? '', ENT_QUOTES, 'UTF-8'); ?>', '<?php echo htmlspecialchars($r['emergencyPhone'] ?? '', ENT_QUOTES, 'UTF-8'); ?>', '<?php echo date('d/m/Y', strtotime($r['startDate'])); ?>', '<?php echo date('d/m/Y', strtotime($r['endDate'])); ?>', '<?php echo number_format($r['rentPrice']); ?>', '<?php echo number_format($r['depositAmount'] ?? 0); ?>', '<?php echo htmlspecialchars($r['leaseImage'] ?? '', ENT_QUOTES, 'UTF-8'); ?>', <?php echo htmlspecialchars(json_encode($coresidentsByRoom[$r['roomId']] ?? []), ENT_QUOTES, 'UTF-8'); ?>, '<?php echo $r['roomId']; ?>', <?php echo $serviceDetailsJson; ?>)"
                             <?php endif; ?>
                             data-search="<?php echo htmlspecialchars($searchKeywords, ENT_QUOTES, 'UTF-8'); ?>"
                             data-status="<?php echo htmlspecialchars($r['status']); ?>"
@@ -1702,7 +1733,9 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
 
                                                 <?php echo htmlspecialchars(json_encode($coresidentsByRoom[$r['roomId']] ?? []), ENT_QUOTES, 'UTF-8'); ?>,
 
-                                                '<?php echo $r['roomId']; ?>'
+                                                '<?php echo $r['roomId']; ?>',
+
+                                                <?php echo $serviceDetailsJson; ?>
 
                                             )" 
 
@@ -3853,6 +3886,46 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
                 </div>
               </div>
 
+              <!-- 🌟 บริการเสริม & ยานพาหนะตามสัญญา 🌟 -->
+              <div class="bg-white p-4 rounded-2xl border border-emerald-200/80 shadow-2xs space-y-2.5 text-xs text-slate-600 mb-4">
+                <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <span class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <i data-lucide="layers" class="w-4 h-4 text-emerald-600"></i>
+                    <span>บริการเสริม & ยานพาหนะตามสัญญา</span>
+                  </span>
+                  <span class="text-[10px] font-bold text-emerald-800 bg-emerald-100/70 border border-emerald-200 px-2 py-0.5 rounded-full">
+                    สัญญาเช่า
+                  </span>
+                </div>
+
+                <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <span class="text-slate-500 flex items-center gap-1">
+                    <i data-lucide="car-front" class="w-3.5 h-3.5 text-slate-400"></i> ทะเบียนรถตามสัญญา:
+                  </span>
+                  <div id="modalVehicleDisplay" class="flex items-center gap-1.5 font-bold text-slate-900">
+                    -
+                  </div>
+                </div>
+
+                <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <span class="text-slate-500 flex items-center gap-1">
+                    <i data-lucide="parking-circle" class="w-3.5 h-3.5 text-cyan-600"></i> สัญญาค่าที่จอดรถ:
+                  </span>
+                  <span id="modalParkingDisplay" class="font-bold text-[11px] px-2 py-0.5 rounded-md">
+                    -
+                  </span>
+                </div>
+
+                <div class="flex items-center justify-between">
+                  <span class="text-slate-500 flex items-center gap-1">
+                    <i data-lucide="wifi" class="w-3.5 h-3.5 text-indigo-600"></i> สัญญาค่าอินเทอร์เน็ต:
+                  </span>
+                  <span id="modalInternetDisplay" class="font-bold text-[11px] px-2 py-0.5 rounded-md">
+                    -
+                  </span>
+                </div>
+              </div>
+
               <!-- เอกสารสัญญาเช่า (Preview) -->
               <div id="modalLeaseDocWrap" class="hidden bg-white border-2 border-dashed border-emerald-300 rounded-2xl p-3.5 shadow-2xs mb-4">
                 <div class="flex items-center justify-between mb-2">
@@ -5392,13 +5465,72 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
 
 
     // 7. ฟังก์ชันเปิด Modal แสดงข้อมูลผู้เช่า
-    function openTenantModal(room, name, phone, email, emergencyName, emergencyPhone, start, end, rent, deposit, leaseImage, coresidents, roomId) {
+    function openTenantModal(room, name, phone, email, emergencyName, emergencyPhone, start, end, rent, deposit, leaseImage, coresidents, roomId, serviceInfo) {
         document.getElementById('modalRoomNum').innerText = room;
         document.getElementById('modalTenantName').innerText = name;
         const avatarEl = document.getElementById('modalTenantAvatar');
         if (avatarEl) avatarEl.innerText = name ? name.charAt(0) : 'ผ';
         document.getElementById('modalPhone').innerText = phone ? phone : '-';
         document.getElementById('modalEmail').innerText = email ? email : '-';
+
+        // 🌟 แสดงข้อมูลบริการเสริม & ยานพาหนะตามสัญญา 🌟
+        const services = serviceInfo || {};
+        const vPlate = services.vehiclePlate || '';
+        const vProvince = services.vehicleProvince || '';
+        const vType = services.vehicleType || 'Car';
+        const pPlan = services.parkingPlan || 'None';
+        const pFee = parseFloat(services.parkingFee || 0);
+        const iPlan = services.internetPlan || 'None';
+        const iFee = parseFloat(services.internetFee || 0);
+
+        // ยานพาหนะ / ทะเบียนรถ
+        const vEl = document.getElementById('modalVehicleDisplay');
+        if (vEl) {
+            if (vPlate) {
+                let emoji = '🚗';
+                let label = 'รถยนต์';
+                if (vType === 'Motorcycle') { emoji = '🛵'; label = 'มอเตอร์ไซค์'; }
+                else if (vType === 'EV') { emoji = '⚡'; label = 'รถไฟฟ้า EV'; }
+                else if (vType === 'Other') { emoji = '🚐'; label = 'อื่นๆ'; }
+
+                vEl.innerHTML = `
+                    <span class="text-[10px] bg-cyan-50 text-cyan-700 border border-cyan-200 px-2 py-0.5 rounded-md font-semibold">${emoji} ${label}</span>
+                    <span class="font-mono font-bold text-slate-900">${vPlate}${vProvince ? ' (' + vProvince + ')' : ''}</span>
+                `;
+            } else {
+                vEl.innerHTML = `<span class="text-slate-400 font-normal">ไม่ได้ระบุ</span>`;
+            }
+        }
+
+        // สัญญาค่าที่จอดรถ
+        const pEl = document.getElementById('modalParkingDisplay');
+        if (pEl) {
+            if (pPlan === 'Monthly') {
+                pEl.className = 'font-bold text-[11px] px-2.5 py-0.5 rounded-lg bg-cyan-50 text-cyan-800 border border-cyan-200';
+                pEl.innerText = `รายเดือน (฿${pFee > 0 ? pFee.toLocaleString() : '100'}/ด.)`;
+            } else if (pPlan === 'Yearly') {
+                pEl.className = 'font-bold text-[11px] px-2.5 py-0.5 rounded-lg bg-teal-50 text-teal-800 border border-teal-200';
+                pEl.innerText = `รายปี (฿${pFee > 0 ? pFee.toLocaleString() : '1,200'}/ปี)`;
+            } else {
+                pEl.className = 'font-medium text-[11px] px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-500';
+                pEl.innerText = 'ไม่ได้รับสิทธิ์';
+            }
+        }
+
+        // สัญญาค่าอินเทอร์เน็ต
+        const iEl = document.getElementById('modalInternetDisplay');
+        if (iEl) {
+            if (iPlan === 'Monthly') {
+                iEl.className = 'font-bold text-[11px] px-2.5 py-0.5 rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-200';
+                iEl.innerText = `รายเดือน (฿${iFee > 0 ? iFee.toLocaleString() : '150'}/ด.)`;
+            } else if (iPlan === 'Yearly') {
+                iEl.className = 'font-bold text-[11px] px-2.5 py-0.5 rounded-lg bg-purple-50 text-purple-800 border border-purple-200';
+                iEl.innerText = `รายปี (฿${iFee > 0 ? iFee.toLocaleString() : '1,500'}/ปี)`;
+            } else {
+                iEl.className = 'font-medium text-[11px] px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-500';
+                iEl.innerText = 'ไม่ได้รับบริการ';
+            }
+        }
 
         const callBtn = document.getElementById('modalTenantCallBtn');
         if (callBtn) {

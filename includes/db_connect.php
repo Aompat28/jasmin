@@ -44,11 +44,45 @@ try {
 
     try { $conn->exec("ALTER TABLE `Invoices` ADD COLUMN `otherFeeNote` TEXT DEFAULT NULL"); } catch(PDOException $e) {}
     try { $conn->exec("ALTER TABLE `invoices` ADD COLUMN `otherFeeNote` TEXT DEFAULT NULL"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `Invoices` ADD COLUMN `slipRejectReason` TEXT DEFAULT NULL"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `invoices` ADD COLUMN `slipRejectReason` TEXT DEFAULT NULL"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `Invoices` ADD COLUMN `slipRejectedAt` DATETIME DEFAULT NULL"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `invoices` ADD COLUMN `slipRejectedAt` DATETIME DEFAULT NULL"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `Invoices` ADD COLUMN `slipStatus` VARCHAR(30) DEFAULT 'Normal'"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `invoices` ADD COLUMN `slipStatus` VARCHAR(30) DEFAULT 'Normal'"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `Invoices` ADD COLUMN `oldSlipImage` VARCHAR(255) DEFAULT NULL"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `invoices` ADD COLUMN `oldSlipImage` VARCHAR(255) DEFAULT NULL"); } catch(PDOException $e) {}
 
     try { $conn->exec("ALTER TABLE `LeaseRenewals` ADD COLUMN `leaseImage` VARCHAR(255) DEFAULT NULL"); } catch(PDOException $e) {}
     try { $conn->exec("ALTER TABLE `leaserenewals` ADD COLUMN `leaseImage` VARCHAR(255) DEFAULT NULL"); } catch(PDOException $e) {}
     try { $conn->exec("ALTER TABLE `LeaseRenewals` ADD COLUMN `oldLeaseImage` VARCHAR(255) DEFAULT NULL"); } catch(PDOException $e) {}
     try { $conn->exec("ALTER TABLE `leaserenewals` ADD COLUMN `oldLeaseImage` VARCHAR(255) DEFAULT NULL"); } catch(PDOException $e) {}
+
+    try { $conn->exec("ALTER TABLE `Lease` ADD COLUMN `vehiclePlate` VARCHAR(50) DEFAULT NULL"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `lease` ADD COLUMN `vehiclePlate` VARCHAR(50) DEFAULT NULL"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `Lease` ADD COLUMN `vehicleProvince` VARCHAR(100) DEFAULT NULL"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `lease` ADD COLUMN `vehicleProvince` VARCHAR(100) DEFAULT NULL"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `Lease` ADD COLUMN `vehicleType` VARCHAR(30) DEFAULT 'Car'"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `lease` ADD COLUMN `vehicleType` VARCHAR(30) DEFAULT 'Car'"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `Lease` ADD COLUMN `parkingPlan` VARCHAR(20) DEFAULT 'None'"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `lease` ADD COLUMN `parkingPlan` VARCHAR(20) DEFAULT 'None'"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `Lease` ADD COLUMN `parkingFee` DECIMAL(10,2) DEFAULT 0.00"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `lease` ADD COLUMN `parkingFee` DECIMAL(10,2) DEFAULT 0.00"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `Lease` ADD COLUMN `internetPlan` VARCHAR(20) DEFAULT 'None'"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `lease` ADD COLUMN `internetPlan` VARCHAR(20) DEFAULT 'None'"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `Lease` ADD COLUMN `internetFee` DECIMAL(10,2) DEFAULT 0.00"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `lease` ADD COLUMN `internetFee` DECIMAL(10,2) DEFAULT 0.00"); } catch(PDOException $e) {}
+
+    try { $conn->exec("ALTER TABLE `User` ADD COLUMN `vehiclePlate` VARCHAR(50) DEFAULT NULL"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `user` ADD COLUMN `vehiclePlate` VARCHAR(50) DEFAULT NULL"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `User` ADD COLUMN `vehicleProvince` VARCHAR(100) DEFAULT NULL"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `user` ADD COLUMN `vehicleProvince` VARCHAR(100) DEFAULT NULL"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `User` ADD COLUMN `vehicleType` VARCHAR(30) DEFAULT 'Car'"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `user` ADD COLUMN `vehicleType` VARCHAR(30) DEFAULT 'Car'"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `User` ADD COLUMN `idCard` VARCHAR(20) DEFAULT NULL"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `user` ADD COLUMN `idCard` VARCHAR(20) DEFAULT NULL"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `User` ADD COLUMN `address` TEXT DEFAULT NULL"); } catch(PDOException $e) {}
+    try { $conn->exec("ALTER TABLE `user` ADD COLUMN `address` TEXT DEFAULT NULL"); } catch(PDOException $e) {}
 
     try {
         $conn->exec("CREATE TABLE IF NOT EXISTS `parking_requests` (

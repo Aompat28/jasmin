@@ -193,22 +193,14 @@ try {
 
 
 // 3. ดึงยอดค้างชำระ (Unpaid Invoices)
-
-$stmtUnpaid = $conn->prepare("SELECT SUM(totalAmount) as total, COUNT(invoiceId) as count FROM Invoices WHERE tenantId = ? AND status = 'Unpaid'");
-
-$stmtUnpaid->execute([$tenantId]);
-
+$myRoomId = $myRoom ? (int)$myRoom['roomId'] : 0;
+$stmtUnpaid = $conn->prepare("SELECT SUM(totalAmount) as total, COUNT(invoiceId) as count FROM Invoices WHERE (tenantId = ? OR (roomId = ? AND ? > 0)) AND status = 'Unpaid'");
+$stmtUnpaid->execute([$tenantId, $myRoomId, $myRoomId]);
 $unpaidData = $stmtUnpaid->fetch(PDO::FETCH_ASSOC);
-
 $unpaidTotal = (float)($unpaidData['total'] ?? 0);
-
 $unpaidCount = (int)($unpaidData['count'] ?? 0);
 
-
-
 // 4. ดึงข้อมูลประวัติและการทำรายการทั้งหมดของผู้เช่า (Invoices, Requests, Renewals, RoomChanges, MoveOut, Coresidents)
-
-$myRoomId = $myRoom ? (int)$myRoom['roomId'] : 0;
 
 
 
@@ -615,9 +607,23 @@ usort($timelineEvents, function($a, $b) {
 
 $tenantNotifications = [];
 
+$rejectedInvoices = [];
+foreach ($myInvoices as $inv) {
+    if (!empty($inv['slipRejectReason']) && $inv['status'] === 'Unpaid') {
+        $rejectedInvoices[] = $inv;
+        $tenantNotifications[] = [
+            'type' => 'danger',
+            'icon' => 'alert-triangle',
+            'title' => 'สลิปไม่ผ่านการอนุมัติ (รอบเดือน ' . htmlspecialchars($inv['billingMonth']) . ')',
+            'desc' => 'เหตุผล: ' . htmlspecialchars($inv['slipRejectReason']) . ' กรุณาแนบสลิปใหม่อีกครั้ง',
+            'link' => 'view_invoices.php?tab=current',
+            'onclick' => '',
+            'linkText' => 'แนบสลิปใหม่'
+        ];
+    }
+}
 
-
-if ($unpaidCount > 0) {
+if ($unpaidCount > 0 && empty($rejectedInvoices)) {
 
     $tenantNotifications[] = [
 
@@ -1110,7 +1116,31 @@ try {
         </div>
       </div>
 
-
+      <?php if (!empty($rejectedInvoices)): foreach ($rejectedInvoices as $rejInv): ?>
+      <!-- กล่องแจ้งเตือนสลิปถูกปฏิเสธให้แนบใหม่ -->
+      <div class="mb-6 p-4 sm:p-5 bg-gradient-to-r from-rose-50 via-pink-50 to-rose-50 border-2 border-rose-400 rounded-3xl shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div class="flex items-start gap-3.5">
+          <div class="w-11 h-11 rounded-2xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-rose-600/30">
+            <i data-lucide="alert-triangle" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="font-bold text-sm sm:text-base text-rose-950">สลิปการโอนเงินรอบเดือน <?php echo htmlspecialchars($rejInv['billingMonth']); ?> ไม่ผ่านการอนุมัติ</span>
+              <span class="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-rose-200 text-rose-800 border border-rose-300">ส่งกลับให้แนบใหม่</span>
+            </div>
+            <p class="text-xs text-rose-800 mt-1">
+              <strong>เหตุผลจากเจ้าหน้าที่:</strong> <?php echo htmlspecialchars($rejInv['slipRejectReason']); ?>
+            </p>
+            <p class="text-[11px] text-rose-600/90 mt-0.5">
+              ยอดที่ต้องชำระ: <b>฿<?php echo number_format($rejInv['totalAmount'], 2); ?></b> • กรุณาตรวจสอบความถูกต้องและแนบสลิปใหม่อีกครั้ง
+            </p>
+          </div>
+        </div>
+        <a href="view_invoices.php?tab=current" class="w-full sm:w-auto px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-md shadow-rose-600/25 transition flex items-center justify-center gap-2 cursor-pointer shrink-0">
+          <i data-lucide="upload" class="w-4 h-4"></i> แนบสลิปใหม่ทันที
+        </a>
+      </div>
+      <?php endforeach; endif; ?>
 
       <!-- 🌟 2. 4 Key Stats Cards (ตัวชี้วัดสำคัญ 4 ช่องแนวนอน เหมือนในรูปเป๊ะ) 🌟 -->
 
@@ -1144,7 +1174,15 @@ try {
 
             <div class="flex items-center gap-1.5 mt-1 text-xs text-slate-500">
 
-              <?php if ($latestInvoice && $latestInvoice['status'] === 'Unpaid'): ?>
+              <?php if ($latestInvoice && !empty($latestInvoice['slipRejectReason']) && $latestInvoice['status'] === 'Unpaid'): ?>
+
+                <span class="inline-flex items-center gap-1 text-rose-700 font-bold bg-rose-50 border border-rose-300 px-2 py-0.5 rounded-md">
+
+                  <i data-lucide="alert-triangle" class="w-3.5 h-3.5 text-rose-600"></i> สลิปไม่ผ่าน (แนบใหม่)
+
+                </span>
+
+              <?php elseif ($latestInvoice && $latestInvoice['status'] === 'Unpaid'): ?>
 
                 <span class="inline-flex items-center gap-1 text-rose-600 font-bold">
 

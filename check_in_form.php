@@ -102,18 +102,54 @@ if (isset($_POST['create_lease'])) {
 
         if (!empty($leaseImage)) {
 
+        $vehiclePlate = trim($_POST['vehiclePlate'] ?? '');
+        $vehicleProvince = trim($_POST['vehicleProvince'] ?? '');
+        $vehicleType = trim($_POST['vehicleType'] ?? 'Car');
+        if (!in_array($vehicleType, ['Car', 'Motorcycle', 'EV', 'Other'])) {
+            $vehicleType = 'Car';
+        }
+        $parkingPlan = trim($_POST['parkingPlan'] ?? 'None');
+        // ล็อกเรทค่าที่จอดรถ: None = 0, Monthly = 100, Yearly = 1,200 (คำนวณ 100 * 12 เดือน)
+        $parkingFee = 0.00;
+        if ($parkingPlan === 'Monthly') {
+            $parkingFee = 100.00;
+        } elseif ($parkingPlan === 'Yearly') {
+            $parkingFee = 1200.00;
+        }
+
+        $internetPlan = trim($_POST['internetPlan'] ?? 'None');
+        // ล็อกเรทค่าเน็ต: None = 0, Monthly = 150, Yearly = 1,500
+        $internetFee = 0.00;
+        if ($internetPlan === 'Monthly') {
+            $internetFee = 150.00;
+        } elseif ($internetPlan === 'Yearly') {
+            $internetFee = 1500.00;
+        }
+
         try {
             $conn->beginTransaction();
 
-            $stmtUser = $conn->prepare("INSERT INTO `User` (username, password, fullName, phone, email, emergencyName, emergencyPhone, role) VALUES (?, ?, ?, ?, ?, ?, ?, 'Tenant')");
-            $stmtUser->execute([$username, $password, $fullName, $phone, $email, $emergencyName, $emergencyPhone]);
+            $stmtUser = $conn->prepare("INSERT INTO `User` (username, password, fullName, phone, email, emergencyName, emergencyPhone, idCard, address, vehiclePlate, vehicleProvince, vehicleType, role) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Tenant')");
+            $stmtUser->execute([$username, $password, $fullName, $phone, $email, $emergencyName, $emergencyPhone, $idCard, $address, $vehiclePlate, $vehicleProvince, $vehicleType]);
             $tenantId =$conn->lastInsertId();
 
-            $stmtLease = $conn->prepare("INSERT INTO Lease (roomId, tenantId, startDate, endDate, depositAmount, leaseImage, initialWaterMeter, initialElectricMeter, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Active')");
-            $stmtLease->execute([$roomId, $tenantId, $startDate, $endDate, $depositAmount, $leaseImage, $waterMeter, $electricMeter]);
+            $stmtLease = $conn->prepare("INSERT INTO Lease (roomId, tenantId, startDate, endDate, depositAmount, leaseImage, initialWaterMeter, initialElectricMeter, vehiclePlate, vehicleProvince, vehicleType, parkingPlan, parkingFee, internetPlan, internetFee, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')");
+            $stmtLease->execute([$roomId, $tenantId, $startDate, $endDate, $depositAmount, $leaseImage, $waterMeter, $electricMeter, $vehiclePlate, $vehicleProvince, $vehicleType, $parkingPlan, $parkingFee, $internetPlan, $internetFee]);
             
             $stmtRoom =$conn->prepare("UPDATE Room SET status = 'Occupied' WHERE roomId = ?");
             $stmtRoom->execute([$roomId]);
+
+            // 🌟 หากมีการระบุทะเบียนรถคันแรก ให้ลงทะเบียนในระบบที่จอดรถ (parking_requests) อัตโนมัติพร้อมประเภทและจังหวัด
+            if (!empty($vehiclePlate)) {
+                try {
+                    $stmtInitCar = $conn->prepare("
+                        INSERT INTO parking_requests 
+                        (tenantId, roomId, currentPlate, additionalPlate, vehicleType, province, reason, status, adminRemark, approvedAt) 
+                        VALUES (?, ?, ?, ?, ?, ?, 'ยานพาหนะคันแรกตามสัญญาเช่าห้องพัก', 'Approved', 'อนุมัติพร้อมเปิดสัญญาเช่าห้องพัก', NOW())
+                    ");
+                    $stmtInitCar->execute([$tenantId, $roomId, $vehiclePlate, $vehiclePlate, $vehicleType, $vehicleProvince]);
+                } catch(PDOException $e) {}
+            }
 
             // 🌟 ตรวจสอบและบันทึกรายการเช็คลิสต์อุปกรณ์ตามที่แอดมินติ๊กเลือกจริง
             if (isset($_POST['checklist_items']) && is_array($_POST['checklist_items'])) {
@@ -448,6 +484,78 @@ try {
                         <span id="emailWarn" class="text-[11px] text-rose-500 font-semibold mt-1 hidden block"></span>
                         <span class="text-[10px] text-slate-400 mt-1 block">*ใช้สำหรับส่งข้อมูลเข้าสู่ระบบและแจ้งเตือนบิล</span>
                     </div>
+                    <!-- 🌟 ข้อมูลยานพาหนะคันแรก (ประเภทรถ, ป้ายทะเบียน & จังหวัด จัดช่องตรงกันเป๊ะ) 🌟 -->
+                    <div class="sm:col-span-2 p-4 rounded-2xl bg-cyan-50/40 border border-cyan-100">
+                        <div class="flex items-center justify-between pb-2.5 mb-3 border-b border-cyan-100/80">
+                            <div class="flex items-center gap-2">
+                                <span class="w-6 h-6 rounded-lg bg-cyan-100 text-cyan-700 flex items-center justify-center shrink-0">
+                                    <i data-lucide="car" class="w-3.5 h-3.5"></i>
+                                </span>
+                                <span class="text-xs font-bold text-slate-800">ข้อมูลยานพาหนะคันแรก (คันหลัก)</span>
+                            </div>
+                            <span class="text-[10px] font-medium text-cyan-700 bg-cyan-50 border border-cyan-200/80 px-2.5 py-0.5 rounded-full shrink-0">
+                                เว้นว่างได้ถ้าไม่มีรถ
+                            </span>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5 items-start">
+                            <!-- ช่องที่ 1: ประเภทของรถ -->
+                            <div class="flex flex-col">
+                                <label class="h-5 flex items-center gap-1.5 text-xs font-bold text-slate-700 mb-1.5 whitespace-nowrap">
+                                    <i data-lucide="tag" class="w-3.5 h-3.5 text-cyan-600 shrink-0"></i>
+                                    <span>ประเภทของรถ</span>
+                                </label>
+                                <div class="flex items-center rounded-xl overflow-hidden border border-slate-200 bg-white focus-within:border-cyan-500 focus-within:ring-2 focus-within:ring-cyan-500/20 transition shadow-2xs h-[42px]">
+                                    <span id="vehicleTypeIconContainer" class="inline-flex items-center justify-center px-3 bg-slate-50 text-cyan-700 border-r border-slate-200 text-sm select-none shrink-0 min-w-[42px] h-full">
+                                        <i id="vehicleTypeAddonIcon" data-lucide="car" class="w-4 h-4"></i>
+                                    </span>
+                                    <select name="vehicleType" id="vehicleTypeInput" onchange="handleVehicleTypeChange(this.value)"
+                                        class="!w-full !border-0 !rounded-none !bg-transparent text-xs font-semibold text-slate-800 focus:!ring-0 focus:!outline-none cursor-pointer h-full"
+                                        style="padding: 0 0.75rem !important; margin: 0 !important; height: 100% !important;">
+                                        <option value="Car">🚗 รถยนต์ (Car)</option>
+                                        <option value="Motorcycle">🛵 มอเตอร์ไซค์</option>
+                                        <option value="EV">⚡ รถไฟฟ้า (EV)</option>
+                                        <option value="Other">🚐 อื่นๆ (Other)</option>
+                                    </select>
+                                </div>
+                                <span class="text-[10px] text-slate-400 mt-1.5 block h-4 leading-4 truncate" title="เลือกประเภทรถคันแรก">*เลือกประเภทรถ</span>
+                            </div>
+
+                            <!-- ช่องที่ 2: ป้ายทะเบียนรถ -->
+                            <div class="flex flex-col">
+                                <label class="h-5 flex items-center gap-1.5 text-xs font-bold text-slate-700 mb-1.5 whitespace-nowrap">
+                                    <i data-lucide="car-front" class="w-3.5 h-3.5 text-cyan-600 shrink-0"></i>
+                                    <span>ป้ายทะเบียนรถ</span>
+                                </label>
+                                <div class="flex items-center rounded-xl overflow-hidden border border-slate-200 bg-white focus-within:border-cyan-500 focus-within:ring-2 focus-within:ring-cyan-500/20 transition shadow-2xs h-[42px]">
+                                    <span class="inline-flex items-center justify-center px-3 bg-slate-50 text-cyan-700 border-r border-slate-200 text-sm select-none shrink-0 min-w-[42px] h-full">
+                                        <i data-lucide="hash" class="w-4 h-4"></i>
+                                    </span>
+                                    <input type="text" name="vehiclePlate" id="vehiclePlateInput" placeholder="เช่น 26 กค 46"
+                                        class="!w-full !border-0 !rounded-none !bg-transparent text-xs font-semibold text-slate-800 focus:!ring-0 focus:!outline-none h-full"
+                                        style="padding: 0 0.75rem !important; margin: 0 !important; height: 100% !important;">
+                                </div>
+                                <span class="text-[10px] text-slate-400 mt-1.5 block h-4 leading-4 truncate" title="หมวดอักษรและหมายเลขทะเบียน">*หมวดอักษรและเลขทะเบียน</span>
+                            </div>
+
+                            <!-- ช่องที่ 3: จังหวัดของป้ายทะเบียน -->
+                            <div class="flex flex-col">
+                                <label class="h-5 flex items-center gap-1.5 text-xs font-bold text-slate-700 mb-1.5 whitespace-nowrap">
+                                    <i data-lucide="map-pin" class="w-3.5 h-3.5 text-rose-500 shrink-0"></i>
+                                    <span>จังหวัดของป้าย</span>
+                                </label>
+                                <div class="flex items-center rounded-xl overflow-hidden border border-slate-200 bg-white focus-within:border-cyan-500 focus-within:ring-2 focus-within:ring-cyan-500/20 transition shadow-2xs h-[42px]">
+                                    <span class="inline-flex items-center justify-center px-3 bg-slate-50 text-rose-500 border-r border-slate-200 text-sm select-none shrink-0 min-w-[42px] h-full">
+                                        <i data-lucide="map-pin" class="w-4 h-4"></i>
+                                    </span>
+                                    <input type="text" name="vehicleProvince" id="vehicleProvinceInput" list="thaiProvincesList" placeholder="เช่น กรุงเทพมหานคร"
+                                        class="!w-full !border-0 !rounded-none !bg-transparent text-xs font-semibold text-slate-800 focus:!ring-0 focus:!outline-none h-full"
+                                        style="padding: 0 0.75rem !important; margin: 0 !important; height: 100% !important;">
+                                </div>
+                                <span class="text-[10px] text-slate-400 mt-1.5 block h-4 leading-4 truncate" title="เลือกจังหวัดตามป้ายทะเบียน">*จังหวัดตามป้ายทะเบียน</span>
+                            </div>
+                        </div>
+                    </div>
                     <div class="sm:col-span-2">
                         <label>ที่อยู่ตามทะเบียนบ้าน</label>
                         <textarea name="address" rows="2" placeholder="เลขที่, หมู่, ถนน, ตำบล, อำเภอ, จังหวัด"></textarea>
@@ -466,10 +574,173 @@ try {
                 </div>
             </div>
 
-            <!-- 4. ระยะเวลาสัญญา & การเงิน & แนบเอกสาร -->
+            <!-- 4. บริการเสริมในสัญญา: ที่จอดรถ & อินเทอร์เน็ต -->
+            <div class="bg-white rounded-3xl border border-stone-200/80 shadow-sm overflow-hidden">
+                <div class="px-5 py-4 bg-slate-50/80 border-b border-stone-100 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <span class="w-7 h-7 rounded-full bg-cyan-600 text-white flex items-center justify-center text-xs font-bold shadow-2xs">4</span>
+                        <div>
+                            <h3 class="font-display font-bold text-slate-900 text-sm">บริการเสริมในสัญญา: ค่าเช่าที่จอดรถ & ค่าเน็ต</h3>
+                            <p class="text-[11px] text-slate-500">กำหนดเงื่อนไขค่าเช่าที่จอดรถและค่าบริการอินเทอร์เน็ตแบบรายเดือนหรือรายปี</p>
+                        </div>
+                    </div>
+                    <span class="text-[11px] font-bold text-cyan-800 bg-cyan-50 border border-cyan-200/80 px-2.5 py-1 rounded-full">
+                        เพิ่มในสัญญา
+                    </span>
+                </div>
+                <div class="p-5 sm:p-6 space-y-6">
+
+                    <!-- ก. สัญญาเช่าที่จอดรถ (Parking Permit Plan) -->
+                    <div class="p-4 sm:p-5 rounded-2xl bg-cyan-50/40 border border-cyan-100 space-y-4">
+                        <div class="flex items-center justify-between border-b border-cyan-100/80 pb-3">
+                            <div class="flex items-center gap-2.5">
+                                <div class="w-8 h-8 rounded-xl bg-cyan-100 text-cyan-700 flex items-center justify-center shadow-2xs">
+                                    <i data-lucide="car" class="w-4 h-4"></i>
+                                </div>
+                                <div>
+                                    <h4 class="text-xs sm:text-sm font-bold text-slate-800">1. สัญญาเช่าที่จอดรถ (Parking Permit)</h4>
+                                    <p class="text-[11px] text-slate-500">เลือกสัญญากำหนดค่าเช่าที่จอดรถรายเดือนหรือรายปี</p>
+                                </div>
+                            </div>
+                            <span id="parkingBadge" class="text-[11px] font-bold text-slate-500 bg-white border border-slate-200 px-2.5 py-0.5 rounded-full shadow-2xs">
+                                ไม่รับบริการ
+                            </span>
+                        </div>
+
+                        <!-- 3 ตัวเลือก: ไม่รับ / รายเดือน / รายปี -->
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-2">เลือกสัญญากำหนดค่าเช่าที่จอดรถ:</label>
+                            <input type="hidden" name="parkingPlan" id="parkingPlan" value="None">
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                <button type="button" onclick="selectParkingPlan('None')" id="btnParkNone"
+                                    class="py-3 px-3 rounded-2xl border-2 flex items-center justify-center text-center transition cursor-pointer border-cyan-600 bg-cyan-50/80 text-cyan-900 font-bold text-xs sm:text-sm shadow-xs">
+                                    <i data-lucide="slash" class="w-4 h-4 mr-1.5 text-slate-400"></i>
+                                    <span>ไม่รับที่จอดรถ</span>
+                                </button>
+                                <button type="button" onclick="selectParkingPlan('Monthly')" id="btnParkMonthly"
+                                    class="py-3 px-3 rounded-2xl border-2 flex items-center justify-center text-center transition cursor-pointer border-stone-200 bg-white hover:border-cyan-300 text-slate-700 font-semibold text-xs sm:text-sm">
+                                    <i data-lucide="calendar" class="w-4 h-4 mr-1.5 text-cyan-600"></i>
+                                    <span>รายเดือน (100 ฿/ด.)</span>
+                                </button>
+                                <button type="button" onclick="selectParkingPlan('Yearly')" id="btnParkYearly"
+                                    class="py-3 px-3 rounded-2xl border-2 flex items-center justify-center text-center transition cursor-pointer border-stone-200 bg-white hover:border-cyan-300 text-slate-700 font-semibold text-xs sm:text-sm">
+                                    <i data-lucide="award" class="w-4 h-4 mr-1.5 text-teal-600"></i>
+                                    <span>รายปี (1,200 ฿/ปี)</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- อัตราค่าเช่าที่จอดรถ (ล็อกตามสัญญา ไม่สามารถแก้ไขได้) -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1">
+                                    <span>สิทธิ์ที่จอดรถตามสัญญา</span>
+                                </label>
+                                <div class="px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 font-medium" id="parkingDescText">
+                                    ไม่ได้เปิดใช้สิทธิ์ที่จอดรถในสัญญาเช่า
+                                </div>
+                            </div>
+
+                            <div id="parkingFeeContainer">
+                                <label class="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                                    <span class="flex items-center gap-1.5"><i data-lucide="lock" class="w-3.5 h-3.5 text-slate-400"></i> อัตราค่าเช่าที่จอดรถ (ล็อกตามสัญญา)</span>
+                                    <span id="parkingRateUnitText" class="text-[10px] text-cyan-700 font-bold">ไม่มีค่าใช้จ่าย</span>
+                                </label>
+                                <div class="flex items-center justify-between px-3.5 py-2.5 bg-slate-100/90 border border-slate-200/90 rounded-xl">
+                                    <div class="flex items-center gap-1.5 text-slate-500 text-xs font-medium">
+                                        <i data-lucide="shield-check" class="w-4 h-4 text-cyan-600"></i>
+                                        <span id="parkingLockLabel">ไม่มีค่าใช้จ่ายในสัญญา</span>
+                                    </div>
+                                    <div class="flex items-baseline gap-1 text-slate-800">
+                                        <span id="parkingDisplayAmount" class="font-mono font-bold text-sm text-slate-900">0</span>
+                                        <span id="parkingDisplayUnit" class="text-xs font-bold text-slate-500">฿ / -</span>
+                                    </div>
+                                </div>
+                                <input type="hidden" name="parkingFee" id="parkingFeeInput" value="0">
+                                <p class="text-[10px] text-slate-400 mt-1" id="parkingHintText">*ล็อกอัตราตามสัญญา ไม่สามารถแก้ไขได้</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ข. สัญญาบริการอินเทอร์เน็ต / Wi-Fi (ทำแบบเดียวกับที่จอดรถ) -->
+                    <div class="p-4 sm:p-5 rounded-2xl bg-indigo-50/40 border border-indigo-100 space-y-4">
+                        <div class="flex items-center justify-between border-b border-indigo-100/80 pb-3">
+                            <div class="flex items-center gap-2.5">
+                                <div class="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center shadow-2xs">
+                                    <i data-lucide="wifi" class="w-4 h-4"></i>
+                                </div>
+                                <div>
+                                    <h4 class="text-xs sm:text-sm font-bold text-slate-800">2. สัญญาบริการอินเทอร์เน็ต (Internet / Wi-Fi)</h4>
+                                    <p class="text-[11px] text-slate-500">เลือกสัญญากำหนดค่าเน็ตรายเดือนหรือรายปี</p>
+                                </div>
+                            </div>
+                            <span id="internetBadge" class="text-[11px] font-bold text-slate-500 bg-white border border-slate-200 px-2.5 py-0.5 rounded-full shadow-2xs">
+                                ไม่รับบริการ
+                            </span>
+                        </div>
+
+                        <!-- 3 ตัวเลือก: ไม่รับ / รายเดือน / รายปี -->
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-2">เลือกสัญญากำหนดค่าอินเทอร์เน็ต:</label>
+                            <input type="hidden" name="internetPlan" id="internetPlan" value="None">
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                <button type="button" onclick="selectInternetPlan('None')" id="btnNetNone"
+                                    class="py-3 px-3 rounded-2xl border-2 flex items-center justify-center text-center transition cursor-pointer border-indigo-600 bg-indigo-50/80 text-indigo-900 font-bold text-xs sm:text-sm shadow-xs">
+                                    <i data-lucide="slash" class="w-4 h-4 mr-1.5 text-slate-400"></i>
+                                    <span>ไม่รับอินเทอร์เน็ต</span>
+                                </button>
+                                <button type="button" onclick="selectInternetPlan('Monthly')" id="btnNetMonthly"
+                                    class="py-3 px-3 rounded-2xl border-2 flex items-center justify-center text-center transition cursor-pointer border-stone-200 bg-white hover:border-indigo-300 text-slate-700 font-semibold text-xs sm:text-sm">
+                                    <i data-lucide="calendar" class="w-4 h-4 mr-1.5 text-indigo-600"></i>
+                                    <span>รายเดือน (150 ฿/ด.)</span>
+                                </button>
+                                <button type="button" onclick="selectInternetPlan('Yearly')" id="btnNetYearly"
+                                    class="py-3 px-3 rounded-2xl border-2 flex items-center justify-center text-center transition cursor-pointer border-stone-200 bg-white hover:border-indigo-300 text-slate-700 font-semibold text-xs sm:text-sm">
+                                    <i data-lucide="award" class="w-4 h-4 mr-1.5 text-purple-600"></i>
+                                    <span>รายปี (1,500 ฿/ปี)</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- อัตราค่าบริการอินเทอร์เน็ต (ล็อกตามสัญญา ไม่สามารถแก้ไขได้) -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1">
+                                    <span>รูปแบบแพ็กเกจ</span>
+                                </label>
+                                <div class="px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 font-medium" id="internetDescText">
+                                    ไม่ได้เปิดใช้บริการอินเทอร์เน็ตในสัญญา
+                                </div>
+                            </div>
+
+                            <div id="internetFeeContainer">
+                                <label class="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                                    <span class="flex items-center gap-1.5"><i data-lucide="lock" class="w-3.5 h-3.5 text-slate-400"></i> อัตราค่าบริการอินเทอร์เน็ต (ล็อกตามสัญญา)</span>
+                                    <span id="internetRateUnitText" class="text-[10px] text-indigo-700 font-bold">ไม่มีค่าใช้จ่าย</span>
+                                </label>
+                                <div class="flex items-center justify-between px-3.5 py-2.5 bg-slate-100/90 border border-slate-200/90 rounded-xl">
+                                    <div class="flex items-center gap-1.5 text-slate-500 text-xs font-medium">
+                                        <i data-lucide="shield-check" class="w-4 h-4 text-indigo-600"></i>
+                                        <span id="internetLockLabel">ไม่มีค่าใช้จ่ายในสัญญา</span>
+                                    </div>
+                                    <div class="flex items-baseline gap-1 text-slate-800">
+                                        <span id="internetDisplayAmount" class="font-mono font-bold text-sm text-slate-900">0</span>
+                                        <span id="internetDisplayUnit" class="text-xs font-bold text-slate-500">฿ / -</span>
+                                    </div>
+                                </div>
+                                <input type="hidden" name="internetFee" id="internetFeeInput" value="0">
+                                <p class="text-[10px] text-slate-400 mt-1" id="internetHintText">*ล็อกอัตราตามสัญญา ไม่สามารถแก้ไขได้</p>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- 5. ระยะเวลาสัญญา & การเงิน & แนบเอกสาร -->
             <div class="bg-white rounded-3xl border border-stone-200/80 shadow-sm overflow-hidden">
                 <div class="px-5 py-4 bg-slate-50/80 border-b border-stone-100 flex items-center gap-3">
-                    <span class="w-7 h-7 rounded-full bg-rose-500 text-white flex items-center justify-center text-xs font-bold shadow-2xs">4</span>
+                    <span class="w-7 h-7 rounded-full bg-rose-500 text-white flex items-center justify-center text-xs font-bold shadow-2xs">5</span>
                     <h3 class="font-display font-bold text-slate-900 text-sm">ระยะเวลาสัญญา และ เงินประกัน (Contract & Documents)</h3>
                 </div>
                 <div class="p-5 sm:p-6 space-y-5">
@@ -562,18 +833,37 @@ try {
                     </div>
                 </div>
 
-                <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3 mb-6">
+                <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2.5 mb-6">
                     <div class="flex justify-between items-center text-sm">
                         <span class="text-slate-600">ค่าเช่าล่วงหน้า (1 เดือน)</span>
                         <span class="font-semibold text-slate-900" id="sumAdvance">฿<?php echo number_format((float)$preSelectedPrice); ?></span>
                     </div>
-                    <div class="flex justify-between items-center text-sm border-b border-slate-200 pb-3">
+                    <div class="flex justify-between items-center text-sm">
                         <span class="text-slate-600">เงินประกันความเสียหาย</span>
                         <span class="font-semibold text-slate-900" id="sumDeposit">฿0</span>
                     </div>
-                    <div class="flex justify-between items-center pt-1">
+
+                    <!-- ค่าที่จอดรถแรกเข้า (แสดงถ้าเลือก) -->
+                    <div class="flex justify-between items-center text-sm hidden pt-1.5 border-t border-slate-200/60" id="sumParkingRow">
+                        <span class="text-cyan-800 flex items-center gap-1.5 font-medium">
+                            <i data-lucide="car" class="w-3.5 h-3.5 text-cyan-600"></i>
+                            <span id="sumParkingLabel">ค่าที่จอดรถ</span>
+                        </span>
+                        <span class="font-semibold text-cyan-950 font-mono" id="sumParking">฿0</span>
+                    </div>
+
+                    <!-- ค่าอินเทอร์เน็ตแรกเข้า (แสดงถ้าเลือก) -->
+                    <div class="flex justify-between items-center text-sm hidden" id="sumInternetRow">
+                        <span class="text-indigo-800 flex items-center gap-1.5 font-medium">
+                            <i data-lucide="wifi" class="w-3.5 h-3.5 text-indigo-600"></i>
+                            <span id="sumInternetLabel">ค่าอินเทอร์เน็ต</span>
+                        </span>
+                        <span class="font-semibold text-indigo-950 font-mono" id="sumInternet">฿0</span>
+                    </div>
+
+                    <div class="flex justify-between items-center pt-2 border-t border-slate-200">
                         <span class="font-bold text-slate-900">ยอดรวมที่ต้องชำระ</span>
-                        <span class="font-display font-bold text-xl text-blue-600" id="sumTotal">฿<?php echo number_format((float)$preSelectedPrice); ?></span>
+                        <span class="font-display font-bold text-xl text-rose-600" id="sumTotal">฿<?php echo number_format((float)$preSelectedPrice); ?></span>
                     </div>
                 </div>
 
@@ -589,6 +879,17 @@ try {
 
   <script>
     lucide.createIcons();
+
+    function handleVehicleTypeChange(type) {
+        const iconContainer = document.getElementById('vehicleTypeIconContainer');
+        if (!iconContainer) return;
+        let iconName = 'car';
+        if (type === 'Motorcycle') iconName = 'bike';
+        else if (type === 'EV') iconName = 'zap';
+        else if (type === 'Other') iconName = 'truck';
+        iconContainer.innerHTML = '<i data-lucide="' + iconName + '" class="w-4 h-4"></i>';
+        if (window.lucide) lucide.createIcons();
+    }
 
     calculateEndDate();
 
@@ -628,16 +929,170 @@ try {
         calculateTotalMoveIn();
     }
 
+    function selectParkingPlan(plan) {
+        document.getElementById('parkingPlan').value = plan;
+        const btnNone = document.getElementById('btnParkNone');
+        const btnMonthly = document.getElementById('btnParkMonthly');
+        const btnYearly = document.getElementById('btnParkYearly');
+        const badge = document.getElementById('parkingBadge');
+        const feeInput = document.getElementById('parkingFeeInput');
+        const dispAmount = document.getElementById('parkingDisplayAmount');
+        const dispUnit = document.getElementById('parkingDisplayUnit');
+        const lockLabel = document.getElementById('parkingLockLabel');
+        const unitText = document.getElementById('parkingRateUnitText');
+        const hintText = document.getElementById('parkingHintText');
+        const descText = document.getElementById('parkingDescText');
+
+        const inactive = 'py-3 px-3 rounded-2xl border-2 flex items-center justify-center text-center transition cursor-pointer border-stone-200 bg-white hover:border-cyan-300 text-slate-700 font-semibold text-xs sm:text-sm';
+        const active = 'py-3 px-3 rounded-2xl border-2 flex items-center justify-center text-center transition cursor-pointer border-cyan-600 bg-cyan-50/80 text-cyan-900 font-bold text-xs sm:text-sm shadow-xs';
+
+        btnNone.className = inactive;
+        btnMonthly.className = inactive;
+        btnYearly.className = inactive;
+
+        if (plan === 'None') {
+            btnNone.className = active;
+            badge.textContent = 'ไม่รับบริการ';
+            badge.className = 'text-[11px] font-bold text-slate-500 bg-white border border-slate-200 px-2.5 py-0.5 rounded-full shadow-2xs';
+            feeInput.value = 0;
+            if (dispAmount) dispAmount.textContent = '0';
+            if (dispUnit) dispUnit.textContent = '฿ / -';
+            if (lockLabel) lockLabel.textContent = 'ไม่มีค่าใช้จ่ายในสัญญา';
+            if (unitText) unitText.textContent = 'ไม่มีค่าใช้จ่าย';
+            if (hintText) hintText.textContent = '*ไม่รับบริการที่จอดรถ (ไม่มีค่าใช้จ่ายในสัญญา)';
+            if (descText) descText.textContent = 'ไม่ได้เปิดใช้สิทธิ์ที่จอดรถในสัญญาเช่า';
+        } else if (plan === 'Monthly') {
+            btnMonthly.className = active;
+            badge.textContent = 'สัญญาเช่ารายเดือน';
+            badge.className = 'text-[11px] font-bold text-cyan-800 bg-cyan-100 border border-cyan-300 px-2.5 py-0.5 rounded-full shadow-2xs';
+            feeInput.value = 100;
+            if (dispAmount) dispAmount.textContent = '100';
+            if (dispUnit) dispUnit.textContent = '฿ / เดือน';
+            if (lockLabel) lockLabel.textContent = 'รายเดือน (ล็อกอัตราตามสัญญา)';
+            if (unitText) unitText.textContent = '100 บาท / เดือน';
+            if (hintText) hintText.textContent = '*สัญญากำหนดค่าเช่าที่จอดรถ 100 ฿/ด. (ล็อกแก้ไขไม่ได้)';
+            if (descText) descText.textContent = 'สิทธิ์จอดรถ 1 คัน คิดค่าบริการแบบรายเดือน 100 ฿/ด.';
+        } else if (plan === 'Yearly') {
+            btnYearly.className = active;
+            badge.textContent = 'สัญญาเช่ารายปี';
+            badge.className = 'text-[11px] font-bold text-teal-800 bg-teal-100 border border-teal-300 px-2.5 py-0.5 rounded-full shadow-2xs';
+            feeInput.value = 1200;
+            if (dispAmount) dispAmount.textContent = '1,200';
+            if (dispUnit) dispUnit.textContent = '฿ / ปี';
+            if (lockLabel) lockLabel.textContent = 'รายปี (100 บ./ด. x 12 เดือน)';
+            if (unitText) unitText.textContent = '1,200 บาท / ปี';
+            if (hintText) hintText.textContent = '*สัญญากำหนดค่าเช่าที่จอดรถเหมาจ่ายรายปี 1,200 ฿/ปี (ล็อกแก้ไขไม่ได้)';
+            if (descText) descText.textContent = 'สิทธิ์จอดรถ 1 คัน เหมาจ่ายรายปี 1,200 ฿/ปี';
+        }
+        calculateTotalMoveIn();
+        if (window.lucide) lucide.createIcons();
+    }
+
+    function selectInternetPlan(plan) {
+        document.getElementById('internetPlan').value = plan;
+        const btnNone = document.getElementById('btnNetNone');
+        const btnMonthly = document.getElementById('btnNetMonthly');
+        const btnYearly = document.getElementById('btnNetYearly');
+        const badge = document.getElementById('internetBadge');
+        const feeInput = document.getElementById('internetFeeInput');
+        const dispAmount = document.getElementById('internetDisplayAmount');
+        const dispUnit = document.getElementById('internetDisplayUnit');
+        const lockLabel = document.getElementById('internetLockLabel');
+        const unitText = document.getElementById('internetRateUnitText');
+        const hintText = document.getElementById('internetHintText');
+        const descText = document.getElementById('internetDescText');
+
+        const inactive = 'py-3 px-3 rounded-2xl border-2 flex items-center justify-center text-center transition cursor-pointer border-stone-200 bg-white hover:border-indigo-300 text-slate-700 font-semibold text-xs sm:text-sm';
+        const active = 'py-3 px-3 rounded-2xl border-2 flex items-center justify-center text-center transition cursor-pointer border-indigo-600 bg-indigo-50/80 text-indigo-900 font-bold text-xs sm:text-sm shadow-xs';
+
+        btnNone.className = inactive;
+        btnMonthly.className = inactive;
+        btnYearly.className = inactive;
+
+        if (plan === 'None') {
+            btnNone.className = active;
+            badge.textContent = 'ไม่รับบริการ';
+            badge.className = 'text-[11px] font-bold text-slate-500 bg-white border border-slate-200 px-2.5 py-0.5 rounded-full shadow-2xs';
+            feeInput.value = 0;
+            if (dispAmount) dispAmount.textContent = '0';
+            if (dispUnit) dispUnit.textContent = '฿ / -';
+            if (lockLabel) lockLabel.textContent = 'ไม่มีค่าใช้จ่ายในสัญญา';
+            if (unitText) unitText.textContent = 'ไม่มีค่าใช้จ่าย';
+            if (hintText) hintText.textContent = '*ไม่รับบริการอินเทอร์เน็ต (ไม่มีค่าใช้จ่ายในสัญญา)';
+            if (descText) descText.textContent = 'ไม่ได้เปิดใช้บริการอินเทอร์เน็ตในสัญญา';
+        } else if (plan === 'Monthly') {
+            btnMonthly.className = active;
+            badge.textContent = 'สัญญาเน็ตรายเดือน';
+            badge.className = 'text-[11px] font-bold text-indigo-800 bg-indigo-100 border border-indigo-300 px-2.5 py-0.5 rounded-full shadow-2xs';
+            feeInput.value = 150;
+            if (dispAmount) dispAmount.textContent = '150';
+            if (dispUnit) dispUnit.textContent = '฿ / เดือน';
+            if (lockLabel) lockLabel.textContent = 'รายเดือน (ล็อกอัตราตามสัญญา)';
+            if (unitText) unitText.textContent = '150 บาท / เดือน';
+            if (hintText) hintText.textContent = '*สัญญากำหนดค่าเน็ตรายเดือน 150 ฿/ด. (ล็อกแก้ไขไม่ได้)';
+            if (descText) descText.textContent = 'เน็ตความเร็วสูง Wi-Fi สัญญาแบบรายเดือน 150 ฿/ด.';
+        } else if (plan === 'Yearly') {
+            btnYearly.className = active;
+            badge.textContent = 'สัญญาเน็ตรายปี';
+            badge.className = 'text-[11px] font-bold text-purple-800 bg-purple-100 border border-purple-300 px-2.5 py-0.5 rounded-full shadow-2xs';
+            feeInput.value = 1500;
+            if (dispAmount) dispAmount.textContent = '1,500';
+            if (dispUnit) dispUnit.textContent = '฿ / ปี';
+            if (lockLabel) lockLabel.textContent = 'รายปี (ล็อกอัตราตามสัญญา)';
+            if (unitText) unitText.textContent = '1,500 บาท / ปี';
+            if (hintText) hintText.textContent = '*สัญญากำหนดค่าเน็ตเหมาจ่ายรายปี 1,500 ฿/ปี (ล็อกแก้ไขไม่ได้)';
+            if (descText) descText.textContent = 'เน็ตความเร็วสูง Wi-Fi สัญญาเหมาจ่ายรายปี 1,500 ฿/ปี';
+        }
+        calculateTotalMoveIn();
+        if (window.lucide) lucide.createIcons();
+    }
+
     function calculateTotalMoveIn() {
         let advanceRaw = parseFloat(document.getElementById('advanceRentInput').value);
         let depositRaw = parseFloat(document.getElementById('depositInput').value);
+        let parkPlan = document.getElementById('parkingPlan') ? document.getElementById('parkingPlan').value : 'None';
+        let parkFeeRaw = parseFloat(document.getElementById('parkingFeeInput') ? document.getElementById('parkingFeeInput').value : 0);
+        let netPlan = document.getElementById('internetPlan') ? document.getElementById('internetPlan').value : 'None';
+        let netFeeRaw = parseFloat(document.getElementById('internetFeeInput') ? document.getElementById('internetFeeInput').value : 0);
         
         let advance = isNaN(advanceRaw) ? 0 : advanceRaw;
         let deposit = isNaN(depositRaw) ? 0 : depositRaw;
-        let total = advance + deposit;
+        let parkFee = (parkPlan !== 'None' && !isNaN(parkFeeRaw)) ? parkFeeRaw : 0;
+        let netFee = (netPlan !== 'None' && !isNaN(netFeeRaw)) ? netFeeRaw : 0;
+
+        let total = advance + deposit + parkFee + netFee;
 
         document.getElementById('sumAdvance').innerText = '฿' + advance.toLocaleString();
         document.getElementById('sumDeposit').innerText = '฿' + deposit.toLocaleString();
+
+        // Parking summary row
+        const parkRow = document.getElementById('sumParkingRow');
+        const parkLabel = document.getElementById('sumParkingLabel');
+        const parkVal = document.getElementById('sumParking');
+        if (parkRow) {
+            if (parkPlan !== 'None') {
+                parkRow.classList.remove('hidden');
+                parkLabel.textContent = `ค่าที่จอดรถ (${parkPlan === 'Monthly' ? 'รายเดือน' : 'รายปี'})`;
+                parkVal.textContent = '฿' + parkFee.toLocaleString();
+            } else {
+                parkRow.classList.add('hidden');
+            }
+        }
+
+        // Internet summary row
+        const netRow = document.getElementById('sumInternetRow');
+        const netLabel = document.getElementById('sumInternetLabel');
+        const netVal = document.getElementById('sumInternet');
+        if (netRow) {
+            if (netPlan !== 'None') {
+                netRow.classList.remove('hidden');
+                netLabel.textContent = `ค่าอินเทอร์เน็ต (${netPlan === 'Monthly' ? 'รายเดือน' : 'รายปี'})`;
+                netVal.textContent = '฿' + netFee.toLocaleString();
+            } else {
+                netRow.classList.add('hidden');
+            }
+        }
+
         document.getElementById('sumTotal').innerText = '฿' + total.toLocaleString();
     }
 
@@ -1010,5 +1465,85 @@ try {
     }
 
 </script>
+
+<datalist id="thaiProvincesList">
+  <option value="กรุงเทพมหานคร">
+  <option value="กระบี่">
+  <option value="กาญจนบุรี">
+  <option value="กาฬสินธุ์">
+  <option value="กำแพงเพชร">
+  <option value="ขอนแก่น">
+  <option value="จันทบุรี">
+  <option value="ฉะเชิงเทรา">
+  <option value="ชลบุรี">
+  <option value="ชัยนาท">
+  <option value="ชัยภูมิ">
+  <option value="ชุมพร">
+  <option value="เชียงราย">
+  <option value="เชียงใหม่">
+  <option value="ตรัง">
+  <option value="ตราด">
+  <option value="ตาก">
+  <option value="นครนายก">
+  <option value="นครปฐม">
+  <option value="นครพนม">
+  <option value="นครราชสีมา">
+  <option value="นครศรีธรรมราช">
+  <option value="นครสวรรค์">
+  <option value="นนทบุรี">
+  <option value="นราธิวาส">
+  <option value="น่าน">
+  <option value="บึงกาฬ">
+  <option value="บุรีรัมย์">
+  <option value="ปทุมธานี">
+  <option value="ประจวบคีรีขันธ์">
+  <option value="ปราจีนบุรี">
+  <option value="ปัตตานี">
+  <option value="พระนครศรีอยุธยา">
+  <option value="พะเยา">
+  <option value="พังงา">
+  <option value="พัทลุง">
+  <option value="พิจิตร">
+  <option value="พิษณุโลก">
+  <option value="เพชรบุรี">
+  <option value="เพชรบูรณ์">
+  <option value="แพร่">
+  <option value="ภูเก็ต">
+  <option value="มหาสารคาม">
+  <option value="มุกดาหาร">
+  <option value="แม่ฮ่องสอน">
+  <option value="ยโสธร">
+  <option value="ยะลา">
+  <option value="ร้อยเอ็ด">
+  <option value="ระนอง">
+  <option value="ระยอง">
+  <option value="ราชบุรี">
+  <option value="ลพบุรี">
+  <option value="ลำปาง">
+  <option value="ลำพูน">
+  <option value="เลย">
+  <option value="ศรีสะเกษ">
+  <option value="สกลนคร">
+  <option value="สงขลา">
+  <option value="สตูล">
+  <option value="สมุทรปราการ">
+  <option value="สมุทรสงคราม">
+  <option value="สมุทรสาคร">
+  <option value="สระแก้ว">
+  <option value="สระบุรี">
+  <option value="สิงห์บุรี">
+  <option value="สุโขทัย">
+  <option value="สุพรรณบุรี">
+  <option value="สุราษฎร์ธานี">
+  <option value="สุรินทร์">
+  <option value="หนองคาย">
+  <option value="หนองบัวลำภู">
+  <option value="อ่างทอง">
+  <option value="อำนาจเจริญ">
+  <option value="อุดรธานี">
+  <option value="อุตรดิตถ์">
+  <option value="อุทัยธานี">
+  <option value="อุบลราชธานี">
+</datalist>
 </body>
 </html>

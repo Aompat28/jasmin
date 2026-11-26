@@ -28,7 +28,7 @@ if (isset($_POST['upload_slip'])) {
         $targetFilePath = $uploadDir . $fileName;
         
         if (move_uploaded_file($_FILES['slip_image']['tmp_name'], $targetFilePath)) {
-            $stmtUp = $conn->prepare("UPDATE Invoices SET slipImage = ?, status = 'Pending Approval' WHERE invoiceId = ? AND tenantId = ?");
+            $stmtUp = $conn->prepare("UPDATE Invoices SET slipImage = ?, status = 'Pending Approval', slipStatus = 'Pending', slipRejectReason = NULL, slipRejectedAt = NULL WHERE invoiceId = ? AND tenantId = ?");
             $stmtUp->execute([$targetFilePath, $invoiceId, $userId]);
             $message = "<div style='color: green; padding: 10px; background: #d4edda; border-radius: 6px; margin-bottom: 15px;'>✅ อัปโหลดสลิปสำเร็จ! กรุณารอผู้ดูแลระบบตรวจสอบความถูกต้อง</div>";
         } else {
@@ -251,6 +251,14 @@ if (is_dir($imgDirPath)) {
                         </button>
                     </div>
                 </div>
+            </div>
+            <?php endif; ?>
+
+            <?php if(!empty($inv['slipRejectReason'])): ?>
+            <div style="background: #fff1f2; border: 1px solid #fecdd3; border-left: 4px solid #f43f5e; padding: 12px 16px; border-radius: 8px; margin-top: 15px; font-size: 13px; color: #9f1239;">
+                <div style="font-weight: bold; margin-bottom: 4px;">⚠️ สลิปเดิมไม่ผ่านการอนุมัติ (แอดมินส่งกลับให้แนบใหม่)</div>
+                <div><b>เหตุผล:</b> <?php echo htmlspecialchars($inv['slipRejectReason']); ?></div>
+                <div style="font-size: 11px; color: #e11d48; margin-top: 4px;">กรุณาตรวจสอบความถูกต้องและแนบไฟล์สลิปใหม่อีกครั้งด้านล่าง</div>
             </div>
             <?php endif; ?>
 

@@ -97,9 +97,8 @@ if (isset($_POST['upload_slip'])) {
 
         if (move_uploaded_file($_FILES['slip_image']['tmp_name'], $targetFilePath)) {
 
-            // อัปเดตสถานะเป็น "รอตรวจสอบสลิป" และบันทึกที่อยู่ไฟล์รูป
-
-            $stmt = $conn->prepare("UPDATE Invoices SET status = 'Pending Approval', slipImage = ? WHERE invoiceId = ?");
+            // อัปเดตสถานะเป็น "รอตรวจสอบสลิป" และบันทึกที่อยู่ไฟล์รูป เคลียร์เหตุผลปฏิเสธเดิมออก
+            $stmt = $conn->prepare("UPDATE Invoices SET status = 'Pending Approval', slipStatus = 'Pending', slipImage = ?, slipRejectReason = NULL, slipRejectedAt = NULL WHERE invoiceId = ?");
 
             if ($stmt->execute([$targetFilePath, $invoiceId])) {
 
@@ -120,47 +119,22 @@ if (isset($_POST['upload_slip'])) {
 
 
 // --- ดึงข้อมูลบิลทั้งหมดของลูกบ้านคนนี้ ---
-
 $stmt = $conn->prepare("
-
     SELECT i.*, r.roomNumber 
     FROM Invoices i
-    JOIN Room r ON i.roomId = r.roomId
+    LEFT JOIN Room r ON i.roomId = r.roomId
     WHERE i.tenantId = ? OR (i.roomId = ? AND ? > 0)
     ORDER BY i.invoiceId DESC
 ");
 $stmt->execute([$tenantId, $myRoomId, $myRoomId]);
 $rawInvoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// 🌟 1. ระบบตัดบิลซ้ำรอบเดือนเดียวกัน (Deduplication by billingMonth) 🌟
-// ป้องกันการแสดงผลบิลซ้ำซ้อนในเดือนเดียวกัน โดยเลือกรายการที่มีสลิปหรือสถานะที่ต้องดำเนินการก่อน
-$invoicesByMonth = [];
-foreach ($rawInvoices as $inv) {
-    $m = trim($inv['billingMonth']);
-    if (!isset($invoicesByMonth[$m])) {
-        $invoicesByMonth[$m] = $inv;
-    } else {
-        $existing = $invoicesByMonth[$m];
-        // หากบิลเดิมมีสถานะ Paid แต่เจอบิลที่ยังต้องดำเนินการ (Unpaid / Pending Approval) ให้แสดงบิลที่ต้องทำรายการ
-        if ($existing['status'] === 'Paid' && in_array($inv['status'], ['Unpaid', 'Pending Approval'])) {
-            $invoicesByMonth[$m] = $inv;
-        } elseif ($inv['status'] === $existing['status']) {
-            if (!empty($inv['slipImage']) && empty($existing['slipImage'])) {
-                $invoicesByMonth[$m] = $inv;
-            } elseif ($inv['invoiceId'] > $existing['invoiceId']) {
-                $invoicesByMonth[$m] = $inv;
-            }
-        }
-    }
-}
-$dedupedInvoices = array_values($invoicesByMonth);
-
-// 🌟 2. คัดแยก 3 หมวดหมู่ชัดเจน: รอชำระ / รอตรวจสอบสลิป / ประวัติการชำระเงิน 🌟
+// 🌟 คัดแยก 3 หมวดหมู่ชัดเจน: รอชำระ / รอตรวจสอบสลิป / ประวัติการชำระเงินทั้งหมด (เก็บบันทึกประวัติครบทุกบิล ไม่ตัดทิ้ง) 🌟
 $unpaidInvoices = [];
 $pendingApprovalInvoices = [];
 $paymentHistory = [];
 
-foreach ($dedupedInvoices as $inv) {
+foreach ($rawInvoices as $inv) {
     if ($inv['status'] === 'Unpaid') {
         $unpaidInvoices[] = $inv;
     } elseif ($inv['status'] === 'Pending Approval') {
@@ -223,6 +197,10 @@ foreach ($rawInvoices as $inv) {
         'slipUploadedAt' => !empty($inv['slipUploadedAt']) ? date('d/m/Y H:i', strtotime($inv['slipUploadedAt'])) : '',
         'paidAt' => !empty($inv['paidAt']) ? date('d/m/Y H:i', strtotime($inv['paidAt'])) : '',
         'createdAt' => !empty($inv['createdAt']) ? date('d/m/Y H:i', strtotime($inv['createdAt'])) : '',
+        'slipRejectReason' => $inv['slipRejectReason'] ?? '',
+        'slipRejectedAt' => !empty($inv['slipRejectedAt']) ? date('d/m/Y H:i', strtotime($inv['slipRejectedAt'])) : '',
+        'slipStatus' => $inv['slipStatus'] ?? 'Normal',
+        'oldSlipImage' => $inv['oldSlipImage'] ?? '',
         'notes' => $inv['notes'] ?? ($inv['remark'] ?? '')
     ];
 }
@@ -483,6 +461,28 @@ foreach ($rawInvoices as $inv) {
 
             <div class="p-6">
                 <!-- แบนเนอร์แจ้งเตือนสถานะ -->
+                <?php if(!empty($currentInvoice['slipRejectReason'])): ?>
+                <div class="mb-5 p-4 bg-rose-50 border-2 border-rose-300 rounded-2xl flex flex-col gap-2.5 text-xs text-rose-800">
+                    <div class="flex items-center justify-between">
+                        <span class="flex items-center gap-2 font-bold text-sm text-rose-900">
+                            <i data-lucide="alert-triangle" class="w-4 h-4 text-rose-600 shrink-0"></i>
+                            <span>สลิปเดิมไม่ผ่านการอนุมัติ (แอดมินส่งกลับให้แนบใหม่)</span>
+                        </span>
+                        <span class="font-bold text-[11px] font-mono text-rose-700 bg-rose-100 px-2.5 py-0.5 rounded-full border border-rose-200">สลิปไม่ผ่าน</span>
+                    </div>
+                    <div class="bg-white/90 p-3 rounded-xl border border-rose-200 text-rose-900 font-medium">
+                        <strong>เหตุผลจากเจ้าหน้าที่:</strong> <?php echo htmlspecialchars($currentInvoice['slipRejectReason']); ?>
+                    </div>
+                    <div class="text-[11px] text-slate-500 flex items-center justify-between flex-wrap gap-2 pt-0.5">
+                        <span><?php if(!empty($currentInvoice['slipRejectedAt'])): ?>ส่งกลับเมื่อ: <?php echo date('d/m/Y H:i', strtotime($currentInvoice['slipRejectedAt'])); ?> น. • <?php endif; ?>กรุณาตรวจสอบความถูกต้องและกด "แจ้งโอนเงิน / อัปโหลดสลิป" ด้านล่าง</span>
+                        <?php if(!empty($currentInvoice['oldSlipImage'])): ?>
+                            <button type="button" onclick="openSlipPreview('<?php echo htmlspecialchars($currentInvoice['oldSlipImage']); ?>')" class="text-rose-700 hover:text-rose-900 underline font-bold inline-flex items-center gap-1 cursor-pointer">
+                                <i data-lucide="image" class="w-3.5 h-3.5"></i> ดูสลิปเดิมที่ถูกส่งกลับ
+                            </button>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <?php else: ?>
                 <div class="mb-5 p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center justify-between text-xs text-rose-800 font-medium">
                     <span class="flex items-center gap-2">
                         <i data-lucide="alert-circle" class="w-4 h-4 text-rose-600 shrink-0"></i>
@@ -490,6 +490,7 @@ foreach ($rawInvoices as $inv) {
                     </span>
                     <span class="font-bold font-mono text-rose-900 bg-white px-2 py-0.5 rounded border border-rose-200">Unpaid</span>
                 </div>
+                <?php endif; ?>
 
                 <!-- แจกแจงค่าใช้จ่ายแบบการ์ด 4 ช่อง -->
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 py-3 text-xs text-slate-600">
@@ -548,7 +549,7 @@ foreach ($rawInvoices as $inv) {
                         <i data-lucide="eye" class="w-4 h-4 text-emerald-600"></i> ดูรายละเอียดบิล
                     </button>
                     <button onclick="openUploadModal(<?php echo $currentInvoice['invoiceId']; ?>, '<?php echo htmlspecialchars($currentInvoice['billingMonth']); ?>', <?php echo $currentInvoice['totalAmount']; ?>)" class="flex-1 py-3 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 cursor-pointer">
-                        <i data-lucide="upload-cloud" class="w-4 h-4"></i> แจ้งโอนเงิน / อัปโหลดสลิป
+                        <i data-lucide="upload-cloud" class="w-4 h-4"></i> <?php echo !empty($currentInvoice['slipRejectReason']) ? 'แนบสลิปใหม่ (ส่งให้แอดมินตรวจอีกครั้ง)' : 'แจ้งโอนเงิน / อัปโหลดสลิป'; ?>
                     </button>
                 </div>
             </div>
@@ -1418,26 +1419,59 @@ foreach ($rawInvoices as $inv) {
                 </button>
             `;
         } else {
-            statusBadge.className = 'text-xs font-bold px-3 py-1 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1.5';
-            statusBadge.innerHTML = '<i data-lucide="alert-circle" class="w-3.5 h-3.5 text-rose-600"></i> รอชำระเงิน';
+            if (inv.slipRejectReason && inv.slipRejectReason.trim() !== '') {
+                statusBadge.className = 'text-xs font-bold px-3 py-1 rounded-xl bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1.5';
+                statusBadge.innerHTML = '<i data-lucide="alert-triangle" class="w-3.5 h-3.5 text-rose-600"></i> สลิปเดิมไม่ผ่าน (ส่งกลับ)';
 
-            slipStatusCard.className = 'p-3.5 rounded-2xl border text-xs flex items-center justify-between bg-rose-50 border-rose-200 text-rose-800';
-            slipStatusCard.innerHTML = `
-                <div class="flex items-center gap-2">
-                    <i data-lucide="alert-circle" class="w-4 h-4 text-rose-600 shrink-0"></i>
-                    <div>
-                        <div class="font-bold">ยังไม่ได้รับการชำระเงินสำหรับรอบนี้</div>
-                        <div class="text-[10px] text-rose-600">กรุณาโอนเงินและแนบหลักฐานสลิป</div>
+                slipStatusCard.className = 'p-3.5 rounded-2xl border text-xs flex flex-col gap-2 bg-rose-50 border-rose-300 text-rose-800';
+                slipStatusCard.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2 font-bold text-rose-900">
+                            <i data-lucide="x-circle" class="w-4 h-4 text-rose-600 shrink-0"></i>
+                            <span>สลิปเดิมไม่ผ่านการอนุมัติ (แอดมินส่งกลับ)</span>
+                        </div>
+                        <span class="px-2.5 py-0.5 bg-rose-600 text-white font-bold rounded-lg text-[10px]">สลิปไม่ผ่าน</span>
                     </div>
-                </div>
-                <span class="px-2.5 py-1 bg-rose-600 text-white font-bold rounded-lg text-[10px]">ค้างชำระ</span>
-            `;
+                    <div class="bg-white/90 p-2.5 rounded-xl border border-rose-200 text-rose-900 font-medium">
+                        <strong>เหตุผล:</strong> ${inv.slipRejectReason}
+                    </div>
+                    <div class="text-[10px] text-slate-500 flex items-center justify-between flex-wrap gap-2">
+                        <span>${inv.slipRejectedAt ? 'ส่งกลับเมื่อ: ' + inv.slipRejectedAt + ' น.' : ''}</span>
+                        ${inv.oldSlipImage ? `
+                            <button type="button" onclick="openSlipPreview('${inv.oldSlipImage}')" class="text-rose-700 hover:text-rose-900 font-bold underline inline-flex items-center gap-1 cursor-pointer">
+                                <i data-lucide="image" class="w-3 h-3"></i> ดูสลิปเดิมที่ส่งกลับ
+                            </button>
+                        ` : ''}
+                    </div>
+                `;
 
-            footerAction.innerHTML = `
-                <button type="button" onclick="closeTenantInvoiceModal(); openUploadModal(${inv.invoiceId}, '${inv.billingMonth}', ${inv.totalAmount})" class="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center gap-1.5 cursor-pointer">
-                    <i data-lucide="upload" class="w-4 h-4"></i> ชำระเงิน / แนบสลิป
-                </button>
-            `;
+                footerAction.innerHTML = `
+                    <button type="button" onclick="closeTenantInvoiceModal(); openUploadModal(${inv.invoiceId}, '${inv.billingMonth}', ${inv.totalAmount})" class="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center gap-1.5 cursor-pointer">
+                        <i data-lucide="upload" class="w-4 h-4"></i> แนบสลิปใหม่ทันที
+                    </button>
+                `;
+            } else {
+                statusBadge.className = 'text-xs font-bold px-3 py-1 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1.5';
+                statusBadge.innerHTML = '<i data-lucide="alert-circle" class="w-3.5 h-3.5 text-rose-600"></i> รอชำระเงิน';
+
+                slipStatusCard.className = 'p-3.5 rounded-2xl border text-xs flex items-center justify-between bg-rose-50 border-rose-200 text-rose-800';
+                slipStatusCard.innerHTML = `
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="alert-circle" class="w-4 h-4 text-rose-600 shrink-0"></i>
+                        <div>
+                            <div class="font-bold">ยังไม่ได้รับการชำระเงินสำหรับรอบนี้</div>
+                            <div class="text-[10px] text-rose-600">กรุณาโอนเงินและแนบหลักฐานสลิป</div>
+                        </div>
+                    </div>
+                    <span class="px-2.5 py-1 bg-rose-600 text-white font-bold rounded-lg text-[10px]">ค้างชำระ</span>
+                `;
+
+                footerAction.innerHTML = `
+                    <button type="button" onclick="closeTenantInvoiceModal(); openUploadModal(${inv.invoiceId}, '${inv.billingMonth}', ${inv.totalAmount})" class="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center gap-1.5 cursor-pointer">
+                        <i data-lucide="upload" class="w-4 h-4"></i> ชำระเงิน / แนบสลิป
+                    </button>
+                `;
+            }
         }
 
         // ตัวเลขค่าใช้จ่าย
@@ -1474,12 +1508,25 @@ foreach ($rawInvoices as $inv) {
                 </div>
             `;
         } else {
-            slipBox.innerHTML = `
-                <div class="w-full h-32 rounded-2xl bg-slate-50 border border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 text-xs">
-                    <i data-lucide="file-question" class="w-6 h-6 mb-1 text-slate-300"></i>
-                    <span>ยังไม่มีการแนบสลิปโอนเงินในระบบ</span>
-                </div>
-            `;
+            if (inv.oldSlipImage) {
+                slipBox.innerHTML = `
+                    <div class="w-full p-4 rounded-2xl bg-rose-50/70 border border-dashed border-rose-300 flex flex-col items-center justify-center text-center">
+                        <i data-lucide="alert-triangle" class="w-6 h-6 mb-1 text-rose-500"></i>
+                        <span class="text-xs font-bold text-rose-900 mb-0.5">สลิปเดิมไม่ผ่านการอนุมัติ</span>
+                        <span class="text-[11px] text-rose-700/80 mb-2">กรุณาแนบภาพสลิปที่ถูกต้องใหม่</span>
+                        <button type="button" onclick="openSlipPreview('${inv.oldSlipImage}')" class="px-3 py-1.5 bg-white hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition inline-flex items-center gap-1 cursor-pointer shadow-2xs">
+                            <i data-lucide="image" class="w-3.5 h-3.5"></i> ดูภาพสลิปเดิมที่ถูกส่งกลับ
+                        </button>
+                    </div>
+                `;
+            } else {
+                slipBox.innerHTML = `
+                    <div class="w-full h-32 rounded-2xl bg-slate-50 border border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 text-xs">
+                        <i data-lucide="file-question" class="w-6 h-6 mb-1 text-slate-300"></i>
+                        <span>ยังไม่มีการแนบสลิปโอนเงินในระบบ</span>
+                    </div>
+                `;
+            }
         }
 
         lucide.createIcons();

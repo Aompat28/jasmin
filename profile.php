@@ -392,6 +392,66 @@ $initials = strtoupper(mb_substr($user['fullName'] ?? $user['username'] ?? 'U', 
                 </div>
               </div>
 
+              <!-- บริการเสริมตามสัญญา & ทะเบียนรถ -->
+              <?php 
+                $dispPlate = !empty($myRoom['vehiclePlate']) ? $myRoom['vehiclePlate'] : ($user['vehiclePlate'] ?? '');
+                $dispProvince = !empty($myRoom['vehicleProvince']) ? $myRoom['vehicleProvince'] : ($user['vehicleProvince'] ?? '');
+                $dispType = !empty($myRoom['vehicleType']) ? $myRoom['vehicleType'] : ($user['vehicleType'] ?? 'Car');
+                $vTypeMap = [
+                  'Car' => ['label' => 'รถยนต์', 'emoji' => '🚗'],
+                  'Motorcycle' => ['label' => 'มอเตอร์ไซค์', 'emoji' => '🛵'],
+                  'EV' => ['label' => 'รถไฟฟ้า EV', 'emoji' => '⚡'],
+                  'Other' => ['label' => 'อื่นๆ', 'emoji' => '🚐'],
+                ];
+                $vTypeInfo = $vTypeMap[$dispType] ?? $vTypeMap['Car'];
+                $pPlan = $myRoom['parkingPlan'] ?? 'None';
+                $iPlan = $myRoom['internetPlan'] ?? 'None';
+              ?>
+              <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
+                <div class="text-[11px] font-bold text-slate-700 flex items-center gap-1.5 pb-1 border-b border-slate-200/60">
+                  <i data-lucide="layers" class="w-3.5 h-3.5 text-rose-500"></i>
+                  <span>บริการเสริม & ทะเบียนรถตามสัญญา</span>
+                </div>
+                <div class="flex items-center justify-between text-slate-700">
+                  <span class="font-medium text-slate-600 flex items-center gap-1"><i data-lucide="car-front" class="w-3.5 h-3.5 text-slate-400"></i> ยานพาหนะคันหลัก:</span>
+                  <div class="flex items-center gap-1.5">
+                    <?php if (!empty($dispPlate)): ?>
+                      <span class="text-[11px] font-semibold text-cyan-700 bg-cyan-50 border border-cyan-200 px-2 py-0.5 rounded-md flex items-center gap-1">
+                        <span><?php echo $vTypeInfo['emoji']; ?></span>
+                        <span><?php echo htmlspecialchars($vTypeInfo['label']); ?></span>
+                      </span>
+                      <span class="font-mono font-bold text-slate-800 text-[12px] bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                        <?php echo htmlspecialchars($dispPlate . (!empty($dispProvince) ? " ({$dispProvince})" : "")); ?>
+                      </span>
+                    <?php else: ?>
+                      <span class="text-[11px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+                        ไม่ได้ระบุ
+                      </span>
+                    <?php endif; ?>
+                  </div>
+                </div>
+                <div class="flex items-center justify-between text-slate-700">
+                  <span class="font-medium text-slate-600 flex items-center gap-1"><i data-lucide="parking-circle" class="w-3.5 h-3.5 text-cyan-500"></i> สิทธิ์ที่จอดรถ:</span>
+                  <span class="font-bold text-[11px] px-2 py-0.5 rounded-md <?php echo $pPlan === 'Monthly' ? 'bg-cyan-50 text-cyan-800 border border-cyan-200' : ($pPlan === 'Yearly' ? 'bg-teal-50 text-teal-800 border border-teal-200' : 'bg-slate-100 text-slate-500'); ?>">
+                    <?php 
+                      if ($pPlan === 'Monthly') echo "รายเดือน (฿" . number_format($myRoom['parkingFee'] ?? 100) . "/ด.)";
+                      elseif ($pPlan === 'Yearly') echo "รายปี (฿" . number_format($myRoom['parkingFee'] ?? 1200) . "/ปี)";
+                      else echo "ไม่รับบริการ";
+                    ?>
+                  </span>
+                </div>
+                <div class="flex items-center justify-between text-slate-700">
+                  <span class="font-medium text-slate-600 flex items-center gap-1"><i data-lucide="wifi" class="w-3.5 h-3.5 text-indigo-500"></i> บริการอินเทอร์เน็ต:</span>
+                  <span class="font-bold text-[11px] px-2 py-0.5 rounded-md <?php echo $iPlan === 'Monthly' ? 'bg-indigo-50 text-indigo-800 border border-indigo-200' : ($iPlan === 'Yearly' ? 'bg-purple-50 text-purple-800 border border-purple-200' : 'bg-slate-100 text-slate-500'); ?>">
+                    <?php 
+                      if ($iPlan === 'Monthly') echo "รายเดือน (฿" . number_format($myRoom['internetFee'] ?? 150) . "/ด.)";
+                      elseif ($iPlan === 'Yearly') echo "รายปี (฿" . number_format($myRoom['internetFee'] ?? 1500) . "/ปี)";
+                      else echo "ไม่รับบริการ";
+                    ?>
+                  </span>
+                </div>
+              </div>
+
               <!-- เอกสารสัญญาเช่า -->
               <div>
                 <?php if(!empty($myRoom['leaseImage'])): ?>

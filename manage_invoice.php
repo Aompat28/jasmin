@@ -435,10 +435,73 @@ if (isset($_POST['update_payment_status'])) {
     }
 }
 
+// 4. เมื่อแอดมินกดยกเลิก/ปฏิเสธสลิป เพื่อส่งกลับให้ลูกบ้านแนบใหม่
+if (isset($_POST['reject_slip'])) {
+    $activeTab = 'list';
+    $invoiceId = intval($_POST['invoiceId'] ?? 0);
+    $rejectReason = trim($_POST['rejectReason'] ?? '');
+    if (empty($rejectReason)) {
+        $rejectReason = 'ข้อมูลสลิปไม่ถูกต้องหรือไม่ชัดเจน กรุณาตรวจสอบและแนบสลิปใหม่อีกครั้ง';
+    }
+
+    $stmtChk = $conn->prepare("
+        SELECT i.*, u.fullName, u.email, r.roomNumber 
+        FROM Invoices i
+        JOIN User u ON i.tenantId = u.userId
+        LEFT JOIN Room r ON i.roomId = r.roomId
+        WHERE i.invoiceId = ?
+        LIMIT 1
+    ");
+    $stmtChk->execute([$invoiceId]);
+    $invInfo = $stmtChk->fetch(PDO::FETCH_ASSOC);
+
+    if ($invInfo) {
+        $currSlip = $invInfo['slipImage'] ?? null;
+        $slipToSave = !empty($currSlip) ? $currSlip : ($invInfo['oldSlipImage'] ?? null);
+        $stmtRej = $conn->prepare("
+            UPDATE Invoices 
+            SET status = 'Unpaid',
+                slipStatus = 'Rejected',
+                slipRejectReason = ?,
+                slipRejectedAt = NOW(),
+                oldSlipImage = ?,
+                slipImage = NULL
+            WHERE invoiceId = ?
+        ");
+        $stmtRej->execute([$rejectReason, $slipToSave, $invoiceId]);
+
+        // ส่งอีเมลแจ้งเตือนผู้เช่า
+        if (!empty($invInfo['email'])) {
+            $safeName = htmlspecialchars($invInfo['fullName'] ?? '', ENT_QUOTES, 'UTF-8');
+            $safeMonth = htmlspecialchars($invInfo['billingMonth'] ?? '', ENT_QUOTES, 'UTF-8');
+            $safeRoom = htmlspecialchars($invInfo['roomNumber'] ?? '', ENT_QUOTES, 'UTF-8');
+            $safeTotal = number_format((float)($invInfo['totalAmount'] ?? 0), 2);
+            $safeReason = htmlspecialchars($rejectReason, ENT_QUOTES, 'UTF-8');
+            try {
+                sendMail(
+                    $invInfo['email'],
+                    "[หอพักจัสมิน] แจ้งเตือน: สลิปโอนเงินรอบเดือน {$safeMonth} ไม่ผ่านการอนุมัติ (กรุณาแนบใหม่)",
+                    "<h2>สวัสดีคุณ {$safeName}</h2>
+                    <p>นิติบุคคลได้ตรวจสอบสลิปชำระเงินของท่านสำหรับห้อง <b>{$safeRoom}</b> รอบเดือน <b>{$safeMonth}</b> (ยอด {$safeTotal} บาท) แล้วพบว่า <b>ไม่ผ่านการอนุมัติ</b></p>
+                    <div style='background: #fff1f2; border-left: 4px solid #f43f5e; padding: 12px; margin: 15px 0; border-radius: 6px;'>
+                        <b style='color: #be123c;'>เหตุผลจากเจ้าหน้าที่:</b><br>{$safeReason}
+                    </div>
+                    <p>กรุณาเข้าสู่ระบบหอพักจัสมินเพื่อแนบสลิปการโอนเงินที่ถูกต้องใหม่อีกครั้ง</p>"
+                );
+            } catch (Exception $e) {
+                // Ignore email error to not block system
+            }
+        }
+
+        $message = "<div class='alert-box p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-800 rounded-2xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='alert-circle' class='w-5 h-5 text-rose-600'></i> ปฏิเสธสลิปบิล #INV-{$invoiceId} เรียบร้อยแล้ว (สถานะถูกส่งกลับให้ผู้เช่าแนบสลิปใหม่)</div>";
+    }
+}
+
 // ดึงรายการห้องที่มีผู้เช่าอยู่จริง พร้อมเลขมิเตอร์น้ำ-ไฟล่าสุดของแต่ละห้อง
 $rooms = $conn->query("
     SELECT r.roomId, r.roomNumber, r.rentPrice, u.fullName, l.tenantId,
            l.initialWaterMeter, l.initialElectricMeter, l.startDate AS leaseStartDate,
+           l.parkingPlan, l.parkingFee, l.internetPlan, l.internetFee, l.vehicleType,
            latestInv.waterCurr AS lastWater,
            latestInv.electricCurr AS lastElectric,
            latestInv.billingMonth AS lastBillingMonth,
@@ -653,18 +716,6 @@ if ($step === 2) {
             ออกบิลประจำเดือน ตรวจสอบสลิปโอนเงิน และบันทึกมิเตอร์น้ำ-ไฟแบบเรียลไทม์
           </p>
         </div>
-
-        <!-- Quick Top Action Buttons -->
-        <div class="flex flex-wrap items-center gap-3 shrink-0">
-          <button type="button" onclick="switchTab('list')" class="px-4 py-2.5 bg-white hover:bg-stone-50 text-slate-700 rounded-2xl text-xs sm:text-sm font-bold transition flex items-center gap-2 cursor-pointer border border-stone-200 shadow-2xs active:scale-95">
-            <i data-lucide="list" class="w-4 h-4 text-slate-500"></i>
-            <span>รายการบิลทั้งหมด</span>
-          </button>
-          <button type="button" onclick="switchTab('create')" class="px-5 py-2.5 bg-gradient-to-r from-rose-600 via-rose-500 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white rounded-2xl text-xs sm:text-sm font-bold transition flex items-center gap-2 shadow-sm shadow-rose-600/25 active:scale-95 cursor-pointer">
-            <i data-lucide="plus-circle" class="w-4 h-4"></i>
-            <span>ออกบิลรอบเดือนใหม่</span>
-          </button>
-        </div>
       </div>
     </div>
 
@@ -858,6 +909,12 @@ if ($step === 2) {
                             <i data-lucide="image" class="w-3.5 h-3.5"></i> ตรวจสลิปที่แนบ
                           </button>
                         </div>
+                      <?php elseif(!empty($inv['slipRejectReason'])): ?>
+                        <div class="mt-0.5">
+                          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-200" title="สลิปถูกส่งกลับ: <?php echo htmlspecialchars($inv['slipRejectReason']); ?>">
+                            <i data-lucide="alert-triangle" class="w-3 h-3 text-rose-500"></i> สลิปถูกส่งกลับ
+                          </span>
+                        </div>
                       <?php endif; ?>
                     
                     <?php elseif($inv['status'] === 'Pending Approval'): ?>
@@ -912,13 +969,21 @@ if ($step === 2) {
                         </button>
                       </form>
                     <?php elseif(!empty($inv['slipImage'])): ?>
-                      <!-- ลูกบ้านแนบรูปสลิปแล้ว: ขึ้นปุ่มให้อนุมัติ -->
+                      <!-- ลูกบ้านแนบรูปสลิปแล้ว: ขึ้นปุ่มให้อนุมัติ และปุ่มปฏิเสธสลิป -->
                       <form action="manage_invoice.php?tab=list" method="POST" class="inline-flex items-center justify-center gap-1.5 m-0" onsubmit="return handleStatusSubmit(event, this)">
                         <input type="hidden" name="invoiceId" value="<?php echo $inv['invoiceId']; ?>">
                         <button type="submit" name="update_payment_status" value="Paid" onclick="event.stopPropagation()" class="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition cursor-pointer" title="อนุมัติการชำระเงิน">
                           <i data-lucide="check" class="w-3.5 h-3.5"></i> อนุมัติยอด
                         </button>
                       </form>
+                      <button type="button" onclick="event.stopPropagation(); openRejectSlipModal(<?php echo $inv['invoiceId']; ?>)" class="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition cursor-pointer" title="ปฏิเสธสลิป / ส่งกลับให้แนบใหม่">
+                        <i data-lucide="x" class="w-3.5 h-3.5 text-rose-600"></i> ปฏิเสธ
+                      </button>
+                    <?php elseif(!empty($inv['slipRejectReason'])): ?>
+                      <!-- สลิปถูกส่งกลับไปแล้ว รอผู้เช่าแนบใหม่ -->
+                      <span class="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-[11px] font-bold" title="เหตุผล: <?php echo htmlspecialchars($inv['slipRejectReason']); ?>">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-rose-500"></i> รอแนบสลิปใหม่
+                      </span>
                     <?php else: ?>
                       <!-- ยังไม่แนบสลิป: ไม่ขึ้นปุ่มให้อนุมัติ ต้องรอให้ลูกบ้านแนบรูปมาก่อน -->
                       <span class="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-50 border border-slate-200 text-slate-400 rounded-xl text-[11px] font-medium" title="รอลูกบ้านแนบรูปสลิปก่อน ปุ่มอนุมัติจึงจะปรากฏ">
@@ -1096,7 +1161,12 @@ if ($step === 2) {
                           data-unpaid-thai="<?php echo htmlspecialchars($r['currentUnpaidThai'] ?? ''); ?>"
                           data-initial-water="<?php echo $r['initialWaterMeter'] ?? '0'; ?>"
                           data-initial-electric="<?php echo $r['initialElectricMeter'] ?? '0'; ?>"
-                          data-lease-start="<?php echo !empty($r['leaseStartDate']) ? date('d/m/Y', strtotime($r['leaseStartDate'])) : ''; ?>">
+                          data-lease-start="<?php echo !empty($r['leaseStartDate']) ? date('d/m/Y', strtotime($r['leaseStartDate'])) : ''; ?>"
+                          data-parking-plan="<?php echo htmlspecialchars($r['parkingPlan'] ?? 'None'); ?>"
+                          data-parking-fee="<?php echo (float)($r['parkingFee'] ?? 0); ?>"
+                          data-internet-plan="<?php echo htmlspecialchars($r['internetPlan'] ?? 'None'); ?>"
+                          data-internet-fee="<?php echo (float)($r['internetFee'] ?? 0); ?>"
+                          data-vehicle-type="<?php echo htmlspecialchars($r['vehicleType'] ?? 'Car'); ?>">
                     ห้อง <?php echo $r['roomNumber']; ?> (<?php echo htmlspecialchars($r['fullName']); ?>) - รอบบิล: <?php echo $r['expectedThai']; ?>
                   </option>
                 <?php endforeach; ?>
@@ -1259,14 +1329,16 @@ if ($step === 2) {
                 <input type="hidden" name="otherFeeNote" id="otherFeeNote" value="">
               </div>
 
-              <!-- Col 3: Amount Box -->
+              <!-- Col 3: Amount Box (ล็อกไม่ให้แก้ไขได้ ล็อกตามราคาที่คิดเลย) -->
               <div>
                 <label class="block text-[11px] font-bold text-slate-600 mb-1 flex items-center justify-between">
                   <span>ยอดรวมค่าส่วนต่าง (บาท):</span>
-                  <span class="text-[10px] text-slate-400 font-semibold">แก้ไขตัวเลขได้</span>
+                  <span class="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200/90 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-2xs">
+                    <i data-lucide="lock" class="w-2.5 h-2.5 text-emerald-600"></i> ล็อกคำนวณอัตโนมัติ
+                  </span>
                 </label>
                 <div class="relative">
-                  <input type="number" step="0.01" name="otherFee" id="inputOtherFee" value="120.00" oninput="handleManualOtherFeeInput()" class="w-full pl-3 pr-8 py-2.5 bg-white border border-rose-200/80 rounded-xl text-xs font-mono font-bold text-slate-800 text-right focus:outline-none focus:ring-2 focus:ring-rose-500 transition shadow-2xs" placeholder="0.00" title="ยอดรวมค่าใช้จ่ายอื่นๆ (พิมพ์แก้ไขเองได้)">
+                  <input type="number" step="0.01" name="otherFee" id="inputOtherFee" value="120.00" readonly class="w-full pl-3 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 text-right cursor-not-allowed select-none shadow-2xs" placeholder="0.00" title="ยอดรวมค่าส่วนต่างล็อกตามรายการที่เลือก (คำนวณอัตโนมัติ)">
                   <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold select-none">฿</span>
                 </div>
               </div>
@@ -1286,77 +1358,55 @@ if ($step === 2) {
 
               <!-- Checkbox List -->
               <div class="space-y-1.5 max-h-60 overflow-y-auto pr-1">
-                <!-- ค่าบริการประจำเดือน (ล็อกบังคับจ่ายทุกเดือน) -->
-                <div class="p-2.5 bg-amber-50/70 rounded-xl border border-amber-200/80 mb-2">
-                  <div class="flex items-center justify-between text-[11px] font-bold text-amber-900 mb-2">
+                <!-- ค่าบริการประจำเดือน & ตามสัญญา (ล็อกจ่ายทุกเดือน - ไม่มีช่องติ๊ก ล็อกตามราคาที่คิด) -->
+                <div class="p-3 bg-gradient-to-br from-amber-50/80 via-orange-50/30 to-amber-50/80 rounded-2xl border border-amber-200/90 mb-2.5 shadow-2xs">
+                  <div class="flex items-center justify-between text-[11px] font-bold text-amber-900 mb-2.5">
                     <span class="flex items-center gap-1.5">
                       <i data-lucide="lock" class="w-3.5 h-3.5 text-amber-600 shrink-0"></i>
-                      <span>ค่าบริการประจำเดือน (ล็อกจ่ายทุกเดือน)</span>
+                      <span>ค่าบริการประจำเดือน & ตามสัญญา (ล็อกจ่ายทุกเดือน)</span>
                     </span>
-                    <span class="text-[10px] text-amber-700 font-bold bg-amber-100/90 px-2 py-0.5 rounded-full border border-amber-200/60 shadow-2xs">บังคับรวมในบิล</span>
+                    <span class="text-[10px] text-amber-800 font-bold bg-amber-100 border border-amber-300/80 px-2.5 py-0.5 rounded-full shadow-2xs flex items-center gap-1">
+                      <i data-lucide="shield-check" class="w-3 h-3 text-amber-600"></i> ล็อกบังคับในบิล
+                    </span>
                   </div>
 
-                  <div class="space-y-1.5">
-                    <!-- ค่าขยะ 20 บาท (ล็อก) -->
-                    <label class="flex items-center justify-between p-2 bg-white rounded-lg border border-amber-200/90 shadow-2xs select-none">
+                  <div class="space-y-1.5" id="lockedServicesContainer">
+                    <!-- รายการล็อกจะถูกสร้างและแสดงผลอัตโนมัติตามสัญญาของห้องที่เลือก -->
+                    <div class="flex items-center justify-between p-2.5 bg-white rounded-xl border border-amber-200 shadow-2xs select-none">
                       <div class="flex items-center gap-2.5">
-                        <input type="checkbox" class="other-fee-checkbox w-4 h-4 rounded text-amber-600 border-amber-400 focus:ring-amber-500 cursor-not-allowed" data-name="ค่าขยะ" data-amount="20" data-locked="true" checked onclick="return false;" onchange="recalculateOtherFees()">
+                        <div class="w-6 h-6 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                          <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                        </div>
                         <div class="flex items-center gap-1.5">
                           <span class="text-xs font-bold text-slate-800">ค่าขยะ</span>
-                          <span class="inline-flex items-center gap-0.5 text-[9px] text-amber-800 bg-amber-100/90 font-bold px-1.5 py-0.5 rounded"><i data-lucide="lock" class="w-2.5 h-2.5 text-amber-600"></i> ล็อกจ่ายทุกเดือน</span>
+                          <span class="inline-flex items-center gap-0.5 text-[9px] text-amber-800 bg-amber-100 font-bold px-1.5 py-0.5 rounded-md">ล็อกจ่ายทุกเดือน</span>
                         </div>
                       </div>
-                      <span class="text-xs font-mono font-bold text-amber-900 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-md">+20 ฿</span>
-                    </label>
+                      <span class="text-xs font-mono font-bold text-amber-900 bg-amber-100/90 border border-amber-200 px-2.5 py-1 rounded-lg shadow-2xs">+20 ฿</span>
+                    </div>
 
-                    <!-- ค่าส่วนกลาง 100 บาท (ล็อก) -->
-                    <label class="flex items-center justify-between p-2 bg-white rounded-lg border border-amber-200/90 shadow-2xs select-none">
+                    <div class="flex items-center justify-between p-2.5 bg-white rounded-xl border border-amber-200 shadow-2xs select-none">
                       <div class="flex items-center gap-2.5">
-                        <input type="checkbox" class="other-fee-checkbox w-4 h-4 rounded text-amber-600 border-amber-400 focus:ring-amber-500 cursor-not-allowed" data-name="ค่าส่วนกลาง" data-amount="100" data-locked="true" checked onclick="return false;" onchange="recalculateOtherFees()">
+                        <div class="w-6 h-6 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                          <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+                        </div>
                         <div class="flex items-center gap-1.5">
                           <span class="text-xs font-bold text-slate-800">ค่าส่วนกลาง</span>
-                          <span class="inline-flex items-center gap-0.5 text-[9px] text-amber-800 bg-amber-100/90 font-bold px-1.5 py-0.5 rounded"><i data-lucide="lock" class="w-2.5 h-2.5 text-amber-600"></i> ล็อกจ่ายทุกเดือน</span>
+                          <span class="inline-flex items-center gap-0.5 text-[9px] text-amber-800 bg-amber-100 font-bold px-1.5 py-0.5 rounded-md">ล็อกจ่ายทุกเดือน</span>
                         </div>
                       </div>
-                      <span class="text-xs font-mono font-bold text-amber-900 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-md">+100 ฿</span>
-                    </label>
+                      <span class="text-xs font-mono font-bold text-amber-900 bg-amber-100/90 border border-amber-200 px-2.5 py-1 rounded-lg shadow-2xs">+100 ฿</span>
+                    </div>
                   </div>
                 </div>
 
                 <!-- ค่าบริการอื่นๆ เพิ่มเติม (เช็คลิสต์เลือกตามต้องการ ไม่ล็อก) -->
-                <div class="pt-1.5 pb-1 flex items-center justify-between px-1">
+                <div class="pt-1.5 pb-1 flex items-center justify-between px-1" id="optionalFeesHeader">
                   <span class="text-[11px] font-bold text-slate-600 flex items-center gap-1.5">
                     <i data-lucide="list-checks" class="w-3.5 h-3.5 text-blue-600 shrink-0"></i>
                     ค่าบริการอื่นๆ (เลือกได้ตามต้องการ - ไม่ต้องจ่ายทุกเดือน)
                   </span>
                 </div>
-
-                <!-- ค่าอินเทอร์เน็ต / Wi-Fi -->
-                <label class="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 cursor-pointer border border-transparent hover:border-slate-200 transition">
-                  <div class="flex items-center gap-2.5">
-                    <input type="checkbox" class="other-fee-checkbox w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer" data-name="ค่าอินเทอร์เน็ต / Wi-Fi" data-amount="150" onchange="recalculateOtherFees()">
-                    <span class="text-xs font-semibold text-slate-700">ค่าอินเทอร์เน็ต / Wi-Fi</span>
-                  </div>
-                  <span class="text-xs font-mono font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">+150 ฿</span>
-                </label>
-
-                <!-- ค่าที่จอดรถยนต์ -->
-                <label class="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 cursor-pointer border border-transparent hover:border-slate-200 transition">
-                  <div class="flex items-center gap-2.5">
-                    <input type="checkbox" class="other-fee-checkbox w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer" data-name="ค่าที่จอดรถยนต์" data-amount="300" onchange="recalculateOtherFees()">
-                    <span class="text-xs font-semibold text-slate-700">ค่าที่จอดรถยนต์</span>
-                  </div>
-                  <span class="text-xs font-mono font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">+300 ฿</span>
-                </label>
-
-                <!-- ค่าที่จอดมอเตอร์ไซค์ -->
-                <label class="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 cursor-pointer border border-transparent hover:border-slate-200 transition">
-                  <div class="flex items-center gap-2.5">
-                    <input type="checkbox" class="other-fee-checkbox w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer" data-name="ค่าที่จอดมอเตอร์ไซค์" data-amount="100" onchange="recalculateOtherFees()">
-                    <span class="text-xs font-semibold text-slate-700">ค่าที่จอดมอเตอร์ไซค์</span>
-                  </div>
-                  <span class="text-xs font-mono font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">+100 ฿</span>
-                </label>
 
                 <!-- ค่าล้างแอร์ / บำรุงรักษา -->
                 <label class="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 cursor-pointer border border-transparent hover:border-slate-200 transition">
@@ -1706,6 +1756,78 @@ if ($step === 2) {
     </div>
   </div>
 
+  <!-- Modal ปฏิเสธสลิป / ส่งกลับให้ลูกบ้านแนบใหม่ -->
+  <div id="rejectSlipModal" class="hidden fixed inset-0 flex items-center justify-center p-3 sm:p-4 overflow-y-auto bg-slate-900/80 backdrop-blur-sm" style="z-index: 99999;" onclick="closeRejectSlipModal()">
+    <div class="modal-enter relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-rose-100 overflow-hidden" onclick="event.stopPropagation()">
+      <div class="px-6 py-4 border-b border-rose-100 bg-gradient-to-r from-rose-50 via-pink-50 to-rose-50 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-2xl bg-rose-500 text-white flex items-center justify-center shadow-md shadow-rose-500/20">
+            <i data-lucide="x-circle" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="font-display font-bold text-base text-slate-800">ปฏิเสธสลิป / ส่งกลับให้แนบใหม่</h3>
+            <p class="text-xs text-slate-500" id="rejectSlipModalSubtitle">บิล #INV-- • ห้อง --</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeRejectSlipModal()" class="p-2 text-slate-400 hover:text-slate-600 rounded-xl transition cursor-pointer">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form action="manage_invoice.php?tab=list" method="POST" class="p-6 space-y-4 m-0" onsubmit="return validateRejectSlipForm()">
+        <input type="hidden" name="reject_slip" value="1">
+        <input type="hidden" name="invoiceId" id="rejectSlipInvoiceId" value="">
+
+        <!-- Slip Preview in Reject Modal -->
+        <div id="rejectSlipPreviewBox" class="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-center gap-3">
+          <img id="rejectSlipPreviewImg" src="" alt="สลิปที่จะปฏิเสธ" class="w-16 h-16 rounded-xl object-contain bg-slate-900/10 border border-slate-300 shrink-0 cursor-pointer" onclick="openRejectSlipFullImage()">
+          <div class="flex-1 min-w-0 text-xs">
+            <div class="font-bold text-slate-700 truncate" id="rejectSlipPreviewTenant">ผู้เช่า: --</div>
+            <div class="text-slate-500 mt-0.5" id="rejectSlipPreviewTotal">ยอดบิล: -- บาท</div>
+            <button type="button" onclick="openRejectSlipFullImage()" class="mt-1 text-rose-600 hover:text-rose-700 font-bold inline-flex items-center gap-1 cursor-pointer text-[11px]">
+              <i data-lucide="zoom-in" class="w-3 h-3"></i> คลิกดูภาพสลิปขนาดเต็ม
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1.5">
+            เลือกเหตุผลที่ปฏิเสธ (คลิกเพื่อใส่ข้อความรวดเร็ว):
+          </label>
+          <div class="flex flex-wrap gap-1.5 mb-2.5">
+            <button type="button" onclick="setRejectReason('ยอดเงินในสลิปไม่ตรงกับยอดในใบแจ้งหนี้')" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-medium transition cursor-pointer">
+              ยอดเงินไม่ตรง
+            </button>
+            <button type="button" onclick="setRejectReason('ภาพสลิปเบลอ หรือมองไม่เห็นรายละเอียดชัดเจน')" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-medium transition cursor-pointer">
+              สลิปเบลอ/ไม่ชัด
+            </button>
+            <button type="button" onclick="setRejectReason('สลิปซ้ำ หรือเป็นสลิปของรอบเดือนเก่า')" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-medium transition cursor-pointer">
+              สลิปซ้ำ/สลิปเก่า
+            </button>
+            <button type="button" onclick="setRejectReason('โอนผิดบัญชี หรือปลายทางไม่ถูกต้อง')" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-medium transition cursor-pointer">
+              โอนผิดบัญชี
+            </button>
+            <button type="button" onclick="setRejectReason('ไม่พบยอดเงินเข้าบัญชีตามวันเวลาในสลิป')" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-medium transition cursor-pointer">
+              ไม่พบยอดเงินเข้า
+            </button>
+          </div>
+
+          <label for="rejectReasonInput" class="block text-xs font-bold text-slate-700 mb-1">
+            ข้อความระบุเหตุผลและคำแนะนำถึงผู้เช่า <span class="text-rose-500">*</span>:
+          </label>
+          <textarea id="rejectReasonInput" name="rejectReason" rows="3" required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition" placeholder="ระบุเหตุผลที่ปฏิเสธ เพื่อให้ผู้เช่าทราบและแนบสลิปใหม่ให้ถูกต้อง..."></textarea>
+          <p class="text-[11px] text-slate-400 mt-1">ข้อความนี้จะแสดงในหน้าบิลของผู้เช่า และส่งแจ้งเตือนไปยังอีเมลของผู้เช่าโดยอัตโนมัติ</p>
+        </div>
+
+        <div class="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+          <button type="button" onclick="closeRejectSlipModal()" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer">
+            ยกเลิก
+          </button>
+          <button type="submit" class="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-rose-600/20 transition flex items-center gap-1.5 cursor-pointer">
+            <i data-lucide="send" class="w-4 h-4"></i> ยืนยันปฏิเสธและส่งกลับ
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -1906,9 +2028,33 @@ if ($step === 2) {
         noSlipBox.classList.remove('hidden');
         slipImg.src = '';
         slipDlLink.href = '#';
-        slipBadge.innerText = 'ไม่มีสลิป';
-        slipBadge.className = 'text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-700';
-        quickSlip.innerText = 'ไม่มีสลิปแนบ';
+        if (inv.slipRejectReason && inv.slipRejectReason.trim() !== '') {
+          slipBadge.innerText = 'สลิปถูกส่งกลับ';
+          slipBadge.className = 'text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-700';
+          quickSlip.innerText = 'สลิปถูกส่งกลับ';
+          noSlipBox.innerHTML = `
+            <div class="w-14 h-14 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mb-3">
+              <i data-lucide="alert-triangle" class="w-7 h-7"></i>
+            </div>
+            <h5 class="text-sm font-bold text-rose-900 mb-1">สลิปเดิมถูกปฏิเสธแล้ว (รอแนบใหม่)</h5>
+            <p class="text-xs text-rose-700 max-w-sm font-medium mb-3">เหตุผล: ${inv.slipRejectReason}</p>
+            ${inv.oldSlipImage ? `
+              <button type="button" onclick="window.open('${inv.oldSlipImage}', '_blank')" class="px-3.5 py-1.5 bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs">
+                <i data-lucide="image" class="w-3.5 h-3.5"></i> ดูสลิปเดิมที่ถูกปฏิเสธ
+              </button>` : ''}
+          `;
+        } else {
+          slipBadge.innerText = 'ไม่มีสลิป';
+          slipBadge.className = 'text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-700';
+          quickSlip.innerText = 'ไม่มีสลิปแนบ';
+          noSlipBox.innerHTML = `
+            <div class="w-14 h-14 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mb-3">
+              <i data-lucide="image-off" class="w-7 h-7"></i>
+            </div>
+            <h5 class="text-sm font-bold text-amber-900 mb-1">ยังไม่มีหลักฐานการโอนเงิน (ไม่มีสลิป)</h5>
+            <p class="text-xs text-amber-700/80 max-w-xs">ผู้เช่ายังไม่ได้แนบสลิปผ่านระบบ หรือชำระด้วยเงินสดโดยตรงกับนิติบุคคล</p>
+          `;
+        }
       }
 
       // Print Receipt button link
@@ -1930,20 +2076,44 @@ if ($step === 2) {
             </form>
           `;
         } else if (inv.slipImage && String(inv.slipImage).trim() !== '') {
-          // ลูกบ้านแนบรูปสลิปแล้ว: ขึ้นปุ่มให้อนุมัติ
+          // ลูกบ้านแนบรูปสลิปแล้ว: ขึ้นทั้งปุ่มอนุมัติ และปุ่มปฏิเสธสลิป / ส่งกลับให้แนบใหม่
           actionArea.innerHTML = `
-            <form action="manage_invoice.php?tab=list" method="POST" class="m-0" onsubmit="return confirm('ยืนยันอนุมัติการชำระเงินสำหรับบิล #INV-${inv.invoiceId} หรือไม่?');">
-              <input type="hidden" name="invoiceId" value="${inv.invoiceId}">
-              <button type="submit" name="update_payment_status" value="Paid" class="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-md shadow-emerald-600/20 transition flex items-center justify-center gap-2 cursor-pointer">
-                <i data-lucide="check-circle" class="w-4 h-4"></i> อนุมัติการชำระเงิน (ตั้งเป็น Paid)
+            <div class="flex flex-col sm:flex-row gap-2.5">
+              <form action="manage_invoice.php?tab=list" method="POST" class="flex-1 m-0" onsubmit="return confirm('ยืนยันอนุมัติการชำระเงินสำหรับบิล #INV-${inv.invoiceId} หรือไม่?');">
+                <input type="hidden" name="invoiceId" value="${inv.invoiceId}">
+                <button type="submit" name="update_payment_status" value="Paid" class="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-md shadow-emerald-600/20 transition flex items-center justify-center gap-2 cursor-pointer">
+                  <i data-lucide="check-circle" class="w-4 h-4"></i> อนุมัติการชำระเงิน (ตั้งเป็น Paid)
+                </button>
+              </form>
+              <button type="button" onclick="openRejectSlipModal(${inv.invoiceId})" class="w-full sm:w-auto py-3 px-4 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-2xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 cursor-pointer shrink-0">
+                <i data-lucide="x-circle" class="w-4 h-4 text-rose-600"></i> ปฏิเสธสลิป / ส่งกลับให้แนบใหม่
               </button>
-            </form>
+            </div>
+          `;
+        } else if (inv.slipRejectReason && String(inv.slipRejectReason).trim() !== '') {
+          // สลิปเดิมถูกปฏิเสธแล้ว
+          actionArea.innerHTML = `
+            <div class="w-full p-4 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 space-y-2">
+              <div class="font-bold flex items-center gap-1.5 text-rose-900 text-sm">
+                <i data-lucide="alert-triangle" class="w-4 h-4 text-rose-600"></i> สลิปเดิมถูกปฏิเสธแล้ว (ส่งกลับให้ลูกบ้านแนบใหม่)
+              </div>
+              <div class="bg-white/80 p-2.5 rounded-xl border border-rose-100 font-medium">
+                <strong>เหตุผลที่ระบุ:</strong> ${inv.slipRejectReason}
+              </div>
+              <div class="text-slate-500 text-[11px] flex flex-wrap items-center justify-between gap-2 pt-1">
+                <span>${inv.slipRejectedAt ? `ปฏิเสธเมื่อ: ${inv.slipRejectedAt}` : ''}</span>
+                ${inv.oldSlipImage ? `
+                  <button type="button" onclick="window.open('${inv.oldSlipImage}', '_blank')" class="text-xs text-rose-700 hover:text-rose-900 font-bold underline inline-flex items-center gap-1 cursor-pointer">
+                    <i data-lucide="image" class="w-3.5 h-3.5"></i> ดูสลิปเดิมที่เคยปฏิเสธ
+                  </button>` : ''}
+              </div>
+            </div>
           `;
         } else {
           // ยังไม่มีสลิป: ไม่ขึ้นปุ่มอนุมัติ
           actionArea.innerHTML = `
             <div class="w-full py-3 px-4 bg-slate-50 text-slate-500 rounded-2xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 border border-slate-200">
-              <i data-lucide="clock" class="w-4 h-4 text-slate-400"></i> รอลูกบ้านแนบสลิปโอนเงิน (ปุ่มอนุมัติจะปรากฏเมื่อลูกบ้านแนบรูปสลิป)
+              <i data-lucide="clock" class="w-4 h-4 text-slate-400"></i> รอลูกบ้านแนบสลิปโอนเงิน (ปุ่มอนุมัติและปฏิเสธจะปรากฏเมื่อลูกบ้านแนบสลิป)
             </div>
           `;
         }
@@ -2003,6 +2173,83 @@ if ($step === 2) {
 
     function closeSlipModal() {
       closeInvoiceDetailModal();
+    }
+
+    // --- ฟังก์ชันสำหรับ Modal ปฏิเสธสลิป / ส่งกลับให้แนบใหม่ ---
+    let currentRejectSlipImgUrl = '';
+
+    function openRejectSlipModal(invId) {
+      const inv = invoiceMap[invId] || invoiceMap[String(invId)] || invoiceMap[Number(invId)];
+      if (!inv) {
+        console.error('Invoice not found:', invId);
+        return;
+      }
+
+      document.getElementById('rejectSlipInvoiceId').value = inv.invoiceId;
+      document.getElementById('rejectSlipModalSubtitle').innerText = `บิล #INV-${inv.invoiceId} • ห้อง ${inv.roomNumber} • ผู้เช่า ${inv.fullName}`;
+      document.getElementById('rejectSlipPreviewTenant').innerText = `ผู้เช่า: ${inv.fullName} (ห้อง ${inv.roomNumber})`;
+      const totalNum = parseFloat(inv.totalAmount || 0);
+      document.getElementById('rejectSlipPreviewTotal').innerText = `ยอดบิล: ${totalNum.toLocaleString('th-TH', {minimumFractionDigits: 2})} บาท`;
+
+      currentRejectSlipImgUrl = inv.slipImage || '';
+      const imgEl = document.getElementById('rejectSlipPreviewImg');
+      if (inv.slipImage && inv.slipImage.trim() !== '') {
+        imgEl.src = inv.slipImage;
+        imgEl.classList.remove('hidden');
+      } else {
+        imgEl.classList.add('hidden');
+      }
+
+      document.getElementById('rejectReasonInput').value = '';
+
+      const modal = document.getElementById('rejectSlipModal');
+      if (modal) {
+        modal.style.zIndex = '99999';
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      }
+      document.body.classList.add('overflow-hidden');
+
+      setTimeout(() => {
+        document.getElementById('rejectReasonInput')?.focus();
+      }, 80);
+
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function closeRejectSlipModal() {
+      const modal = document.getElementById('rejectSlipModal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
+      const invModal = document.getElementById('invoiceDetailModal');
+      if (!invModal || invModal.classList.contains('hidden')) {
+        document.body.classList.remove('overflow-hidden');
+      }
+    }
+
+    function setRejectReason(txt) {
+      const input = document.getElementById('rejectReasonInput');
+      if (input) {
+        input.value = txt;
+        input.focus();
+      }
+    }
+
+    function openRejectSlipFullImage() {
+      if (currentRejectSlipImgUrl) {
+        window.open(currentRejectSlipImgUrl, '_blank');
+      }
+    }
+
+    function validateRejectSlipForm() {
+      const reason = document.getElementById('rejectReasonInput').value.trim();
+      if (!reason) {
+        alert('กรุณาระบุเหตุผลในการปฏิเสธสลิป');
+        return false;
+      }
+      return confirm('ยืนยันปฏิเสธสลิปนี้และส่งกลับให้ผู้เช่าแนบใหม่ใช่หรือไม่?');
     }
 
     function handleStatusSubmit(e, form) {
@@ -2244,34 +2491,128 @@ if ($step === 2) {
     }
 
     function recalculateOtherFees() {
-      const checkboxes = document.querySelectorAll('.other-fee-checkbox:checked');
+      const roomSelect = document.getElementById('roomSelect');
+      const selectedOpt = (roomSelect && roomSelect.selectedIndex > 0) ? roomSelect.selectedOptions[0] : null;
+
+      // 1. ดึงข้อมูลสัญญาของห้องที่เลือก (ถ้ามี)
+      const parkingPlan = selectedOpt ? (selectedOpt.getAttribute('data-parking-plan') || 'None') : 'None';
+      const parkingFee = selectedOpt ? parseFloat(selectedOpt.getAttribute('data-parking-fee') || 0) : 0;
+      const internetPlan = selectedOpt ? (selectedOpt.getAttribute('data-internet-plan') || 'None') : 'None';
+      const internetFee = selectedOpt ? parseFloat(selectedOpt.getAttribute('data-internet-fee') || 0) : 0;
+      const vehicleType = selectedOpt ? (selectedOpt.getAttribute('data-vehicle-type') || 'Car') : 'Car';
+
+      // 2. รายการบริการล็อกประจำเดือน (ค่าขยะ 20 บาท + ค่าส่วนกลาง 100 บาท)
+      const lockedFees = [
+        { name: 'ค่าขยะ', amount: 20, badge: 'ล็อกจ่ายทุกเดือน', icon: 'trash-2' },
+        { name: 'ค่าส่วนกลาง', amount: 100, badge: 'ล็อกจ่ายทุกเดือน', icon: 'layers' }
+      ];
+
+      // หากห้องพักมีสัญญาบริการอินเทอร์เน็ต (ล็อกตามสัญญา ทั้งรายเดือนและรายปี)
+      const hasLeaseInternet = (internetPlan && internetPlan !== 'None' && internetFee > 0);
+      if (hasLeaseInternet) {
+        let netAmt = (internetPlan === 'Yearly' && internetFee >= 1000) ? 150 : internetFee;
+        if (netAmt <= 0) netAmt = 150;
+        const netBadge = (internetPlan === 'Yearly') ? 'ล็อกตามสัญญา (รายปี)' : 'ล็อกตามสัญญา';
+        lockedFees.push({
+          name: 'ค่าอินเทอร์เน็ต / Wi-Fi',
+          amount: netAmt,
+          badge: netBadge,
+          icon: 'wifi',
+          noteName: (internetPlan === 'Yearly') ? 'ค่าอินเทอร์เน็ต / Wi-Fi (ตามสัญญารายปี)' : 'ค่าอินเทอร์เน็ต / Wi-Fi (ตามสัญญา)'
+        });
+      }
+
+      // หากห้องพักมีสัญญาเช่าที่จอดรถ (ล็อกตามสัญญา ทั้งรายเดือนและรายปี)
+      const hasLeaseParking = (parkingPlan && parkingPlan !== 'None' && parkingFee > 0);
+      if (hasLeaseParking) {
+        let pLabel = 'ค่าที่จอดรถยนต์';
+        let pIcon = 'car';
+        if (vehicleType === 'Motorcycle') {
+          pLabel = 'ค่าที่จอดมอเตอร์ไซค์';
+          pIcon = 'bike';
+        } else if (vehicleType === 'EV') {
+          pLabel = 'ค่าที่จอดรถไฟฟ้า EV';
+          pIcon = 'zap';
+        } else if (vehicleType === 'Other') {
+          pLabel = 'ค่าที่จอดรถ';
+          pIcon = 'truck';
+        }
+
+        let pAmt = (parkingPlan === 'Yearly' && parkingFee >= 1000) ? 100 : parkingFee;
+        if (pAmt <= 0) pAmt = 100;
+        const pBadge = (parkingPlan === 'Yearly') ? 'ล็อกตามสัญญา (รายปี)' : 'ล็อกตามสัญญา';
+
+        lockedFees.push({
+          name: pLabel,
+          amount: pAmt,
+          badge: pBadge,
+          icon: pIcon,
+          noteName: (parkingPlan === 'Yearly') ? `${pLabel} (ตามสัญญารายปี)` : `${pLabel} (ตามสัญญา)`
+        });
+      }
+
+      // 3. อัปเดตกล่องแสดงรายการล็อกใน Pop-up (lockedServicesContainer)
+      const lockedContainer = document.getElementById('lockedServicesContainer');
+      if (lockedContainer) {
+        let lockedHtml = '';
+        lockedFees.forEach(fee => {
+          lockedHtml += `
+            <div class="flex items-center justify-between p-2.5 bg-white rounded-xl border border-amber-200 shadow-2xs select-none">
+              <div class="flex items-center gap-2.5">
+                <div class="w-6 h-6 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                  <i data-lucide="${fee.icon || 'lock'}" class="w-3.5 h-3.5"></i>
+                </div>
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="text-xs font-bold text-slate-800">${fee.name}</span>
+                  <span class="inline-flex items-center gap-0.5 text-[9px] text-amber-800 bg-amber-100 font-bold px-1.5 py-0.5 rounded-md">${fee.badge}</span>
+                </div>
+              </div>
+              <span class="text-xs font-mono font-bold text-amber-900 bg-amber-100/90 border border-amber-200 px-2.5 py-1 rounded-lg shadow-2xs">+${fee.amount.toFixed(0)} ฿</span>
+            </div>
+          `;
+        });
+        lockedContainer.innerHTML = lockedHtml;
+      }
+
       let sum = 0;
       let notes = [];
       const pillsContainer = document.getElementById('otherFeePills');
       if (pillsContainer) pillsContainer.innerHTML = '';
 
-      checkboxes.forEach(cb => {
+      // เพิ่มรายการล็อกบังคับเข้า sum และ pills เสมอ (ไม่มีช่องติ๊ก ล็อกตามราคาที่คิด)
+      lockedFees.forEach(fee => {
+        sum += fee.amount;
+        notes.push(`${fee.noteName || fee.name} (฿${fee.amount.toFixed(2)})`);
+
+        if (pillsContainer) {
+          const pill = document.createElement('span');
+          pill.className = 'inline-flex items-center gap-1.5 text-[10px] bg-amber-50 text-amber-900 border border-amber-200/90 px-2.5 py-0.5 rounded-full font-bold shadow-2xs select-none';
+          pill.innerHTML = `<i data-lucide="${fee.icon || 'lock'}" class="w-3 h-3 text-amber-600 shrink-0"></i><span>${fee.name} ฿${fee.amount.toFixed(0)}</span><span class="text-[9px] text-amber-700 bg-amber-200/70 px-1.5 py-0.2 rounded-full font-semibold">${fee.badge.indexOf('สัญญา') !== -1 ? 'ตามสัญญา' : 'ล็อก'}</span>`;
+          pillsContainer.appendChild(pill);
+        }
+      });
+
+      // 4. รายการเสริมอื่นๆ ที่ผู้ใช้ติ๊กเลือกเพิ่มเติม (ถ้ามีและยังแสดงอยู่)
+      const optionalCheckboxes = document.querySelectorAll('.other-fee-checkbox:checked');
+      optionalCheckboxes.forEach(cb => {
+        // ข้าม checkbox ที่ถูกซ่อน
+        if (cb.closest('label') && cb.closest('label').style.display === 'none') return;
+
         const amt = parseFloat(cb.getAttribute('data-amount') || 0);
         const name = cb.getAttribute('data-name') || 'ส่วนต่าง';
-        const isLocked = cb.getAttribute('data-locked') === 'true';
         sum += amt;
         notes.push(`${name} (฿${amt.toFixed(2)})`);
 
         // Add visual pill
         if (pillsContainer) {
           const pill = document.createElement('span');
-          if (isLocked) {
-            pill.className = 'inline-flex items-center gap-1.5 text-[10px] bg-amber-50 text-amber-900 border border-amber-200/90 px-2.5 py-0.5 rounded-full font-bold shadow-2xs select-none';
-            pill.innerHTML = `<i data-lucide="lock" class="w-3 h-3 text-amber-600 shrink-0"></i><span>${name} ฿${amt.toFixed(0)}</span><span class="text-[9px] text-amber-700 bg-amber-200/70 px-1.5 py-0.2 rounded-full font-semibold">ล็อก</span>`;
-          } else {
-            pill.className = 'inline-flex items-center gap-1.5 text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-0.5 rounded-full font-medium shadow-2xs';
-            pill.innerHTML = `<span>${name} ฿${amt.toFixed(0)}</span><button type="button" onclick="removeFeePill('${name}')" class="text-blue-400 hover:text-rose-600 cursor-pointer ml-0.5 font-bold text-xs" title="ลบรายการนี้">&times;</button>`;
-          }
+          pill.className = 'inline-flex items-center gap-1.5 text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-0.5 rounded-full font-medium shadow-2xs';
+          pill.innerHTML = `<span>${name} ฿${amt.toFixed(0)}</span><button type="button" onclick="removeFeePill('${name}')" class="text-blue-400 hover:text-rose-600 cursor-pointer ml-0.5 font-bold text-xs" title="ลบรายการนี้">&times;</button>`;
           pillsContainer.appendChild(pill);
         }
       });
 
-      // Check custom fee input
+      // 5. รายการกำหนดเอง (Custom Fee)
       const customName = document.getElementById('customFeeName')?.value.trim();
       const customAmt = parseFloat(document.getElementById('customFeeAmount')?.value || 0);
       if (customAmt > 0) {
@@ -2287,7 +2628,7 @@ if ($step === 2) {
         }
       }
 
-      // Update inputOtherFee value
+      // Update inputOtherFee value (ล็อกตามราคาที่คิดเลย)
       const otherInput = document.getElementById('inputOtherFee');
       if (otherInput) {
         otherInput.value = sum.toFixed(2);
@@ -2305,29 +2646,26 @@ if ($step === 2) {
         popupTotal.innerText = `฿${sum.toFixed(2)}`;
       }
 
-      // Update button label
+      // Update button label & count badge
       const btnDisplay = document.getElementById('otherFeeBtnDisplay');
       const countBadge = document.getElementById('otherFeeSelectedCount');
-      const totalCount = checkboxes.length + (customAmt > 0 ? 1 : 0);
+      const totalCount = lockedFees.length + optionalCheckboxes.length + (customAmt > 0 ? 1 : 0);
 
       if (btnDisplay) {
-        if (totalCount === 0) {
-          btnDisplay.innerHTML = `<i data-lucide="list-checks" class="w-3.5 h-3.5 text-blue-600 shrink-0"></i><span class="truncate">เลือกค่าส่วนต่าง (คลิกเลือกเพิ่มเติม)</span>`;
-        } else if (totalCount === 1) {
-          const singleItem = notes[0] || '1 รายการ';
-          btnDisplay.innerHTML = `<i data-lucide="check-circle" class="w-3.5 h-3.5 text-emerald-600 shrink-0"></i><span class="truncate text-blue-700 font-bold">${singleItem}</span>`;
+        if (optionalCheckboxes.length === 0 && customAmt <= 0) {
+          let summaryLabel = `ค่าบริการประจำเดือน (฿${sum.toFixed(2)})`;
+          if (hasLeaseInternet || hasLeaseParking) {
+            summaryLabel = `ค่าบริการล็อกตามสัญญา (฿${sum.toFixed(2)})`;
+          }
+          btnDisplay.innerHTML = `<i data-lucide="lock" class="w-3.5 h-3.5 text-amber-600 shrink-0"></i><span class="truncate font-semibold text-slate-800">${summaryLabel} <span class="text-slate-400 font-normal">| คลิกดูรายละเอียด / เพิ่มเติม</span></span>`;
         } else {
-          btnDisplay.innerHTML = `<i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-blue-600 shrink-0"></i><span class="truncate text-blue-700 font-bold">เลือกแล้ว ${totalCount} รายการ (฿${sum.toFixed(2)})</span>`;
+          btnDisplay.innerHTML = `<i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-blue-600 shrink-0"></i><span class="truncate text-blue-700 font-bold">รวม ${totalCount} รายการ (฿${sum.toFixed(2)})</span>`;
         }
       }
 
       if (countBadge) {
-        if (totalCount > 0) {
-          countBadge.innerText = `เลือก ${totalCount} รายการ`;
-          countBadge.classList.remove('hidden');
-        } else {
-          countBadge.classList.add('hidden');
-        }
+        countBadge.innerText = `เลือก ${totalCount} รายการ`;
+        countBadge.classList.remove('hidden');
       }
 
       if (window.lucide) {
@@ -2341,7 +2679,7 @@ if ($step === 2) {
     function removeFeePill(feeName) {
       const cbs = document.querySelectorAll('.other-fee-checkbox');
       cbs.forEach(cb => {
-        if (cb.getAttribute('data-name') === feeName && cb.getAttribute('data-locked') !== 'true') {
+        if (cb.getAttribute('data-name') === feeName) {
           cb.checked = false;
         }
       });
@@ -2359,15 +2697,14 @@ if ($step === 2) {
     function clearOtherFees() {
       const cbs = document.querySelectorAll('.other-fee-checkbox');
       cbs.forEach(cb => {
-        if (cb.getAttribute('data-locked') !== 'true') {
-          cb.checked = false;
-        }
+        cb.checked = false;
       });
       clearCustomFee();
     }
 
     function handleManualOtherFeeInput() {
-      calculateLiveTotal();
+      // ล็อกไม่ให้แก้ไขได้ ล็อกตามราคาที่คิดเลย
+      recalculateOtherFees();
     }
 
     function getNextBillingMonth(lastBillingMonthStr) {
@@ -2462,6 +2799,7 @@ if ($step === 2) {
         }
       }
       autoFillPreviousMeters(true);
+      recalculateOtherFees();
     }
 
     function updateMonthUI() {
