@@ -37,6 +37,8 @@ try { $conn->exec("ALTER TABLE Lease ADD COLUMN moveOutStatus VARCHAR(50) DEFAUL
 try { $conn->exec("ALTER TABLE Lease ADD COLUMN tenantPaymentSlip VARCHAR(255) DEFAULT NULL;"); } catch(PDOException $e) {}
 
 try { $conn->exec("ALTER TABLE Lease ADD COLUMN settledAt DATETIME DEFAULT NULL;"); } catch(PDOException $e) {}
+try { $conn->exec("ALTER TABLE Lease ADD COLUMN moveOutCreatedAt DATETIME DEFAULT NULL;"); } catch(PDOException $e) {}
+try { $conn->exec("UPDATE Lease SET moveOutCreatedAt = NOW() WHERE moveOutRequestDate IS NOT NULL AND (moveOutCreatedAt IS NULL OR moveOutCreatedAt = '0000-00-00 00:00:00');"); } catch(PDOException $e) {}
 
 try { $conn->exec("ALTER TABLE Lease ADD COLUMN refundReceipt VARCHAR(255) DEFAULT NULL;"); } catch(PDOException $e) {}
 
@@ -200,7 +202,7 @@ if (isset($_POST['submit_move_out'])) {
 
                     UPDATE Lease 
 
-                    SET moveOutRequestDate = ?, bankName = ?, bankAccount = ?, accountName = ?, moveOutReason = ?, moveOutStatus = ?, tenantPaymentSlip = COALESCE(?, tenantPaymentSlip)
+                    SET moveOutRequestDate = ?, bankName = ?, bankAccount = ?, accountName = ?, moveOutReason = ?, moveOutStatus = ?, tenantPaymentSlip = COALESCE(?, tenantPaymentSlip), moveOutCreatedAt = NOW()
 
                     WHERE leaseId = ? AND tenantId = ?
 
@@ -306,7 +308,8 @@ if (isset($_POST['cancel_move_out'])) {
 
                     moveOutReason = NULL, 
 
-                    moveOutStatus = NULL, 
+                    moveOutStatus = NULL,
+                    moveOutCreatedAt = NULL, 
 
                     tenantPaymentSlip = NULL,
 
@@ -1494,6 +1497,8 @@ if ($myLease && !empty($myLease['settledAt'])) {
 
           <div>
 
+            <span class="text-xs text-slate-500 block">แจ้งเมื่อ:</span>
+            <strong class="text-slate-800 font-bold text-base font-mono mb-2 block"><?php echo !empty($myLease['moveOutCreatedAt']) ? date("d/m/Y", strtotime($myLease['moveOutCreatedAt'])) : date("d/m/Y"); ?></strong>
             <span class="text-xs text-slate-500 block">วันที่ประสงค์ย้ายออก:</span>
 
             <strong class="text-rose-600 font-bold text-base font-mono"><?php echo date("d/m/Y", strtotime($myLease['moveOutRequestDate'])); ?></strong>

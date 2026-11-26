@@ -98,6 +98,8 @@ try {
 
 
 try { $conn->exec("ALTER TABLE Lease ADD COLUMN tenantPaymentSlip VARCHAR(255) DEFAULT NULL;"); } catch(PDOException $e) {}
+try { $conn->exec("ALTER TABLE Lease ADD COLUMN moveOutCreatedAt DATETIME DEFAULT NULL;"); } catch(PDOException $e) {}
+try { $conn->exec("UPDATE Lease SET moveOutCreatedAt = NOW() WHERE moveOutRequestDate IS NOT NULL AND (moveOutCreatedAt IS NULL OR moveOutCreatedAt = '0000-00-00 00:00:00');"); } catch(PDOException $e) {}
 
 
 
@@ -507,7 +509,7 @@ if (isset($_POST['cancel_move_out'])) {
 
     try {
 
-        $stmtCancel = $conn->prepare("UPDATE Lease SET moveOutRequestDate = NULL, moveOutReason = NULL, moveOutStatus = NULL WHERE leaseId = ?");
+        $stmtCancel = $conn->prepare("UPDATE Lease SET moveOutRequestDate = NULL, moveOutReason = NULL, moveOutStatus = NULL, moveOutCreatedAt = NULL WHERE leaseId = ?");
 
         $stmtCancel->execute([$leaseId]);
 
@@ -568,6 +570,8 @@ $rooms = $conn->query("
            l.leaseImage,
 
            l.moveOutRequestDate,
+
+           l.moveOutCreatedAt,
 
            l.moveOutReason,
 
@@ -3029,6 +3033,9 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
                                     <i data-lucide="calendar" class="w-3.5 h-3.5"></i>
 
                                     <span>ย้ายออก: <?php echo date('d/m/Y', strtotime($mo['moveOutRequestDate'])); ?></span>
+                                </div>
+                                <div class="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5 font-mono">
+                                    <i data-lucide="send" class="w-3 h-3 text-amber-500"></i> แจ้งเมื่อ: <?php echo !empty($mo['moveOutCreatedAt']) ? date('d/m/Y', strtotime($mo['moveOutCreatedAt'])) : date('d/m/Y'); ?>
 
                                 </div>
 
@@ -6140,7 +6147,17 @@ $initialFilter = isset($_GET['filter']) ? trim($_GET['filter']) : 'all';
         }
 
         // Timeline 3 steps
-        document.getElementById('mod_time_requested').innerText = fmtDate(data.moveOutRequestDate);
+        function getTodayFmt() {
+            const today = new Date();
+            const dd = String(today.getDate()).padStart(2, '0');
+            const mm = String(today.getMonth() + 1).padStart(2, '0');
+            const yyyy = today.getFullYear();
+            return `${dd}/${mm}/${yyyy}`;
+        }
+        const reqDateStr = (data.moveOutCreatedAt && data.moveOutCreatedAt !== '0000-00-00 00:00:00' && data.moveOutCreatedAt !== '-') 
+            ? fmtDate(data.moveOutCreatedAt) 
+            : getTodayFmt();
+        document.getElementById('mod_time_requested').innerText = reqDateStr;
         document.getElementById('mod_time_moveout').innerText = fmtDate(data.moveOutRequestDate);
         document.getElementById('mod_time_settled').innerText = data.settledAt ? fmtDate(data.settledAt) : (isPending ? 'รอตรวจห้อง' : 'เสร็จสิ้น');
 
