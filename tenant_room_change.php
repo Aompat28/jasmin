@@ -532,28 +532,23 @@ $pendingRequest = null;
 
 
           <!-- การ์ดห้องพักปัจจุบัน -->
-
           <div class="bg-white p-5 rounded-3xl shadow-sm border border-rose-100/80 mb-6">
-
               <div class="text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">ห้องพักปัจจุบันของคุณ</div>
-
               <div class="flex items-center justify-between">
-
                   <div>
-
                       <div class="text-2xl font-bold text-slate-800">ห้อง <?php echo htmlspecialchars($myRoom['roomNumber']); ?></div>
-
                       <div class="text-xs text-slate-500 mt-1">
-
                         ประเภท: <strong class="text-slate-700"><?php echo ($myRoom['roomType'] === 'Air') ? '❄️ ห้องแอร์' : '🌀 ห้องพัดลม'; ?></strong> (ชั้น <?php echo $myRoom['floor']; ?>)
-
                       </div>
-
                       <div class="text-xs text-rose-600 font-bold mt-1">
-
                         ค่าเช่าปัจจุบัน: ฿<?php echo number_format($myRoom['rentPrice'], 2); ?>/เดือน
-
                       </div>
+                  </div>
+                  <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center shadow-xs">
+                    <i data-lucide="door-open" class="w-6 h-6"></i>
+                  </div>
+              </div>
+          </div>
 
           <!-- 🌟 แท็บสลับหน้า: คำขอย้ายห้อง vs ประวัติคำขอ 🌟 -->
           <div class="mb-5 flex gap-2 border-b border-rose-100/80 pb-px overflow-x-auto hide-scrollbar">
@@ -581,18 +576,6 @@ $pendingRequest = null;
 
           <!-- ================= TAB 1: คำขอย้ายห้อง ================= -->
           <div id="content-rc-request" class="<?php echo ($activeTab === 'request') ? '' : 'hidden'; ?>">
-
-                  </div>
-
-                  <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center shadow-xs">
-
-                    <i data-lucide="door-open" class="w-6 h-6"></i>
-
-                  </div>
-
-              </div>
-
-          </div>
 
 
 
@@ -880,11 +863,7 @@ $pendingRequest = null;
 
 
 
-          <!-- ประวัติคำขอย้ายห้อง -->
-
-          <?php if(!empty($requestHistory)): ?>
-
-                    </div> <!-- End #content-rc-request -->
+          </div> <!-- End #content-rc-request -->
 
           <!-- ================= TAB 2: ประวัติคำขอ ================= -->
           <div id="content-rc-history" class="<?php echo ($activeTab === 'history') ? '' : 'hidden'; ?>">
@@ -905,155 +884,124 @@ $pendingRequest = null;
                 <i data-lucide="history" class="w-4 h-4 text-slate-500"></i> ประวัติคำขอย้ายห้องพัก
               </h3>
 
-              <!-- 🌟 Status Filter Tabs (แบบหน้าแจ้งงาน) 🌟 -->
-              <div class="flex items-center gap-2 mb-4 overflow-x-auto pb-1" id="rcFilterTabs">
-                <button type="button" onclick="filterRoomChange('all')" class="rc-filter-btn active px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-slate-800 text-white cursor-pointer" data-filter="all">
-                  ทั้งหมด (<?php echo $countRcTotal; ?>)
-                </button>
-                <button type="button" onclick="filterRoomChange('Pending')" class="rc-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-100 border border-rose-100/80 cursor-pointer" data-filter="Pending">
-                  ⏳ รออนุมัติ (<?php echo $countRcPending; ?>)
-                </button>
-                <button type="button" onclick="filterRoomChange('Approved')" class="rc-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-100 border border-rose-100/80 cursor-pointer" data-filter="Approved">
-                  ✅ อนุมัติแล้ว (<?php echo $countRcApproved; ?>)
-                </button>
-                <?php if($countRcRejected > 0): ?>
-                <button type="button" onclick="filterRoomChange('Rejected')" class="rc-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-100 border border-rose-100/80 cursor-pointer" data-filter="Rejected">
-                  ❌ ไม่อนุมัติ/ยกเลิก (<?php echo $countRcRejected; ?>)
-                </button>
-                <?php endif; ?>
-              </div>
-
-              <div class="space-y-3">
-                <?php foreach($requestHistory as $h): ?>
-                  <div data-status="<?php echo htmlspecialchars($h['status']); ?>" class="rc-card p-3.5 rounded-2xl border border-rose-100/60 bg-rose-50/30/60 flex items-start justify-between gap-3 text-xs">
-
-                    <div class="flex-1">
-
-                      <div class="font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
-
-                        <?php if($h['status'] === 'Approved'): ?>
-
-                            <span class="text-emerald-700">อนุมัติย้ายเข้า:</span>
-
-                            <?php if(!empty($h['targetRoomNumber'])): ?>
-
-                                <strong>ห้อง <?php echo $h['targetRoomNumber']; ?></strong> (<?php echo ($h['targetRoomTypeSpecific'] === 'Air') ? 'ห้องแอร์' : 'ห้องพัดลม'; ?>)
-
-                            <?php else: ?>
-
-                                <strong><?php echo ($h['targetRoomType'] === 'Air') ? '❄️ ห้องแอร์' : '🌀 ห้องพัดลม'; ?></strong>
-
-                            <?php endif; ?>
-
-                            <?php if(!empty($myRoom['roomNumber']) && !empty($h['targetRoomNumber']) && $myRoom['roomNumber'] == $h['targetRoomNumber']): ?>
-
-                                <span class="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-md font-bold text-[10px]">ห้องปัจจุบันของคุณ</span>
-
-                            <?php endif; ?>
-
-                        <?php else: ?>
-
-                            <span>ขอย้ายไป:</span>
-
-                            <?php if(!empty($h['targetRoomNumber'])): ?>
-
-                                <strong>ห้อง <?php echo $h['targetRoomNumber']; ?></strong> (<?php echo ($h['targetRoomTypeSpecific'] === 'Air') ? 'ห้องแอร์' : 'ห้องพัดลม'; ?>)
-
-                            <?php else: ?>
-
-                                <strong><?php echo ($h['targetRoomType'] === 'Air') ? '❄️ ห้องแอร์' : '🌀 ห้องพัดลม'; ?></strong>
-
-                            <?php endif; ?>
-
-                        <?php endif; ?>
-
+              <?php if(empty($requestHistory)): ?>
+                  <div class="p-8 text-center text-slate-400 text-xs">
+                      <div class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-2">
+                          <i data-lucide="clock" class="w-6 h-6"></i>
                       </div>
-
-                      <div class="text-slate-600 mt-1">เหตุผล: <?php echo htmlspecialchars($h['reason']); ?></div>
-
-                      <div class="text-[11px] text-slate-400 mt-1 font-mono">ยื่นเมื่อ: <?php echo date("d/m/Y H:i", strtotime($h['created_at'])); ?> น.</div>
-
-                      <div class="mt-2 flex flex-wrap gap-2">
-                        <button type="button" onclick='openRoomChangeModal({
-                          roomNumber: "<?php echo htmlspecialchars($activeLease["roomNumber"] ?? ""); ?>",
-                          targetRoom: "<?php echo !empty($h["targetRoomNumber"]) ? "ห้อง " . htmlspecialchars($h["targetRoomNumber"]) : (($h["targetRoomType"] === "Air") ? "ห้องแอร์" : "ห้องพัดลม"); ?>",
-                          tenantName: "<?php echo htmlspecialchars($tenantName); ?>",
-                          reason: "<?php echo addslashes($h["reason"] ?? ""); ?>",
-                          preferredMoveDate: "<?php echo !empty($h["preferredMoveDate"]) ? date("d/m/Y", strtotime($h["preferredMoveDate"])) : "-"; ?>",
-                          createdAt: "<?php echo date("d/m/Y H:i", strtotime($h["created_at"])); ?> น.",
-                          status: "<?php echo $h["status"]; ?>",
-                          paymentSlip: "<?php echo htmlspecialchars($h["paymentSlip"] ?? "", ENT_QUOTES); ?>",
-                          adminRemark: "<?php echo addslashes($h["adminRemark"] ?? ""); ?>"
-                        })' class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200 rounded-lg text-[11px] font-bold transition cursor-pointer">
-                          <i data-lucide="eye" class="w-3.5 h-3.5 text-amber-600"></i> ดูรายละเอียด & ขั้นตอน
-                        </button>
-                      <?php if(!empty($h['paymentSlip'])): ?>
-
-                        <div class="mt-1.5 flex items-center gap-1.5">
-
-                          <button type="button" onclick="openImageModal('<?php echo htmlspecialchars($h['paymentSlip']); ?>', 'หลักฐานสลิปโอนค่าทำความสะอาด 500 บาท')" class="px-2 py-0.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-md text-[10px] font-bold border border-rose-200 transition flex items-center gap-1 cursor-pointer">
-
-                            <i data-lucide="image" class="w-3 h-3"></i> ดูสลิปค่าทำความสะอาด 500฿
-
-                          </button>
-
-                        </div>
-
-                      <?php endif; ?>
-
-                      <?php if(!empty($h['adminRemark'])): ?>
-
-                        <div class="text-[11px] text-slate-600 mt-1.5 bg-white p-2.5 rounded-xl border border-rose-100/80 shadow-2xs">
-
-                          💬 นิติบุคคล: <?php echo htmlspecialchars($h['adminRemark']); ?>
-
-                        </div>
-
-                      <?php endif; ?>
-
-                    </div>
-
-
-
-                    <div class="shrink-0">
-
-                      <?php if($h['status'] === 'Approved'): ?>
-
-                        <span class="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-full font-bold text-[10px] inline-flex items-center gap-1">
-
-                          <i data-lucide="check" class="w-3 h-3"></i> อนุมัติแล้ว
-
-                        </span>
-
-                      <?php elseif($h['status'] === 'Pending'): ?>
-
-                        <span class="px-2.5 py-1 bg-amber-100 text-amber-800 rounded-full font-bold text-[10px] inline-flex items-center gap-1">
-
-                          <i data-lucide="clock" class="w-3 h-3"></i> รอพิจารณา
-
-                        </span>
-
-                      <?php elseif($h['status'] === 'Rejected'): ?>
-
-                        <span class="px-2.5 py-1 bg-rose-100 text-rose-800 rounded-full font-bold text-[10px] inline-flex items-center gap-1">
-
-                          <i data-lucide="x" class="w-3 h-3"></i> ไม่อนุมัติ
-
-                        </span>
-
-                      <?php endif; ?>
-
-                    </div>
-
+                      <p class="font-bold text-slate-600">ยังไม่มีประวัติคำขอย้ายห้องพัก</p>
+                      <p class="text-[11px] text-slate-400 mt-1">เมื่อคุณส่งคำขอย้ายห้องพัก ประวัติจะแสดงที่นี่</p>
+                  </div>
+              <?php else: ?>
+                  <!-- 🌟 Status Filter Tabs (แบบหน้าแจ้งงาน) 🌟 -->
+                  <div class="flex items-center gap-2 mb-4 overflow-x-auto pb-1" id="rcFilterTabs">
+                    <button type="button" onclick="filterRoomChange('all')" class="rc-filter-btn active px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-slate-800 text-white cursor-pointer" data-filter="all">
+                      ทั้งหมด (<?php echo $countRcTotal; ?>)
+                    </button>
+                    <button type="button" onclick="filterRoomChange('Pending')" class="rc-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-100 border border-rose-100/80 cursor-pointer" data-filter="Pending">
+                      ⏳ รออนุมัติ (<?php echo $countRcPending; ?>)
+                    </button>
+                    <button type="button" onclick="filterRoomChange('Approved')" class="rc-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-100 border border-rose-100/80 cursor-pointer" data-filter="Approved">
+                      ✅ อนุมัติแล้ว (<?php echo $countRcApproved; ?>)
+                    </button>
+                    <?php if($countRcRejected > 0): ?>
+                    <button type="button" onclick="filterRoomChange('Rejected')" class="rc-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-100 border border-rose-100/80 cursor-pointer" data-filter="Rejected">
+                      ❌ ไม่อนุมัติ/ยกเลิก (<?php echo $countRcRejected; ?>)
+                    </button>
+                    <?php endif; ?>
                   </div>
 
-                <?php endforeach; ?>
+                  <div class="space-y-3">
+                    <?php foreach($requestHistory as $h): ?>
+                      <div data-status="<?php echo htmlspecialchars($h['status']); ?>" 
+                           onclick='openRoomChangeModal({
+                             roomNumber: "<?php echo htmlspecialchars($activeLease["roomNumber"] ?? ""); ?>",
+                             targetDisplay: "<?php echo !empty($h["targetRoomNumber"]) ? "ห้อง " . htmlspecialchars($h["targetRoomNumber"]) . " (" . (($h["targetRoomTypeSpecific"] === "Air") ? "ห้องแอร์" : "ห้องพัดลม") . ")" : (($h["targetRoomType"] === "Air") ? "❄️ ห้องแอร์" : "🌀 ห้องพัดลม"); ?>",
+                             tenantName: "<?php echo htmlspecialchars($tenantName); ?>",
+                             reason: "<?php echo addslashes($h["reason"] ?? ""); ?>",
+                             preferredMoveDate: "<?php echo !empty($h["preferredMoveDate"]) ? date("d/m/Y", strtotime($h["preferredMoveDate"])) : "-"; ?>",
+                             createdAt: "<?php echo date("d/m/Y H:i", strtotime($h["created_at"])); ?> น.",
+                             status: "<?php echo $h["status"]; ?>",
+                             slipUrl: "<?php echo !empty($h["paymentSlip"]) ? htmlspecialchars($h["paymentSlip"], ENT_QUOTES) : ""; ?>",
+                             adminRemark: "<?php echo addslashes($h["adminRemark"] ?? ""); ?>"
+                           })'
+                           class="rc-card p-3.5 rounded-2xl border border-rose-100/60 bg-white hover:border-amber-300 hover:shadow-xs transition-all cursor-pointer flex items-start justify-between gap-3 text-xs group">
 
-              </div>
+                        <div class="flex-1">
+                          <div class="font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
+                            <?php if($h['status'] === 'Approved'): ?>
+                                <span class="text-emerald-700">อนุมัติย้ายเข้า:</span>
+                                <?php if(!empty($h['targetRoomNumber'])): ?>
+                                    <strong>ห้อง <?php echo $h['targetRoomNumber']; ?></strong> (<?php echo ($h['targetRoomTypeSpecific'] === 'Air') ? 'ห้องแอร์' : 'ห้องพัดลม'; ?>)
+                                <?php else: ?>
+                                    <strong><?php echo ($h['targetRoomType'] === 'Air') ? '❄️ ห้องแอร์' : '🌀 ห้องพัดลม'; ?></strong>
+                                <?php endif; ?>
+                                <?php if(!empty($myRoom['roomNumber']) && !empty($h['targetRoomNumber']) && $myRoom['roomNumber'] == $h['targetRoomNumber']): ?>
+                                    <span class="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-md font-bold text-[10px]">ห้องปัจจุบันของคุณ</span>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                <span>ขอย้ายไป:</span>
+                                <?php if(!empty($h['targetRoomNumber'])): ?>
+                                    <strong>ห้อง <?php echo $h['targetRoomNumber']; ?></strong> (<?php echo ($h['targetRoomTypeSpecific'] === 'Air') ? 'ห้องแอร์' : 'ห้องพัดลม'; ?>)
+                                <?php else: ?>
+                                    <strong><?php echo ($h['targetRoomType'] === 'Air') ? '❄️ ห้องแอร์' : '🌀 ห้องพัดลม'; ?></strong>
+                                <?php endif; ?>
+                            <?php endif; ?>
+                          </div>
 
-          </div>
+                          <div class="text-slate-600 mt-1">เหตุผล: <?php echo htmlspecialchars($h['reason']); ?></div>
+                          <div class="text-[11px] text-slate-400 mt-1 font-mono">ยื่นเมื่อ: <?php echo date("d/m/Y H:i", strtotime($h['created_at'])); ?> น.</div>
 
-          <?php endif; ?>
+                          <div class="mt-2 flex flex-wrap gap-2" onclick="event.stopPropagation()">
+                            <button type="button" onclick='openRoomChangeModal({
+                              roomNumber: "<?php echo htmlspecialchars($activeLease["roomNumber"] ?? ""); ?>",
+                              targetDisplay: "<?php echo !empty($h["targetRoomNumber"]) ? "ห้อง " . htmlspecialchars($h["targetRoomNumber"]) . " (" . (($h["targetRoomTypeSpecific"] === "Air") ? "ห้องแอร์" : "ห้องพัดลม") . ")" : (($h["targetRoomType"] === "Air") ? "❄️ ห้องแอร์" : "🌀 ห้องพัดลม"); ?>",
+                              tenantName: "<?php echo htmlspecialchars($tenantName); ?>",
+                              reason: "<?php echo addslashes($h["reason"] ?? ""); ?>",
+                              preferredMoveDate: "<?php echo !empty($h["preferredMoveDate"]) ? date("d/m/Y", strtotime($h["preferredMoveDate"])) : "-"; ?>",
+                              createdAt: "<?php echo date("d/m/Y H:i", strtotime($h["created_at"])); ?> น.",
+                              status: "<?php echo $h["status"]; ?>",
+                              slipUrl: "<?php echo !empty($h["paymentSlip"]) ? htmlspecialchars($h["paymentSlip"], ENT_QUOTES) : ""; ?>",
+                              adminRemark: "<?php echo addslashes($h["adminRemark"] ?? ""); ?>"
+                            })' class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200 rounded-lg text-[11px] font-bold transition cursor-pointer">
+                              <i data-lucide="eye" class="w-3.5 h-3.5 text-amber-600"></i> ดูรายละเอียด & ขั้นตอน
+                            </button>
+                            <?php if(!empty($h['paymentSlip'])): ?>
+                              <button type="button" onclick="openImageModal('<?php echo htmlspecialchars($h['paymentSlip']); ?>', 'หลักฐานสลิปโอนค่าทำความสะอาด 500 บาท')" class="px-2 py-0.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-md text-[10px] font-bold border border-rose-200 transition flex items-center gap-1 cursor-pointer">
+                                <i data-lucide="image" class="w-3 h-3"></i> ดูสลิปค่าทำความสะอาด 500฿
+                              </button>
+                            <?php endif; ?>
+                          </div>
+
+                          <?php if(!empty($h['adminRemark'])): ?>
+                            <div class="text-[11px] text-slate-600 mt-1.5 bg-white p-2.5 rounded-xl border border-rose-100/80 shadow-2xs">
+                              💬 นิติบุคคล: <?php echo htmlspecialchars($h['adminRemark']); ?>
+                            </div>
+                          <?php endif; ?>
+                        </div>
+
+                        <div class="shrink-0 flex items-center gap-2">
+                          <?php if($h['status'] === 'Approved'): ?>
+                            <span class="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-full font-bold text-[10px] inline-flex items-center gap-1">
+                              <i data-lucide="check" class="w-3 h-3"></i> อนุมัติแล้ว
+                            </span>
+                          <?php elseif($h['status'] === 'Pending'): ?>
+                            <span class="px-2.5 py-1 bg-amber-100 text-amber-800 rounded-full font-bold text-[10px] inline-flex items-center gap-1">
+                              <i data-lucide="clock" class="w-3 h-3"></i> รอพิจารณา
+                            </span>
+                          <?php elseif($h['status'] === 'Rejected'): ?>
+                            <span class="px-2.5 py-1 bg-rose-100 text-rose-800 rounded-full font-bold text-[10px] inline-flex items-center gap-1">
+                              <i data-lucide="x" class="w-3 h-3"></i> ไม่อนุมัติ
+                            </span>
+                          <?php endif; ?>
+                          <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform"></i>
+                        </div>
+                      </div>
+                    <?php endforeach; ?>
+                  </div>
+              <?php endif; ?>
+            </div>
+          </div> <!-- End #content-rc-history -->
 
 
 
@@ -1246,10 +1194,37 @@ $pendingRequest = null;
 
 
   <script>
-
     lucide.createIcons();
 
+    // 🌟 ระบบสลับแท็บ: คำขอย้ายห้อง vs ประวัติคำขอ 🌟
+    function switchRoomChangeTab(tab) {
+        const tabReq = document.getElementById('tab-rc-request');
+        const tabHist = document.getElementById('tab-rc-history');
+        const contentReq = document.getElementById('content-rc-request');
+        const contentHist = document.getElementById('content-rc-history');
 
+        if (tab === 'request') {
+            if (tabReq) tabReq.className = 'px-5 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-rose-600 text-rose-600 flex items-center gap-2 whitespace-nowrap transition cursor-pointer';
+            if (tabHist) tabHist.className = 'px-5 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer';
+            if (contentReq) contentReq.classList.remove('hidden');
+            if (contentHist) contentHist.classList.add('hidden');
+        } else {
+            if (tabHist) tabHist.className = 'px-5 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-rose-600 text-rose-600 flex items-center gap-2 whitespace-nowrap transition cursor-pointer';
+            if (tabReq) tabReq.className = 'px-5 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer';
+            if (contentHist) contentHist.classList.remove('hidden');
+            if (contentReq) contentReq.classList.add('hidden');
+        }
+        try {
+            const url = new URL(window.location);
+            url.searchParams.set('tab', tab);
+            window.history.replaceState({}, '', url);
+        } catch(e) {}
+        if (window.lucide) lucide.createIcons();
+    }
+
+    function openDocModal(url, title) {
+        openImageModal(url, title || 'ดูเอกสารหลักฐาน');
+    }
 
     function openImageModal(url, titleText) {
 
@@ -1440,7 +1415,7 @@ $pendingRequest = null;
             createdAt: '<?php echo !empty($pendingRequest['created_at']) ? date("d/m/Y H:i", strtotime($pendingRequest['created_at'])) . " น." : "-"; ?>',
             preferredMoveDate: '<?php echo !empty($pendingRequest['preferredMoveDate']) ? $formatThaiDateRc($pendingRequest['preferredMoveDate']) : "-"; ?>',
             reason: '<?php echo addslashes($pendingRequest['reason'] ?? ""); ?>',
-            slipUrl: '<?php echo !empty($pendingRequest['cleaningFeeSlip']) ? "uploads/slips/" . htmlspecialchars($pendingRequest['cleaningFeeSlip'], ENT_QUOTES) : ""; ?>',
+            slipUrl: '<?php echo !empty($pendingRequest['paymentSlip']) ? htmlspecialchars($pendingRequest['paymentSlip'], ENT_QUOTES) : (!empty($pendingRequest['cleaningFeeSlip']) ? "uploads/slips/" . htmlspecialchars($pendingRequest['cleaningFeeSlip'], ENT_QUOTES) : ""); ?>',
             status: '<?php echo $pendingRequest['status'] ?? "Pending"; ?>',
             adminRemark: '<?php echo addslashes($pendingRequest['adminRemark'] ?? ""); ?>'
         });
