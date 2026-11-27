@@ -1295,8 +1295,6 @@ if ($currentHour >= 5 && $currentHour < 12) {
 
               <span class="font-display font-extrabold text-lg tracking-tight text-slate-900">หอพักจัสมิน</span>
 
-              <span class="text-[10px] bg-rose-50 text-rose-700 font-bold px-2 py-0.5 rounded-full border border-rose-200 uppercase tracking-wider">ADMIN</span>
-
             </div>
 
           </div>
