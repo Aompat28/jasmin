@@ -353,6 +353,9 @@ if (isset($_POST['reject_retro_request'])) {
     $activeTab = 'retro';
     $requestId = intval($_POST['requestId'] ?? 0);
     $adminRemark = trim($_POST['adminRemark'] ?? '');
+    if (empty($adminRemark)) {
+        $adminRemark = 'ผู้ดูแลระบบยกเลิกคำขอ';
+    }
     if ($requestId > 0) {
         try {
             $stmtReject = $conn->prepare("UPDATE RetroactiveInvoiceRequests SET status = 'Rejected', adminRemark = ?, updatedAt = NOW() WHERE requestId = ?");
@@ -1553,9 +1556,15 @@ if ($step === 2) {
                         <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> อนุมัติแล้ว
                       </span>
                     <?php elseif($st === 'Rejected'): ?>
-                      <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                        <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> ยกเลิกคำขอ
-                      </span>
+                      <?php if(($req['adminRemark'] ?? '') === 'ผู้เช่ายกเลิกคำขอด้วยตนเอง'): ?>
+                        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                          <i data-lucide="user-x" class="w-3.5 h-3.5 text-slate-500"></i> ผู้เช่ายกเลิกเอง
+                        </span>
+                      <?php else: ?>
+                        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                          <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> แอดมินยกเลิก
+                        </span>
+                      <?php endif; ?>
                     <?php endif; ?>
                   </td>
                   <td class="py-3 px-4 text-xs text-slate-500 max-w-[160px] truncate">
@@ -1564,26 +1573,13 @@ if ($step === 2) {
                   <td class="py-3 px-4 text-center whitespace-nowrap">
                     <div class="inline-flex items-center justify-center gap-1.5">
                       <?php if($st === 'Pending'): ?>
-                        <?php if($reqType === 'PaidInvoice'): ?>
-                          <!-- ฟอร์มกดอนุมัติสำหรับบิลที่เคยชำระแล้ว -->
-                          <form action="manage_invoice.php?tab=retro" method="POST" class="m-0" onsubmit="return confirm('ยืนยันอนุมัติคำขอบิลย้อนหลังรอบเดือน <?php echo htmlspecialchars($req['requestedMonth']); ?> ห้อง <?php echo htmlspecialchars($req['roomNumber']); ?>?');">
-                            <input type="hidden" name="requestId" value="<?php echo $req['requestId']; ?>">
-                            <button type="submit" name="approve_retro_request" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-2xs transition flex items-center gap-1 cursor-pointer" title="อนุมัติส่งบิล">
-                              <i data-lucide="check" class="w-3.5 h-3.5"></i> อนุมัติส่งบิล
-                            </button>
-                          </form>
-                        <?php else: ?>
-                          <!-- ปุ่มออกบิลตามคำขอนี้ทันที -->
-                          <a href="manage_invoice.php?tab=create&roomId=<?php echo $req['roomId']; ?>&presetMonth=<?php echo urlencode($req['requestedMonth']); ?>&reqId=<?php echo $req['requestId']; ?>" class="px-3 py-1.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1 cursor-pointer" title="ออกใบแจ้งหนี้รอบนี้ทันที">
-                            <i data-lucide="file-plus" class="w-3.5 h-3.5"></i> ออกบิลรอบนี้
-                          </a>
-                          <form action="manage_invoice.php?tab=retro" method="POST" class="m-0" onsubmit="return confirm('ยืนยันอนุมัติคำขอออกบิลย้อนหลังรอบเดือน <?php echo htmlspecialchars($req['requestedMonth']); ?> ห้อง <?php echo htmlspecialchars($req['roomNumber']); ?>?');">
-                            <input type="hidden" name="requestId" value="<?php echo $req['requestId']; ?>">
-                            <button type="submit" name="approve_retro_request" class="px-2.5 py-1.5 bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer" title="อนุมัติคำขอ">
-                              <i data-lucide="check" class="w-3.5 h-3.5"></i>
-                            </button>
-                          </form>
-                        <?php endif; ?>
+                        <!-- ฟอร์มกดอนุมัติสำหรับบิลที่เคยชำระแล้ว -->
+                        <form action="manage_invoice.php?tab=retro" method="POST" class="m-0" onsubmit="return confirm('ยืนยันอนุมัติคำขอบิลย้อนหลังรอบเดือน <?php echo htmlspecialchars($req['requestedMonth']); ?> ห้อง <?php echo htmlspecialchars($req['roomNumber']); ?>?');">
+                          <input type="hidden" name="requestId" value="<?php echo $req['requestId']; ?>">
+                          <button type="submit" name="approve_retro_request" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-2xs transition flex items-center gap-1 cursor-pointer" title="อนุมัติส่งบิล">
+                            <i data-lucide="check" class="w-3.5 h-3.5"></i> อนุมัติส่งบิล
+                          </button>
+                        </form>
 
                         <!-- ปุ่มยกเลิกคำขอ -->
                         <button type="button" onclick="openRejectRetroModal(<?php echo $req['requestId']; ?>, '<?php echo htmlspecialchars($req['roomNumber']); ?>', '<?php echo htmlspecialchars($req['tenantName']); ?>', '<?php echo htmlspecialchars($req['requestedMonth']); ?>')" class="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer" title="ยกเลิกคำขอ">
