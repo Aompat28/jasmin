@@ -3805,12 +3805,13 @@ function previewCompletionImage(event) {
 
 
         const activeClass = "px-5 py-2.5 text-sm font-bold border-b-2 border-indigo-600 text-indigo-600 flex items-center gap-2 whitespace-nowrap transition";
+
+
+
         document.getElementById('tab-' + tabId).className = activeClass;
-        try {
-            const currentUrl = new URL(window.location.href);
-            currentUrl.searchParams.set('tab', tabId);
-            window.history.replaceState({}, '', currentUrl);
-        } catch(e) {}
+
+
+
     }
 
 
