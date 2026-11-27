@@ -1299,8 +1299,6 @@ if ($currentHour >= 5 && $currentHour < 12) {
 
             </div>
 
-            <p class="text-[11px] text-slate-400 font-medium hidden sm:block">Smart Living Management Hub</p>
-
           </div>
 
         </div>
@@ -1512,7 +1510,6 @@ if ($currentHour >= 5 && $currentHour < 12) {
             <h1 class="text-2xl sm:text-3xl lg:text-4xl font-display font-extrabold text-slate-900 tracking-tight">
               <?php echo $timeGreeting; ?>, คุณ <?php echo htmlspecialchars($adminName); ?> <?php echo $timeEmoji ?? '👋'; ?>
             </h1>
-            <p class="text-xs sm:text-sm text-slate-500 mt-1">ยินดีต้อนรับสู่ศูนย์ควบคุมอัจฉริยะ ตรวจสอบภาพรวมและงานเร่งด่วนประจำวันได้แบบเรียลไทม์</p>
 
             <!-- Dynamic Quick Summary Pills -->
             <div class="flex items-center gap-2 flex-wrap mt-3.5 pt-3 border-t border-slate-200/60 text-xs">
