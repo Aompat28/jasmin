@@ -538,7 +538,7 @@ $pendingRetroRequests = 0;
 
 try {
 
-    $stmtRetroCount = $conn->query("SELECT COUNT(*) FROM RetroactiveInvoiceRequests r JOIN Room rm ON r.roomId = rm.roomId JOIN User u ON r.tenantId = u.userId WHERE r.status = 'Pending'");
+    $stmtRetroCount = $conn->query("SELECT COUNT(*) FROM RetroactiveInvoiceRequests r LEFT JOIN Room rm ON r.roomId = rm.roomId LEFT JOIN User u ON r.tenantId = u.userId WHERE r.status = 'Pending'");
 
     if ($stmtRetroCount) $pendingRetroRequests = (int)$stmtRetroCount->fetchColumn();
 
@@ -976,10 +976,10 @@ try {
     $stmtRetroAlerts = $conn->query("
         SELECT r.*, rm.roomNumber, u.fullName, u.phone 
         FROM RetroactiveInvoiceRequests r 
-        JOIN Room rm ON r.roomId = rm.roomId 
-        JOIN User u ON r.tenantId = u.userId 
+        LEFT JOIN Room rm ON r.roomId = rm.roomId 
+        LEFT JOIN User u ON r.tenantId = u.userId 
         WHERE r.status = 'Pending' 
-        ORDER BY r.requestId DESC LIMIT 10
+        ORDER BY r.requestId DESC LIMIT 20
     ");
     if ($stmtRetroAlerts) {
         foreach($stmtRetroAlerts->fetchAll(PDO::FETCH_ASSOC) as $req) {
@@ -1011,11 +1011,11 @@ try {
                     ['label' => 'ประเภทคำขอ', 'value' => $typeLabel]
                 ],
                 'financialFields' => [
-                    ['label' => 'สถานะการพิจารณา', 'value' => 'รอนิติบุคคลตรวจสอบและดำเนินการ']
+                    ['label' => 'สถานะการพิจารณา', 'value' => 'รอนิติบุคคลตรวจสอบและส่งบิล']
                 ],
                 'attachedImage' => !empty($req['slipImage']) ? $req['slipImage'] : null,
-                'link' => 'manage_invoice.php?tab=retro',
-                'btnText' => 'ไปจัดการคำขอบิลย้อนหลัง'
+                'link' => 'manage_invoice.php?tab=retro&req_id=' . $req['requestId'],
+                'btnText' => 'ตรวจสอบและส่งบิล'
             ];
 
             $alerts[] = [
@@ -1029,7 +1029,8 @@ try {
                 'time' => $req['createdAt'] ?? date('Y-m-d H:i:s'),
                 'badge' => 'ขอบิลย้อนหลัง',
                 'badgeColor' => 'bg-indigo-100 text-indigo-800 border-indigo-200',
-                'link' => 'manage_invoice.php?tab=retro'
+                'link' => 'manage_invoice.php?tab=retro&req_id=' . $req['requestId'],
+                'btnText' => 'ตรวจสอบและส่งบิล'
             ];
         }
     }

@@ -782,6 +782,52 @@ if (!empty($myMoveOuts)) {
 
 }
 
+// เช็คคำขอบิลย้อนหลัง (Retroactive Invoice Requests)
+try {
+    $stmtRetroNotice = $conn->prepare("
+        SELECT r.*, 
+               COALESCE(r.invoiceId, inv.invoiceId) AS matchedInvoiceId,
+               COALESCE(inv.status, '') AS matchedInvoiceStatus
+        FROM RetroactiveInvoiceRequests r
+        LEFT JOIN Invoices inv ON (inv.invoiceId = r.invoiceId OR (
+            inv.roomId = r.roomId AND (
+                inv.billingMonth = r.requestedMonth COLLATE utf8mb4_general_ci 
+                OR inv.billingMonth LIKE CONCAT('%', r.requestedMonth COLLATE utf8mb4_general_ci, '%')
+            )
+        ))
+        WHERE r.tenantId = ?
+        ORDER BY r.requestId DESC LIMIT 3
+    ");
+    $stmtRetroNotice->execute([$tenantId]);
+    $retroNotices = $stmtRetroNotice->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($retroNotices as $rn) {
+        $thM = toThaiBillingMonth($rn['requestedMonth']);
+        if ($rn['status'] === 'Approved') {
+            $tenantNotifications[] = [
+                'type' => 'success',
+                'icon' => 'check-circle-2',
+                'title' => 'แอดมินส่งบิลย้อนหลังให้คุณแล้ว (รอบเดือน ' . htmlspecialchars($thM) . ')',
+                'desc' => !empty($rn['adminRemark']) ? htmlspecialchars($rn['adminRemark']) : 'เจ้าหน้าที่ตรวจสอบและจัดส่งบิลให้เรียบร้อยแล้ว แตะเพื่อดูรายละเอียดหรือดาวน์โหลดใบเสร็จ',
+                'link' => 'tenant_retro_invoices.php?tab=history',
+                'onclick' => '',
+                'linkText' => 'ดูบิลที่ได้รับ'
+            ];
+            break;
+        } elseif ($rn['status'] === 'Pending') {
+            $tenantNotifications[] = [
+                'type' => 'info',
+                'icon' => 'file-clock',
+                'title' => 'คำขอบิลย้อนหลังรอบเดือน ' . htmlspecialchars($thM) . ' (รอดำเนินการ)',
+                'desc' => 'ส่งคำขอไปยังแอดมินแล้ว อยู่ระหว่างเจ้าหน้าที่ตรวจสอบและจัดส่งบิลให้คุณ',
+                'link' => 'tenant_retro_invoices.php?tab=request',
+                'onclick' => '',
+                'linkText' => 'ติดตามสถานะ'
+            ];
+            break;
+        }
+    }
+} catch(Throwable $e) {}
+
 
 
 $totalAlertCount = count($announcements) + count($tenantNotifications);

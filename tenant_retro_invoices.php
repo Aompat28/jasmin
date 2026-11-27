@@ -51,6 +51,46 @@ $myRoom = $stmtRoom->fetch(PDO::FETCH_ASSOC);
 $myRoomId = (int)($myRoom['roomId'] ?? 0);
 $myRoomNumber = $myRoom['roomNumber'] ?? '';
 
+// Fallback 1: เช็คจากตาราง Room โดยตรง (หากผู้เช่าผูกกับห้อง)
+if ($myRoomId === 0) {
+    try {
+        $stmtR = $conn->prepare("SELECT roomId, roomNumber, roomType, floor, rentPrice FROM Room WHERE tenantId = ? LIMIT 1");
+        $stmtR->execute([$tenantId]);
+        $rRow = $stmtR->fetch(PDO::FETCH_ASSOC);
+        if ($rRow) {
+            $myRoom = $rRow;
+            $myRoomId = (int)$rRow['roomId'];
+            $myRoomNumber = $rRow['roomNumber'];
+        }
+    } catch(Throwable $e) {}
+}
+// Fallback 2: เช็คจากประวัติบิลใน Invoices
+if ($myRoomId === 0) {
+    try {
+        $stmtInvR = $conn->prepare("SELECT r.roomId, r.roomNumber, r.roomType, r.floor, r.rentPrice FROM Invoices i JOIN Room r ON i.roomId = r.roomId WHERE i.tenantId = ? ORDER BY i.invoiceId DESC LIMIT 1");
+        $stmtInvR->execute([$tenantId]);
+        $rRow = $stmtInvR->fetch(PDO::FETCH_ASSOC);
+        if ($rRow) {
+            $myRoom = $rRow;
+            $myRoomId = (int)$rRow['roomId'];
+            $myRoomNumber = $rRow['roomNumber'];
+        }
+    } catch(Throwable $e) {}
+}
+// Fallback 3: เช็คจาก CoResidents (ผู้ร่วมอาศัย)
+if ($myRoomId === 0) {
+    try {
+        $stmtCoreR = $conn->prepare("SELECT r.roomId, r.roomNumber, r.roomType, r.floor, r.rentPrice FROM CoResidents c JOIN Room r ON c.roomId = r.roomId WHERE c.tenantId = ? OR c.phone = (SELECT phone FROM User WHERE userId = ?) LIMIT 1");
+        $stmtCoreR->execute([$tenantId, $tenantId]);
+        $rRow = $stmtCoreR->fetch(PDO::FETCH_ASSOC);
+        if ($rRow) {
+            $myRoom = $rRow;
+            $myRoomId = (int)$rRow['roomId'];
+            $myRoomNumber = $rRow['roomNumber'];
+        }
+    } catch(Throwable $e) {}
+}
+
 // 🌟 Real-time Status Check Endpoint (AJAX Polling สำหรับผู้เช่า) 🌟
 if (isset($_GET['check_status'])) {
     header('Content-Type: application/json; charset=utf-8');
@@ -94,6 +134,20 @@ $activeTab = isset($_GET['tab']) && $_GET['tab'] === 'history' ? 'history' : 're
 // --- เมื่อผู้เช่ายื่นคำขอบิลย้อนหลังใหม่ ---
 if (isset($_POST['submit_retro_request'])) {
     $requestedRoomId = $myRoomId;
+    if ($requestedRoomId <= 0) {
+        try {
+            $stmtFallbackRoom = $conn->prepare("SELECT roomId FROM Lease WHERE tenantId = ? ORDER BY leaseId DESC LIMIT 1");
+            $stmtFallbackRoom->execute([$tenantId]);
+            $requestedRoomId = (int)$stmtFallbackRoom->fetchColumn();
+        } catch(Throwable $e) {}
+    }
+    if ($requestedRoomId <= 0) {
+        try {
+            $stmtFallbackRoom = $conn->prepare("SELECT roomId FROM Invoices WHERE tenantId = ? ORDER BY invoiceId DESC LIMIT 1");
+            $stmtFallbackRoom->execute([$tenantId]);
+            $requestedRoomId = (int)$stmtFallbackRoom->fetchColumn();
+        } catch(Throwable $e) {}
+    }
     $rawReqMonth = trim($_POST['requested_month'] ?? '');
     $requestType = 'PaidInvoice';
     $reason = trim($_POST['reason'] ?? '');
@@ -216,7 +270,7 @@ try {
                COALESCE(inv_direct.totalAmount, inv.totalAmount) AS matchedTotalAmount,
                COALESCE(inv_direct.billingMonth, inv.billingMonth) AS matchedBillingMonth
         FROM RetroactiveInvoiceRequests r
-        JOIN Room rm ON r.roomId = rm.roomId
+        LEFT JOIN Room rm ON r.roomId = rm.roomId
         LEFT JOIN Invoices inv_direct ON inv_direct.invoiceId = r.invoiceId
         LEFT JOIN Invoices inv ON (inv.roomId = r.roomId AND (
             inv.billingMonth = r.requestedMonth COLLATE utf8mb4_general_ci 
@@ -657,7 +711,7 @@ if (!empty($matchedInvIds)) {
                                     </form>
                                 <?php elseif($status === 'Approved'): ?>
                                     <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                                        <i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-600"></i> ดำเนินการอนุมัติแล้ว
+                                        <i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-600"></i> อนุมัติแล้ว - แอดมินส่งบิลให้แล้ว
                                     </span>
                                 <?php elseif($status === 'Rejected'): ?>
                                     <?php if(($req['adminRemark'] ?? '') === 'ผู้เช่ายกเลิกคำขอด้วยตนเอง'): ?>

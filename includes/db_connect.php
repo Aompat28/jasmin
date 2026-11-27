@@ -109,6 +109,27 @@ try {
             KEY `status` (`status`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     } catch(PDOException $e) {}
+
+    try {
+        $conn->exec("CREATE TABLE IF NOT EXISTS `RetroactiveInvoiceRequests` (
+            `requestId` INT(11) NOT NULL AUTO_INCREMENT,
+            `tenantId` INT(11) NOT NULL,
+            `roomId` INT(11) NOT NULL,
+            `invoiceId` INT(11) NULL,
+            `requestedMonth` VARCHAR(50) NOT NULL,
+            `requestType` VARCHAR(50) DEFAULT 'PaidInvoice',
+            `reason` TEXT NOT NULL,
+            `slipImage` VARCHAR(255) NULL,
+            `status` ENUM('Pending', 'Approved', 'Rejected') DEFAULT 'Pending',
+            `adminRemark` TEXT NULL,
+            `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP,
+            `updatedAt` DATETIME NULL,
+            PRIMARY KEY (`requestId`),
+            KEY `tenantId` (`tenantId`),
+            KEY `roomId` (`roomId`),
+            KEY `status` (`status`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    } catch(PDOException $e) {}
 } catch(PDOException $e) {
     echo "Connection failed: " . $e->getMessage();
 }

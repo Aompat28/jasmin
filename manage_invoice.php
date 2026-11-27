@@ -320,17 +320,18 @@ if (isset($_POST['reject_slip'])) {
     }
 }
 
-// 5. เมื่อแอดมินกดอนุมัติคำขอออกบิลย้อนหลัง
+// 5. เมื่อแอดมินกดอนุมัติคำขอออกบิลย้อนหลังและส่งบิลให้ผู้เช่า
 if (isset($_POST['approve_retro_request'])) {
     $activeTab = 'retro';
     $requestId = intval($_POST['requestId'] ?? 0);
+    $selectedInvoiceId = !empty($_POST['selectedInvoiceId']) ? intval($_POST['selectedInvoiceId']) : null;
     $customRemark = trim($_POST['adminRemark'] ?? '');
     if ($requestId > 0) {
         try {
             $reqQ = $conn->prepare("SELECT * FROM RetroactiveInvoiceRequests WHERE requestId = ?");
             $reqQ->execute([$requestId]);
             $reqRow = $reqQ->fetch(PDO::FETCH_ASSOC);
-            $invIdToLink = $reqRow['invoiceId'] ?? null;
+            $invIdToLink = $selectedInvoiceId ?: ($reqRow['invoiceId'] ?? null);
             if (!$invIdToLink && $reqRow) {
                 $thM = toThaiBillingMonth($reqRow['requestedMonth']);
                 $chkInv = $conn->prepare("SELECT invoiceId FROM Invoices WHERE roomId = ? AND (billingMonth = ? OR billingMonth = ? OR billingMonth LIKE ?) ORDER BY invoiceId DESC LIMIT 1");
@@ -338,10 +339,10 @@ if (isset($_POST['approve_retro_request'])) {
                 $invIdToLink = $chkInv->fetchColumn() ?: null;
             }
 
-            $remark = !empty($customRemark) ? $customRemark : 'อนุมัติคำขอเรียบร้อยแล้ว ตรวจสอบประวัติบิลในระบบได้ทันที';
+            $remark = !empty($customRemark) ? $customRemark : 'อนุมัติคำขอและจัดส่งบิลเรียบร้อยแล้ว ตรวจสอบรายละเอียดและพิมพ์ใบเสร็จในระบบได้ทันที';
             $stmtApprove = $conn->prepare("UPDATE RetroactiveInvoiceRequests SET status = 'Approved', invoiceId = COALESCE(?, invoiceId), adminRemark = ?, updatedAt = NOW() WHERE requestId = ?");
             $stmtApprove->execute([$invIdToLink, $remark, $requestId]);
-            $message = "<div class='alert-box p-4 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600'></i> อนุมัติคำขอบิลย้อนหลังเรียบร้อยแล้ว</div>";
+            $message = "<div class='alert-box p-4 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600'></i> ตรวจสอบอนุมัติและจัดส่งบิลย้อนหลังให้ผู้เช่าเรียบร้อยแล้ว</div>";
         } catch(PDOException $e) {
             $message = "<div class='alert-box p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'>❌ เกิดข้อผิดพลาด: " . $e->getMessage() . "</div>";
         }
@@ -399,8 +400,8 @@ try {
                COALESCE(inv_direct.totalAmount, inv.totalAmount) AS matchedTotalAmount,
                COALESCE(inv_direct.billingMonth, inv.billingMonth) AS matchedBillingMonth
         FROM RetroactiveInvoiceRequests r
-        JOIN Room rm ON r.roomId = rm.roomId
-        JOIN User u ON r.tenantId = u.userId
+        LEFT JOIN Room rm ON r.roomId = rm.roomId
+        LEFT JOIN User u ON r.tenantId = u.userId
         LEFT JOIN Invoices inv_direct ON inv_direct.invoiceId = r.invoiceId
         LEFT JOIN Invoices inv ON (inv.roomId = r.roomId AND (
             inv.billingMonth = r.requestedMonth COLLATE utf8mb4_general_ci 
@@ -1573,16 +1574,33 @@ if ($step === 2) {
                   <td class="py-3 px-4 text-center whitespace-nowrap">
                     <div class="inline-flex items-center justify-center gap-1.5">
                       <?php if($st === 'Pending'): ?>
-                        <!-- ฟอร์มกดอนุมัติสำหรับบิลที่เคยชำระแล้ว -->
-                        <form action="manage_invoice.php?tab=retro" method="POST" class="m-0" onsubmit="return confirm('ยืนยันอนุมัติคำขอบิลย้อนหลังรอบเดือน <?php echo htmlspecialchars($req['requestedMonth']); ?> ห้อง <?php echo htmlspecialchars($req['roomNumber']); ?>?');">
-                          <input type="hidden" name="requestId" value="<?php echo $req['requestId']; ?>">
-                          <button type="submit" name="approve_retro_request" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-2xs transition flex items-center gap-1 cursor-pointer" title="อนุมัติส่งบิล">
-                            <i data-lucide="check" class="w-3.5 h-3.5"></i> อนุมัติส่งบิล
+                        <?php if(!empty($req['matchedInvoiceId'])): ?>
+                          <!-- ปุ่มดูบิลก่อนส่ง -->
+                          <button type="button" onclick="openInvoiceDetailModal(<?php echo $req['matchedInvoiceId']; ?>)" class="px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer" title="ดูตัวอย่างบิลก่อนส่ง">
+                            <i data-lucide="eye" class="w-3.5 h-3.5 text-indigo-600"></i> ดูบิล
                           </button>
-                        </form>
+
+                          <!-- ฟอร์มกดอนุมัติส่งบิลเดิมให้ผู้เช่า -->
+                          <form action="manage_invoice.php?tab=retro" method="POST" class="m-0" onsubmit="return confirm('ยืนยันอนุมัติและจัดส่งบิล #INV-<?php echo str_pad($req['matchedInvoiceId'], 5, '0', STR_PAD_LEFT); ?> ให้ผู้เช่าห้อง <?php echo htmlspecialchars($req['roomNumber']); ?> ทันที?');">
+                            <input type="hidden" name="requestId" value="<?php echo $req['requestId']; ?>">
+                            <button type="submit" name="approve_retro_request" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-2xs transition flex items-center gap-1 cursor-pointer" title="อนุมัติส่งบิลให้ผู้เช่า">
+                              <i data-lucide="send" class="w-3.5 h-3.5"></i> ส่งบิลให้ผู้เช่า
+                            </button>
+                          </form>
+                        <?php else: ?>
+                          <!-- ปุ่มออกบิลใหม่และส่งให้ผู้เช่า -->
+                          <a href="manage_invoice.php?tab=create&roomId=<?php echo $req['roomId']; ?>&presetMonth=<?php echo urlencode($req['requestedMonth']); ?>&reqId=<?php echo $req['requestId']; ?>" class="px-3 py-1.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1 cursor-pointer" title="ออกบิลย้อนหลังรอบนี้และส่งให้ผู้เช่า">
+                            <i data-lucide="file-plus" class="w-3.5 h-3.5"></i> ออกบิลและส่งให้ผู้เช่า
+                          </a>
+                        <?php endif; ?>
+
+                        <!-- ปุ่มตรวจสอบรายละเอียดและใส่ข้อความ -->
+                        <button type="button" onclick='openInspectRetroModal(<?php echo htmlspecialchars(json_encode($req), ENT_QUOTES, "UTF-8"); ?>)' class="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer" title="ตรวจสอบรายละเอียดและแนบข้อความส่งบิล">
+                          <i data-lucide="clipboard-check" class="w-3.5 h-3.5"></i> ตรวจสอบ
+                        </button>
 
                         <!-- ปุ่มยกเลิกคำขอ -->
-                        <button type="button" onclick="openRejectRetroModal(<?php echo $req['requestId']; ?>, '<?php echo htmlspecialchars($req['roomNumber']); ?>', '<?php echo htmlspecialchars($req['tenantName']); ?>', '<?php echo htmlspecialchars($req['requestedMonth']); ?>')" class="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer" title="ยกเลิกคำขอ">
+                        <button type="button" onclick="openRejectRetroModal(<?php echo $req['requestId']; ?>, '<?php echo htmlspecialchars($req['roomNumber']); ?>', '<?php echo htmlspecialchars($req['tenantName']); ?>', '<?php echo htmlspecialchars($req['requestedMonth']); ?>')" class="px-2 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer" title="ยกเลิกคำขอ">
                           <i data-lucide="x" class="w-3.5 h-3.5"></i> ยกเลิก
                         </button>
 
@@ -3160,6 +3178,62 @@ if ($step === 2) {
       });
     });
 
+    function openInspectRetroModal(req) {
+        if (!req) return;
+        document.getElementById('inspectRetroReqId').value = req.requestId || '';
+        document.getElementById('inspectRetroSub').textContent = 'ห้อง ' + (req.roomNumber || '-') + ' • คุณ ' + (req.tenantName || '-');
+        document.getElementById('inspectRetroTenantName').textContent = (req.tenantName || '-') + (req.tenantPhone ? ' (' + req.tenantPhone + ')' : '');
+        document.getElementById('inspectRetroMonth').textContent = req.requestedMonth || '-';
+        document.getElementById('inspectRetroReason').textContent = req.reason || 'ไม่ได้ระบุเหตุผล';
+        document.getElementById('inspectRetroAdminRemark').value = 'อนุมัติคำขอและจัดส่งบิลเรียบร้อยแล้ว ตรวจสอบรายละเอียดและพิมพ์ใบเสร็จในระบบได้ทันทีค่ะ';
+
+        const invBox = document.getElementById('inspectRetroInvoiceBox');
+        const submitBtn = document.getElementById('inspectRetroSubmitBtn');
+        if (req.matchedInvoiceId) {
+            invBox.className = 'p-4 rounded-2xl border border-emerald-200 bg-emerald-50/60 text-xs';
+            invBox.innerHTML = `
+                <div class="flex items-center justify-between">
+                    <span class="font-bold text-emerald-800 flex items-center gap-1.5">
+                        <i data-lucide="receipt" class="w-4 h-4 text-emerald-600"></i>
+                        พบบิลในระบบ: #INV-${String(req.matchedInvoiceId).padStart(5, '0')}
+                    </span>
+                    <span class="px-2 py-0.5 rounded font-bold text-[10px] ${req.matchedInvoiceStatus === 'Paid' ? 'bg-emerald-200 text-emerald-900' : 'bg-amber-200 text-amber-900'}">
+                        ${req.matchedInvoiceStatus === 'Paid' ? 'ชำระแล้ว' : 'รอชำระ'}
+                    </span>
+                </div>
+                <div class="mt-2 text-slate-600 flex items-center justify-between">
+                    <span>ยอดรวม: <b>฿${Number(req.matchedTotalAmount || 0).toLocaleString('th-TH', {minimumFractionDigits: 2})}</b></span>
+                    <button type="button" onclick="openInvoiceDetailModal(${req.matchedInvoiceId})" class="text-xs text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer">
+                        ดูตัวอย่างบิล
+                    </button>
+                </div>
+            `;
+            submitBtn.style.display = '';
+        } else {
+            invBox.className = 'p-4 rounded-2xl border border-amber-200 bg-amber-50/60 text-xs';
+            invBox.innerHTML = `
+                <div class="flex items-center gap-2 text-amber-800 font-bold mb-1">
+                    <i data-lucide="alert-circle" class="w-4 h-4 text-amber-600"></i>
+                    ยังไม่มีข้อมูลบิลสำหรับรอบเดือน ${req.requestedMonth} ในระบบ
+                </div>
+                <p class="text-slate-600 mb-2">คุณสามารถกดออกบิลย้อนหลังใหม่รอบเดือนนี้ ระบบจะบันทึกและส่งบิลให้ผู้เช่าโดยอัตโนมัติ</p>
+                <a href="manage_invoice.php?tab=create&roomId=${req.roomId}&presetMonth=${encodeURIComponent(req.requestedMonth)}&reqId=${req.requestId}" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-rose-600 to-pink-600 text-white rounded-xl font-bold shadow-xs hover:from-rose-700 hover:to-pink-700 transition">
+                    <i data-lucide="file-plus" class="w-3.5 h-3.5"></i> ออกบิลรอบนี้และส่งให้ผู้เช่าทันที
+                </a>
+            `;
+            submitBtn.style.display = 'none';
+        }
+
+        const modal = document.getElementById('inspectRetroModal');
+        if (modal) modal.classList.remove('hidden');
+        if (window.lucide) lucide.createIcons();
+    }
+
+    function closeInspectRetroModal() {
+        const modal = document.getElementById('inspectRetroModal');
+        if (modal) modal.classList.add('hidden');
+    }
+
     function openSlipPreviewModal(src) {
         var img = document.getElementById('retroSlipPreviewImage');
         var modal = document.getElementById('retroSlipPreviewModal');
@@ -3176,6 +3250,64 @@ if ($step === 2) {
         if (img) img.src = '';
     }
 </script>
+
+<!-- Modal สำหรับตรวจสอบและส่งบิลย้อนหลังให้ผู้เช่า -->
+<div id="inspectRetroModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4" onclick="closeInspectRetroModal()">
+  <div class="modal-enter w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden" onclick="event.stopPropagation()">
+    <div class="p-6 border-b border-indigo-100 flex items-center justify-between bg-gradient-to-r from-indigo-50/90 via-sky-50/60 to-indigo-50/90">
+      <div class="flex items-center gap-2.5">
+        <div class="w-10 h-10 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center shadow-2xs">
+          <i data-lucide="clipboard-check" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h4 class="font-display font-bold text-slate-800 text-base">ตรวจสอบคำขอและส่งบิลให้ผู้เช่า</h4>
+          <p class="text-xs text-indigo-700 font-medium" id="inspectRetroSub">ห้อง --</p>
+        </div>
+      </div>
+      <button type="button" onclick="closeInspectRetroModal()" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg transition">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <form action="manage_invoice.php?tab=retro" method="POST" class="p-6 space-y-4">
+      <input type="hidden" name="requestId" id="inspectRetroReqId" value="">
+      
+      <!-- ข้อมูลสรุปคำขอ -->
+      <div class="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2 text-xs">
+        <div class="flex items-center justify-between">
+          <span class="text-slate-500">ผู้ยื่นคำขอ:</span>
+          <span class="font-bold text-slate-900" id="inspectRetroTenantName">-</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-slate-500">รอบเดือนที่ขอ:</span>
+          <span class="font-bold text-slate-900 font-mono" id="inspectRetroMonth">-</span>
+        </div>
+        <div class="pt-2 border-t border-slate-200/60">
+          <span class="text-slate-500 block mb-1">เหตุผลที่ผู้เช่าระบุ:</span>
+          <p class="text-slate-700 bg-white p-2.5 rounded-xl border border-slate-200/60 leading-relaxed" id="inspectRetroReason">-</p>
+        </div>
+      </div>
+
+      <!-- บิลที่ตรวจพบในระบบ -->
+      <div id="inspectRetroInvoiceBox" class="p-4 rounded-2xl border text-xs">
+        <!-- Rendered via JS -->
+      </div>
+
+      <!-- ข้อความ/หมายเหตุส่งกลับถึงผู้เช่า -->
+      <div>
+        <label class="block text-xs font-bold text-slate-700 mb-1.5">ข้อความหรือหมายเหตุส่งกลับหาผู้เช่า (จะแสดงในหน้ารับบิลของลูกบ้าน):</label>
+        <textarea name="adminRemark" id="inspectRetroAdminRemark" rows="2" placeholder="เช่น อนุมัติคำขอและจัดส่งสำเนาบิลเรียบร้อยแล้วค่ะ..." class="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-400 focus:bg-white outline-none font-sans"></textarea>
+      </div>
+
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+        <button type="button" onclick="closeInspectRetroModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition cursor-pointer">ปิด</button>
+        <button type="submit" name="approve_retro_request" id="inspectRetroSubmitBtn" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center gap-1.5 cursor-pointer">
+          <i data-lucide="send" class="w-4 h-4"></i>
+          <span>อนุมัติและส่งบิลให้ผู้เช่า</span>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
 
 <!-- Modal สำหรับยกเลิกคำขอรอบบิลย้อนหลัง -->
 <div id="rejectRetroModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4" onclick="closeRejectRetroModal()">
