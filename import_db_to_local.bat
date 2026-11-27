@@ -6,8 +6,8 @@ echo   Importing Database to Localhost (property_management)
 echo ========================================================
 echo.
 
-if not exist "%~dp0property_management_latest.sql" (
-    echo [ERROR] Not found: property_management_latest.sql
+if not exist "%~dp0database_latest.sql" (
+    echo [ERROR] Not found: database_latest.sql
     pause
     exit /b 1
 )
@@ -15,8 +15,8 @@ if not exist "%~dp0property_management_latest.sql" (
 set MYSQL_BIN=C:\xampp\mysql\bin\mysql.exe
 if not exist "%MYSQL_BIN%" set MYSQL_BIN=mysql
 
-echo Importing property_management_latest.sql...
-"%MYSQL_BIN%" -u root property_management < "%~dp0property_management_latest.sql"
+echo Importing database_latest.sql...
+"%MYSQL_BIN%" -u root property_management < "%~dp0database_latest.sql"
 
 if %errorlevel% equ 0 (
     echo.

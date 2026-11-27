@@ -20,6 +20,7 @@ Start_Production_Tunnel.bat
 
 # Database dumps with user credentials
 *.sql
+!database_latest.sql
 
 
 push_to_github.bat
