@@ -248,12 +248,6 @@ $stmtAllReq->execute([$tenantId]);
 $myRequests = $stmtAllReq->fetchAll(PDO::FETCH_ASSOC);
 foreach ($myRequests as &$r) {
     $r['reqCode'] = 'REQ-' . str_pad($r['requestId'], 4, '0', STR_PAD_LEFT);
-    if (!empty($r['requestImage']) && !file_exists(__DIR__ . '/' . $r['requestImage'])) {
-        $r['requestImage'] = '';
-    }
-    if (!empty($r['completionImage']) && !file_exists(__DIR__ . '/' . $r['completionImage'])) {
-        $r['completionImage'] = '';
-    }
 }
 unset($r);
 
@@ -2034,20 +2028,16 @@ try {
 
                           <?php endif; ?>
 
-                          <?php if ($req['status'] === 'Completed' && !empty($req['completionImage'])): ?>
-
+                          <?php if (!empty($req['completionImage'])): ?>
                             <button type="button" onclick="event.stopPropagation(); openImagePreviewModal('<?php echo htmlspecialchars($req['completionImage'], ENT_QUOTES); ?>', 'รูปภาพผลงานส่งมอบ #REQ-<?php echo $req['requestId']; ?>')" class="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shadow-2xs">
-
-                              <i data-lucide="sparkles" class="w-3.5 h-3.5 text-emerald-600"></i> รูปหลังทำ
-
+                              <i data-lucide="camera" class="w-3.5 h-3.5 text-emerald-600"></i> ดูผลงานช่าง
                             </button>
+                          <?php endif; ?>
 
-                          <?php elseif ($req['status'] === 'Pending Approval'): ?>
-
+                          <?php if ($req['status'] === 'Pending Approval'): ?>
                             <span class="px-2.5 py-1 bg-orange-50 text-orange-700 border border-orange-200 rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs">
                               <i data-lucide="clock" class="w-3.5 h-3.5 text-orange-600"></i> รอนิติตรวจรับ
                             </span>
-
                           <?php endif; ?>
 
                         </div>
@@ -3792,17 +3782,19 @@ try {
 
 
     function closeImagePreviewModal() {
-
       const modal = document.getElementById('imagePreviewModal');
-
       if (modal) {
-
         modal.classList.add('hidden');
-
         modal.classList.remove('flex');
-
       }
+    }
 
+    function openImageModal(src, title) {
+      openImagePreviewModal(src, title);
+    }
+
+    function closeImageModal() {
+      closeImagePreviewModal();
     }
 
 
@@ -4387,14 +4379,18 @@ try {
 
         const afterContainer = document.getElementById('dash_req_detail_after_img_container');
 
-        if (req.status === 'Completed' && req.completionImage) {
+        if (req.completionImage) {
+            const statusLabel = req.status === 'Pending Approval' 
+                ? '<div class="mt-2 text-center text-xs font-bold text-orange-800 bg-orange-50 p-2.5 rounded-xl border border-orange-200 flex items-center justify-center gap-1.5"><i data-lucide="clock" class="w-4 h-4 text-orange-600"></i> ช่างส่งมอบผลงานแล้ว (อยู่ระหว่างนิติตรวจสอบและอนุมัติ)</div>'
+                : '<div class="mt-2 text-center text-xs font-bold text-emerald-800 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200 flex items-center justify-center gap-1.5"><i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i> นิติบุคคลตรวจสอบและอนุมัติงานเรียบร้อยแล้ว</div>';
+
             afterContainer.innerHTML = `
-                <div class="relative group cursor-pointer rounded-2xl overflow-hidden border border-emerald-300 shadow-sm bg-slate-950 aspect-video flex items-center justify-center" onclick="openImageModal('${req.completionImage}', 'รูปหลังทำ (ผลงานที่ช่างส่งมอบ - ห้อง ${req.roomNumber})')">
+                <div class="relative group cursor-pointer rounded-2xl overflow-hidden border border-emerald-300 shadow-sm bg-slate-950 aspect-video flex items-center justify-center" onclick="openImagePreviewModal('${req.completionImage}', 'รูปหลังทำ (ผลงานที่ช่างส่งมอบ - ห้อง ${req.roomNumber})')">
                     <img src="${req.completionImage}" class="w-full h-full object-cover transition duration-300 group-hover:scale-105" alt="หลังทำ">
                     <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent flex items-end p-2.5 opacity-90 group-hover:opacity-100 transition">
                         <span class="text-xs text-white font-bold flex items-center gap-1"><i data-lucide="zoom-in" class="w-3.5 h-3.5"></i> แตะเพื่อดูภาพเต็ม</span>
                     </div>
-                </div>`;
+                </div>` + statusLabel;
         } else if (req.status === 'Pending Approval') {
             afterContainer.innerHTML = `
                 <div class="h-32 rounded-2xl bg-orange-50/70 border border-dashed border-orange-200 flex flex-col items-center justify-center text-orange-700 text-xs text-center p-3">
@@ -4405,16 +4401,12 @@ try {
                     <span class="text-[11px] text-orange-600 mt-0.5">อยู่ระหว่างนิติบุคคลตรวจสอบและอนุมัติงาน</span>
                 </div>`;
         } else if (req.status === 'Completed') {
-
             afterContainer.innerHTML = `
-
                 <div class="h-32 rounded-2xl bg-white border border-dashed border-emerald-200/80 flex flex-col items-center justify-center text-slate-400 text-xs">
-
                     <i data-lucide="image-off" class="w-6 h-6 mb-1 text-slate-300"></i>
-
                     <span>ไม่มีรูปภาพผลงาน</span>
-
                 </div>`;
+        }
 
         } else {
 

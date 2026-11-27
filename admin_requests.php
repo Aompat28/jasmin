@@ -307,6 +307,9 @@ if (isset($_POST['approve_job'])) {
     $requestId = intval($_POST['request_id']);
     $stmt = $conn->prepare("UPDATE ServiceRequest SET status = 'Completed', adminApprovedAt = NOW(), adminRemark = NULL WHERE requestId = ?");
     if ($stmt->execute([$requestId])) {
+        if (isset($_GET['status'])) {
+            $_GET['status'] = 'Completed';
+        }
         $message = "<div class='alert-box p-4 mb-6 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-sm text-sm font-bold flex items-center gap-2'>
             <i data-lucide='check-check' class='w-5 h-5 shrink-0 text-emerald-600'></i>
             <span>อนุมัติการส่งมอบงานเรียบร้อยแล้ว! สถานะเปลี่ยนเป็น <b>'เสร็จสิ้นเรียบร้อย' (Completed)</b> และผู้เช่าสามารถดูผลงานและให้คะแนนการบริการได้ทันที</span>
@@ -320,6 +323,9 @@ if (isset($_POST['reject_job'])) {
     $adminRemark = trim($_POST['admin_remark'] ?? '');
     $stmt = $conn->prepare("UPDATE ServiceRequest SET status = 'In Progress', adminRemark = ? WHERE requestId = ?");
     if ($stmt->execute([$adminRemark, $requestId])) {
+        if (isset($_GET['status'])) {
+            $_GET['status'] = 'In Progress';
+        }
         $message = "<div class='alert-box p-4 mb-6 bg-amber-50 border-l-4 border-amber-500 text-amber-800 rounded-r-xl shadow-sm text-sm font-bold flex items-center gap-2'>
             <i data-lucide='rotate-ccw' class='w-5 h-5 shrink-0 text-amber-600'></i>
             <span>ส่งงานกลับให้พนักงานแก้ไขเรียบร้อยแล้ว สถานะกลับสู่ <b>'กำลังดำเนินการ'</b> พร้อมบันทึกข้อความแจ้งเตือนช่าง/แม่บ้าน</span>
@@ -5028,20 +5034,21 @@ foreach($requests as $r) {
 
 
 
-        if (statusParam) {
-
+        if (reqIdParam && window.requestsData && (window.requestsData[reqIdParam] || window.requestsData[String(reqIdParam)])) {
+            const actualJob = window.requestsData[reqIdParam] || window.requestsData[String(reqIdParam)];
+            if (actualJob && actualJob.status) {
+                filterByStatus(actualJob.status);
+            } else if (statusParam) {
+                filterByStatus(statusParam);
+            }
+        } else if (statusParam) {
             filterByStatus(statusParam);
-
         }
 
         if (reqIdParam) {
-
             setTimeout(function() {
-
                 openDetailModal(reqIdParam);
-
             }, 300);
-
         }
 
 

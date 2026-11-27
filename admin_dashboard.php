@@ -820,6 +820,7 @@ try {
                 'type' => 'service_request',
                 'roomNumber' => $req['roomNumber'] ?? '',
                 'requestImage' => $req['requestImage'] ?? '',
+                'completionImage' => $req['completionImage'] ?? '',
                 'icon' => $isPendingAppr ? 'clipboard-check' : ($isComp ? 'check-circle-2' : ($isInProg ? 'wrench' : 'clock')),
                 'title' => ($isPendingAppr ? 'ช่างส่งมอบงาน (รออนุมัติ)' : ($isComp ? 'งานซ่อมเสร็จสิ้น' : ($isInProg ? 'งานอยู่ระหว่างทำ' : 'แจ้งซ่อมใหม่'))) . ' (ห้อง ' . ($req['roomNumber'] ?? '-') . ')' . $staffLabel,
                 'message' => $req['category'] . ': ' . mb_strimwidth($req['description'], 0, 40, '...'),
@@ -1059,10 +1060,10 @@ foreach ($alerts as $item) {
     // 🌟 ดึงข้อมูลให้เป็นปัจจุบันตามสถานะจริงของระบบ:
     // รายการที่ยังค้างอยู่จริง (Active Pending Tasks เช่น Pending, In Progress, รอตรวจสลิป, ขอย้ายห้อง, ย้ายออก, ขอเพิ่มผู้ร่วมอาศัย)
     // ต้องแสดงใน "รายการที่ต้องดำเนินการ" เสมอ ไม่ถูกซ่อน
-    // เฉพาะรายการที่เสร็จสิ้นสมบูรณ์แล้ว (Completed) เท่านั้น ที่ถ้าแอดมินเคยกดอ่านแล้วถึงจะซ่อน
+    // เฉพาะรายการทั่วไปที่เสร็จสิ้นสมบูรณ์แล้วและแอดมินกดอ่านแล้วถึงจะซ่อน ยกเว้นถ้ามีงานแจ้งซ่อมที่เพิ่งเสร็จสมบูรณ์ เพื่อให้แอดมินยังคงเห็นผลงานในแท็บแจ้งซ่อมได้
     $isCompleted = (isset($item['badge']) && $item['badge'] === 'เสร็จสิ้นแล้ว');
 
-    if ($isCompleted && in_array($item['id'], $readNotifIds)) {
+    if ($isCompleted && in_array($item['id'], $readNotifIds) && ($item['type'] ?? '') !== 'service_request') {
 
         continue;
 
@@ -2100,10 +2101,17 @@ if ($currentHour >= 5 && $currentHour < 12) {
                           <i data-lucide="check-circle-2" class="w-3 h-3 text-emerald-600"></i> ส่งมอบ: <b><?php echo date("d/m/Y H:i", strtotime($item['completedAt'])); ?> น.</b>
                         </span>
                       <?php endif; ?>
-                      <?php if($isSr && !empty($item['requestImage'])): ?>
-                        <span onclick="event.stopPropagation(); openImageModal('<?php echo htmlspecialchars($item['requestImage']); ?>', 'รูปปัญหาจากลูกบ้าน - ห้อง <?php echo htmlspecialchars($item['roomNumber'] ?? ''); ?>')" class="inline-flex items-center gap-1 text-[10px] text-amber-700 font-bold bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-md cursor-pointer transition shadow-2xs">
-                          <i data-lucide="image" class="w-3 h-3 text-amber-600"></i> ดูรูปที่แนบ
-                        </span>
+                      <?php if($isSr): ?>
+                        <?php if(!empty($item['completionImage'])): ?>
+                          <span onclick="event.stopPropagation(); openImageModal('<?php echo htmlspecialchars($item['completionImage']); ?>', 'รูปผลงานช่าง (หลังทำ) - ห้อง <?php echo htmlspecialchars($item['roomNumber'] ?? ''); ?>')" class="inline-flex items-center gap-1 text-[10px] text-emerald-800 font-bold bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-md cursor-pointer transition shadow-2xs">
+                            <i data-lucide="camera" class="w-3 h-3 text-emerald-600"></i> ดูรูปผลงานช่าง (หลังทำ)
+                          </span>
+                        <?php endif; ?>
+                        <?php if(!empty($item['requestImage'])): ?>
+                          <span onclick="event.stopPropagation(); openImageModal('<?php echo htmlspecialchars($item['requestImage']); ?>', 'รูปปัญหาจากลูกบ้าน (ก่อนทำ) - ห้อง <?php echo htmlspecialchars($item['roomNumber'] ?? ''); ?>')" class="inline-flex items-center gap-1 text-[10px] text-amber-800 font-bold bg-amber-50 hover:bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md cursor-pointer transition shadow-2xs">
+                            <i data-lucide="image" class="w-3 h-3 text-amber-600"></i> ดูรูปปัญหา (ก่อนทำ)
+                          </span>
+                        <?php endif; ?>
                       <?php elseif(!empty($item['attachedImage'])): ?>
                         <span onclick="event.stopPropagation(); openImageModal('<?php echo htmlspecialchars($item['attachedImage']); ?>', 'เอกสาร/หลักฐานแนบ - <?php echo htmlspecialchars($item['title'] ?? ''); ?>')" class="inline-flex items-center gap-1 text-[10px] text-rose-700 font-bold bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2 py-0.5 rounded-md cursor-pointer transition shadow-2xs">
                           <i data-lucide="image" class="w-3 h-3 text-rose-600"></i> ดูรูปที่แนบ
