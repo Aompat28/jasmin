@@ -494,10 +494,6 @@ foreach ($rawInvoices as $inv) {
         </div>
 
         <div class="flex flex-wrap items-center gap-2.5 shrink-0">
-          <button type="button" onclick="openRetroRequestModal()" class="px-4 py-2.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white rounded-2xl text-xs sm:text-sm font-bold transition flex items-center gap-2 cursor-pointer shadow-sm shadow-rose-600/25 active:scale-95">
-            <i data-lucide="file-clock" class="w-4 h-4"></i>
-            <span>ขอบิลย้อนหลัง</span>
-          </button>
           <a href="tenant_dashboard.php" class="px-4 py-2.5 bg-white hover:bg-stone-50 text-slate-700 rounded-2xl text-xs sm:text-sm font-bold transition flex items-center gap-2 cursor-pointer border border-stone-200 shadow-2xs active:scale-95">
             <i data-lucide="arrow-left" class="w-4 h-4 text-slate-500"></i>
             <span>กลับแดชบอร์ด</span>
