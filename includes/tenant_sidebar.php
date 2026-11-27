@@ -100,6 +100,8 @@ $sidebarPendingMoveOuts = 0;
 
 $sidebarPendingParking = 0;
 
+$sidebarPendingRetro = 0;
+
 
 
 if (isset($conn) && $conn instanceof PDO) {
@@ -193,6 +195,12 @@ if (isset($conn) && $conn instanceof PDO) {
         $sidebarPendingParking = (int)$stmt->fetchColumn();
     } catch(Throwable $e) {}
 
+    try {
+        $stmt = $conn->prepare("SELECT COUNT(*) FROM RetroactiveInvoiceRequests WHERE tenantId = ? AND status = 'Pending'");
+        $stmt->execute([$tenantId]);
+        $sidebarPendingRetro = (int)$stmt->fetchColumn();
+    } catch(Throwable $e) {}
+
 }
 
 
@@ -210,6 +218,10 @@ if ($currentScript === 'tenant_dashboard.php') {
 } elseif ($currentScript === 'view_invoices.php' || $currentScript === 'tenant_invoice.php') {
 
     $activeKey = 'invoice';
+
+} elseif ($currentScript === 'tenant_retro_invoices.php') {
+
+    $activeKey = 'retro_invoices';
 
 } elseif ($currentScript === 'tenant_request.php') {
 
@@ -286,6 +298,26 @@ $sidebarMenuItems = [
         'iconBg' => 'bg-emerald-50 text-emerald-600',
 
         'badge' => $sidebarUnpaidCount,
+
+        'badgeColor' => 'bg-amber-500'
+
+    ],
+
+    [
+
+        'key' => 'retro_invoices',
+
+        'title' => 'คำขอบิลย้อนหลัง',
+
+        'subtitle' => ($sidebarPendingRetro > 0 ? "รอตรวจ {$sidebarPendingRetro} คำขอ" : 'ขอบิล/ใบเสร็จย้อนหลัง'),
+
+        'url' => 'tenant_retro_invoices.php',
+
+        'icon' => 'file-clock',
+
+        'iconBg' => 'bg-rose-50 text-rose-600',
+
+        'badge' => $sidebarPendingRetro,
 
         'badgeColor' => 'bg-amber-500'
 

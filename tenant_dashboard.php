@@ -1527,6 +1527,15 @@ try {
             <span class="text-[10px] text-slate-400 mt-0.5">ที่จอดรถคันที่ 2+</span>
           </a>
 
+          <!-- 9. คำขอบิลย้อนหลัง -->
+          <a href="tenant_retro_invoices.php" class="p-3.5 rounded-2xl bg-rose-50/40 hover:bg-pink-50 border border-rose-100/80 hover:border-pink-200 transition-all flex flex-col items-center text-center group cursor-pointer">
+            <div class="w-11 h-11 rounded-2xl bg-pink-600/10 text-pink-600 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+              <i data-lucide="file-clock" class="w-5 h-5"></i>
+            </div>
+            <span class="text-xs font-bold text-slate-800 group-hover:text-pink-700 transition">ขอบิลย้อนหลัง</span>
+            <span class="text-[10px] text-slate-400 mt-0.5">บิล/ใบเสร็จเดิม</span>
+          </a>
+
           <!-- 9. รายงาน & โปรไฟล์ -->
 
           <a href="profile.php" class="p-3.5 rounded-2xl bg-rose-50/40 hover:bg-slate-100 border border-rose-100/80 hover:border-slate-300 transition-all flex flex-col items-center text-center group">
@@ -2080,7 +2089,7 @@ try {
                 <span class="text-xs text-slate-500 font-medium">ประวัติการชำระเงินค่าห้องพักและค่าน้ำค่าไฟ</span>
 
                 <div class="flex items-center gap-2">
-                  <a href="view_invoices.php?tab=retro" class="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs" title="ยื่นคำขอบิลหรือใบเสร็จย้อนหลัง">
+                  <a href="tenant_retro_invoices.php" class="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs" title="ยื่นคำขอบิลหรือใบเสร็จย้อนหลัง">
                     <i data-lucide="file-clock" class="w-3.5 h-3.5"></i>
                     <span>ขอบิลย้อนหลัง</span>
                   </a>
