@@ -308,15 +308,6 @@ if (!empty($matchedInvIds)) {
     }
 }
 
-// ตัวเลือกเดือนล่วงหน้าและย้อนหลังสำหรับฟอร์ม
-$pastMonthsPresets = [];
-for ($i = 1; $i <= 6; $i++) {
-    $ym = date('Y-m', strtotime("-$i month"));
-    $pastMonthsPresets[] = [
-        'ym' => $ym,
-        'label' => toThaiBillingMonth($ym)
-    ];
-}
 ?>
 <!DOCTYPE html>
 <html lang="th">
@@ -542,18 +533,6 @@ for ($i = 1; $i <= 6; $i++) {
                                 รอบเดือนที่ต้องการขอบิล <span class="text-rose-500">*</span>
                             </label>
                             <span class="text-[11px] text-slate-400">เลือกได้ไม่เกินเดือนปัจจุบัน (<?php echo date('Y-m'); ?>)</span>
-                        </div>
-
-                        <!-- ปุ่มลัดเลือกเดือนย้อนหลังด่วน -->
-                        <div class="flex flex-wrap gap-2 mb-3">
-                            <span class="text-xs text-slate-400 font-semibold flex items-center gap-1">
-                                <i data-lucide="zap" class="w-3.5 h-3.5 text-amber-500"></i> เลือกด่วน:
-                            </span>
-                            <?php foreach($pastMonthsPresets as $pmp): ?>
-                                <button type="button" onclick="setRequestedMonth('<?php echo $pmp['ym']; ?>')" class="preset-month-btn px-3 py-1.5 bg-slate-50 hover:bg-rose-50 text-slate-700 hover:text-rose-700 rounded-xl text-xs font-semibold border border-slate-200 hover:border-rose-300 transition cursor-pointer" data-ym="<?php echo $pmp['ym']; ?>">
-                                    <?php echo htmlspecialchars($pmp['label']); ?>
-                                </button>
-                            <?php endforeach; ?>
                         </div>
 
                         <div class="relative max-w-sm">
@@ -1012,21 +991,6 @@ for ($i = 1; $i <= 6; $i++) {
                 reqBtn.className = 'px-4 py-2 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer';
             }
             if (window.lucide) lucide.createIcons();
-        }
-
-        // ตั้งค่าเดือนจากปุ่มด่วน
-        function setRequestedMonth(ym) {
-            const input = document.getElementById('requestedMonthInput');
-            if (input) input.value = ym;
-            document.querySelectorAll('.preset-month-btn').forEach(btn => {
-                if (btn.getAttribute('data-ym') === ym) {
-                    btn.classList.add('bg-rose-100', 'text-rose-800', 'border-rose-400');
-                    btn.classList.remove('bg-slate-50', 'text-slate-700', 'border-slate-200');
-                } else {
-                    btn.classList.remove('bg-rose-100', 'text-rose-800', 'border-rose-400');
-                    btn.classList.add('bg-slate-50', 'text-slate-700', 'border-slate-200');
-                }
-            });
         }
 
         // ตั้งค่าเหตุผลจากปุ่มด่วน
