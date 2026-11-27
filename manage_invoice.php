@@ -157,11 +157,18 @@ if (isset($_POST['confirm_invoice'])) {
             $step = 1; // กลับสู่หน้าปกติ
 
             // หากมาจากการออกบิลตามคำขอย้อนหลัง ให้อัปเดตสถานะคำขอเป็น Approved/เรียบร้อย
+            $finalInvoiceId = $existingInvoice ? (int)$existingInvoice['invoiceId'] : (int)$conn->lastInsertId();
             if ($presetReqId > 0) {
                 try {
-                    $conn->prepare("UPDATE RetroactiveInvoiceRequests SET status = 'Approved', adminRemark = 'ออกบิลเรียบร้อยแล้ว', updatedAt = NOW() WHERE requestId = ?")->execute([$presetReqId]);
+                    $conn->prepare("UPDATE RetroactiveInvoiceRequests SET status = 'Approved', invoiceId = ?, adminRemark = 'ออกบิลเรียบร้อยแล้ว', updatedAt = NOW() WHERE requestId = ?")->execute([$finalInvoiceId, $presetReqId]);
                 } catch(PDOException $e) {}
             }
+            // อัปเดตคำขอที่รออนุมัติสำหรับห้องและเดือนนี้ด้วยหากมี
+            try {
+                if (!empty($rawMonth)) {
+                    $conn->prepare("UPDATE RetroactiveInvoiceRequests SET status = 'Approved', invoiceId = ?, adminRemark = 'ออกบิลเรียบร้อยแล้ว', updatedAt = NOW() WHERE roomId = ? AND (requestedMonth = ? OR requestedMonth LIKE ?) AND status = 'Pending'")->execute([$finalInvoiceId, $roomId, $rawMonth, '%' . $rawMonth . '%']);
+                }
+            } catch(PDOException $e) {}
 
         // แจ้งลูกบ้านว่ามีบิลใหม่
         $stmtTenant = $conn->prepare("
@@ -320,13 +327,20 @@ if (isset($_POST['approve_retro_request'])) {
     $customRemark = trim($_POST['adminRemark'] ?? '');
     if ($requestId > 0) {
         try {
-            if (!empty($customRemark)) {
-                $stmtApprove = $conn->prepare("UPDATE RetroactiveInvoiceRequests SET status = 'Approved', adminRemark = ?, updatedAt = NOW() WHERE requestId = ?");
-                $stmtApprove->execute([$customRemark, $requestId]);
-            } else {
-                $stmtApprove = $conn->prepare("UPDATE RetroactiveInvoiceRequests SET status = 'Approved', adminRemark = COALESCE(adminRemark, 'อนุมัติคำขอเรียบร้อยแล้ว ตรวจสอบประวัติบิลในระบบได้ทันที'), updatedAt = NOW() WHERE requestId = ?");
-                $stmtApprove->execute([$requestId]);
+            $reqQ = $conn->prepare("SELECT * FROM RetroactiveInvoiceRequests WHERE requestId = ?");
+            $reqQ->execute([$requestId]);
+            $reqRow = $reqQ->fetch(PDO::FETCH_ASSOC);
+            $invIdToLink = $reqRow['invoiceId'] ?? null;
+            if (!$invIdToLink && $reqRow) {
+                $thM = toThaiBillingMonth($reqRow['requestedMonth']);
+                $chkInv = $conn->prepare("SELECT invoiceId FROM Invoices WHERE roomId = ? AND (billingMonth = ? OR billingMonth = ? OR billingMonth LIKE ?) ORDER BY invoiceId DESC LIMIT 1");
+                $chkInv->execute([$reqRow['roomId'], $thM, $reqRow['requestedMonth'], '%' . $reqRow['requestedMonth'] . '%']);
+                $invIdToLink = $chkInv->fetchColumn() ?: null;
             }
+
+            $remark = !empty($customRemark) ? $customRemark : 'อนุมัติคำขอเรียบร้อยแล้ว ตรวจสอบประวัติบิลในระบบได้ทันที';
+            $stmtApprove = $conn->prepare("UPDATE RetroactiveInvoiceRequests SET status = 'Approved', invoiceId = COALESCE(?, invoiceId), adminRemark = ?, updatedAt = NOW() WHERE requestId = ?");
+            $stmtApprove->execute([$invIdToLink, $remark, $requestId]);
             $message = "<div class='alert-box p-4 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'><i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600'></i> อนุมัติคำขอบิลย้อนหลังเรียบร้อยแล้ว</div>";
         } catch(PDOException $e) {
             $message = "<div class='alert-box p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-r-xl shadow-xs text-sm font-semibold flex items-center gap-2 mb-6'>❌ เกิดข้อผิดพลาด: " . $e->getMessage() . "</div>";
@@ -361,14 +375,34 @@ if ($presetRoomId && $presetMonth) {
 // ดึงคำขอรอบบิลย้อนหลังทั้งหมด
 $retroRequests = [];
 try {
+    // Auto-link any requests with null invoiceId if matching invoice exists in Invoices
+    try {
+        $unlinked = $conn->query("SELECT requestId, roomId, requestedMonth FROM RetroactiveInvoiceRequests WHERE invoiceId IS NULL")->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($unlinked as $un) {
+            $thM = toThaiBillingMonth($un['requestedMonth']);
+            $chk = $conn->prepare("SELECT invoiceId FROM Invoices WHERE roomId = ? AND (billingMonth = ? OR billingMonth = ? OR billingMonth LIKE ?) ORDER BY invoiceId DESC LIMIT 1");
+            $chk->execute([$un['roomId'], $thM, $un['requestedMonth'], '%' . $un['requestedMonth'] . '%']);
+            $fId = $chk->fetchColumn();
+            if ($fId) {
+                $conn->prepare("UPDATE RetroactiveInvoiceRequests SET invoiceId = ? WHERE requestId = ?")->execute([$fId, $un['requestId']]);
+            }
+        }
+    } catch(Throwable $e) {}
+
     $stmtRetro = $conn->query("
         SELECT r.*, rm.roomNumber, u.fullName AS tenantName, u.phone AS tenantPhone,
-               inv.invoiceId AS matchedInvoiceId, inv.status AS matchedInvoiceStatus, 
-               inv.totalAmount AS matchedTotalAmount, inv.billingMonth AS matchedBillingMonth
+               COALESCE(r.invoiceId, inv_direct.invoiceId, inv.invoiceId) AS matchedInvoiceId,
+               COALESCE(inv_direct.status, inv.status) AS matchedInvoiceStatus, 
+               COALESCE(inv_direct.totalAmount, inv.totalAmount) AS matchedTotalAmount,
+               COALESCE(inv_direct.billingMonth, inv.billingMonth) AS matchedBillingMonth
         FROM RetroactiveInvoiceRequests r
         JOIN Room rm ON r.roomId = rm.roomId
         JOIN User u ON r.tenantId = u.userId
-        LEFT JOIN Invoices inv ON (inv.roomId = r.roomId AND (inv.billingMonth = r.requestedMonth COLLATE utf8mb4_general_ci OR inv.billingMonth LIKE CONCAT('%', r.requestedMonth COLLATE utf8mb4_general_ci, '%')))
+        LEFT JOIN Invoices inv_direct ON inv_direct.invoiceId = r.invoiceId
+        LEFT JOIN Invoices inv ON (inv.roomId = r.roomId AND (
+            inv.billingMonth = r.requestedMonth COLLATE utf8mb4_general_ci 
+            OR inv.billingMonth LIKE CONCAT('%', r.requestedMonth COLLATE utf8mb4_general_ci, '%')
+        ))
         ORDER BY CASE WHEN r.status = 'Pending' THEN 1 WHEN r.status = 'Approved' THEN 2 ELSE 3 END, r.requestId DESC
     ");
     if ($stmtRetro) {
@@ -1431,7 +1465,7 @@ if ($step === 2) {
             <tbody class="divide-y divide-slate-100">
               <?php if(empty($retroRequests)): ?>
               <tr>
-                <td colspan="8" class="text-center py-12 text-slate-400">
+                <td colspan="10" class="text-center py-12 text-slate-400">
                   <div class="flex flex-col items-center justify-center gap-2">
                     <i data-lucide="inbox" class="w-10 h-10 text-slate-300 stroke-1"></i>
                     <p class="text-sm font-semibold">ยังไม่มีคำขอรอบเดือนบิลย้อนหลังจากผู้เช่า</p>
@@ -1441,6 +1475,7 @@ if ($step === 2) {
               <?php else: ?>
                 <?php foreach($retroRequests as $req): 
                   $st = $req['status'] ?? 'Pending';
+                  $reqType = $req['requestType'] ?? 'PaidInvoice';
                   // Format requested month in Thai
                   $reqMonthDisplay = $req['requestedMonth'];
                   if (preg_match('/^(\d{4})-(\d{2})$/', trim($req['requestedMonth']), $mMatches)) {
@@ -1464,6 +1499,17 @@ if ($step === 2) {
                       <div class="text-[11px] text-slate-400"><?php echo htmlspecialchars($req['tenantPhone']); ?></div>
                     <?php endif; ?>
                   </td>
+                  <td class="py-3 px-4 whitespace-nowrap">
+                    <?php if($reqType === 'PaidInvoice'): ?>
+                      <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-sky-50 text-sky-700 font-bold border border-sky-200 text-xs">
+                        <i data-lucide="receipt" class="w-3.5 h-3.5 text-sky-600"></i> บิล/ใบเสร็จที่เคยจ่าย
+                      </span>
+                    <?php else: ?>
+                      <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-rose-50 text-rose-700 font-bold border border-rose-200 text-xs">
+                        <i data-lucide="file-plus" class="w-3.5 h-3.5 text-rose-600"></i> ขอให้ออกบิลใหม่
+                      </span>
+                    <?php endif; ?>
+                  </td>
                   <td class="py-3 px-4 font-bold text-slate-900 font-mono">
                     <?php echo htmlspecialchars($reqMonthDisplay); ?>
                   </td>
@@ -1471,6 +1517,28 @@ if ($step === 2) {
                     <div class="bg-slate-50 p-2 rounded-xl border border-slate-100 text-xs">
                       <?php echo nl2br(htmlspecialchars($req['reason'] ?: 'ไม่ได้ระบุเหตุผล')); ?>
                     </div>
+                    <?php if(!empty($req['slipImage'])): ?>
+                      <div class="mt-1">
+                        <button type="button" onclick="openSlipPreviewModal('<?php echo htmlspecialchars($req['slipImage']); ?>')" class="text-rose-600 hover:text-rose-800 font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer">
+                          <i data-lucide="image" class="w-3 h-3"></i> ดูเอกสารแนบ
+                        </button>
+                      </div>
+                    <?php endif; ?>
+                  </td>
+                  <td class="py-3 px-4 whitespace-nowrap">
+                    <?php if(!empty($req['matchedInvoiceId'])): ?>
+                      <div class="flex items-center gap-1.5">
+                        <span class="font-mono font-bold text-slate-800 text-xs">#INV-<?php echo str_pad($req['matchedInvoiceId'], 5, '0', STR_PAD_LEFT); ?></span>
+                        <?php if(($req['matchedInvoiceStatus'] ?? '') === 'Paid'): ?>
+                          <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">จ่ายแล้ว</span>
+                        <?php else: ?>
+                          <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">รอชำระ</span>
+                        <?php endif; ?>
+                      </div>
+                      <div class="text-[11px] text-slate-500 font-mono mt-0.5">฿<?php echo number_format($req['matchedTotalAmount'] ?? 0, 2); ?></div>
+                    <?php else: ?>
+                      <span class="text-xs text-slate-400 italic">ยังไม่มีในระบบ</span>
+                    <?php endif; ?>
                   </td>
                   <td class="py-3 px-4 text-xs text-slate-500 whitespace-nowrap">
                     <?php echo !empty($req['createdAt']) ? date('d/m/Y H:i', strtotime($req['createdAt'])) : '-'; ?>
@@ -1496,27 +1564,50 @@ if ($step === 2) {
                   <td class="py-3 px-4 text-center whitespace-nowrap">
                     <div class="inline-flex items-center justify-center gap-1.5">
                       <?php if($st === 'Pending'): ?>
-                        <!-- ฟอร์มกดอนุมัติ -->
-                        <form action="manage_invoice.php?tab=retro" method="POST" class="m-0" onsubmit="return confirm('ยืนยันอนุมัติคำขอออกบิลย้อนหลังรอบเดือน <?php echo htmlspecialchars($req['requestedMonth']); ?> ห้อง <?php echo htmlspecialchars($req['roomNumber']); ?>?');">
-                          <input type="hidden" name="requestId" value="<?php echo $req['requestId']; ?>">
-                          <button type="submit" name="approve_retro_request" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-2xs transition flex items-center gap-1 cursor-pointer" title="อนุมัติคำขอ">
-                            <i data-lucide="check" class="w-3.5 h-3.5"></i> อนุมัติ
-                          </button>
-                        </form>
+                        <?php if($reqType === 'PaidInvoice'): ?>
+                          <!-- ฟอร์มกดอนุมัติสำหรับบิลที่เคยชำระแล้ว -->
+                          <form action="manage_invoice.php?tab=retro" method="POST" class="m-0" onsubmit="return confirm('ยืนยันอนุมัติคำขอบิลย้อนหลังรอบเดือน <?php echo htmlspecialchars($req['requestedMonth']); ?> ห้อง <?php echo htmlspecialchars($req['roomNumber']); ?>?');">
+                            <input type="hidden" name="requestId" value="<?php echo $req['requestId']; ?>">
+                            <button type="submit" name="approve_retro_request" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-2xs transition flex items-center gap-1 cursor-pointer" title="อนุมัติส่งบิล">
+                              <i data-lucide="check" class="w-3.5 h-3.5"></i> อนุมัติส่งบิล
+                            </button>
+                          </form>
+                        <?php else: ?>
+                          <!-- ปุ่มออกบิลตามคำขอนี้ทันที -->
+                          <a href="manage_invoice.php?tab=create&roomId=<?php echo $req['roomId']; ?>&presetMonth=<?php echo urlencode($req['requestedMonth']); ?>&reqId=<?php echo $req['requestId']; ?>" class="px-3 py-1.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1 cursor-pointer" title="ออกใบแจ้งหนี้รอบนี้ทันที">
+                            <i data-lucide="file-plus" class="w-3.5 h-3.5"></i> ออกบิลรอบนี้
+                          </a>
+                          <form action="manage_invoice.php?tab=retro" method="POST" class="m-0" onsubmit="return confirm('ยืนยันอนุมัติคำขอออกบิลย้อนหลังรอบเดือน <?php echo htmlspecialchars($req['requestedMonth']); ?> ห้อง <?php echo htmlspecialchars($req['roomNumber']); ?>?');">
+                            <input type="hidden" name="requestId" value="<?php echo $req['requestId']; ?>">
+                            <button type="submit" name="approve_retro_request" class="px-2.5 py-1.5 bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer" title="อนุมัติคำขอ">
+                              <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                            </button>
+                          </form>
+                        <?php endif; ?>
 
                         <!-- ปุ่มยกเลิกคำขอ -->
-                        <button type="button" onclick="openRejectRetroModal(<?php echo $req['requestId']; ?>, '<?php echo htmlspecialchars($req['roomNumber']); ?>', '<?php echo htmlspecialchars($req['tenantName']); ?>', '<?php echo htmlspecialchars($req['requestedMonth']); ?>')" class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer" title="ยกเลิกคำขอ">
-                          <i data-lucide="x" class="w-3.5 h-3.5"></i> ยกเลิกคำขอ
+                        <button type="button" onclick="openRejectRetroModal(<?php echo $req['requestId']; ?>, '<?php echo htmlspecialchars($req['roomNumber']); ?>', '<?php echo htmlspecialchars($req['tenantName']); ?>', '<?php echo htmlspecialchars($req['requestedMonth']); ?>')" class="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer" title="ยกเลิกคำขอ">
+                          <i data-lucide="x" class="w-3.5 h-3.5"></i> ยกเลิก
                         </button>
 
                       <?php elseif($st === 'Approved'): ?>
-                        <!-- ปุ่มออกบิลตามคำขอนี้ -->
-                        <a href="manage_invoice.php?tab=create&roomId=<?php echo $req['roomId']; ?>&presetMonth=<?php echo urlencode($req['requestedMonth']); ?>&reqId=<?php echo $req['requestId']; ?>" class="px-3 py-1.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1 cursor-pointer" title="ออกใบแจ้งหนี้รอบนี้ทันที">
-                          <i data-lucide="file-plus" class="w-3.5 h-3.5"></i> ออกบิลรอบนี้
-                        </a>
+                        <?php if(!empty($req['matchedInvoiceId'])): ?>
+                          <button type="button" onclick="openInvoiceDetailModal(<?php echo $req['matchedInvoiceId']; ?>)" class="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer">
+                            <i data-lucide="eye" class="w-3.5 h-3.5 text-emerald-600"></i> ดูบิล
+                          </button>
+                          <?php if(($req['matchedInvoiceStatus'] ?? '') === 'Paid'): ?>
+                            <a href="print_receipt.php?id=<?php echo $req['matchedInvoiceId']; ?>" target="_blank" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer">
+                              <i data-lucide="printer" class="w-3.5 h-3.5"></i> ใบเสร็จ
+                            </a>
+                          <?php endif; ?>
+                        <?php else: ?>
+                          <a href="manage_invoice.php?tab=create&roomId=<?php echo $req['roomId']; ?>&presetMonth=<?php echo urlencode($req['requestedMonth']); ?>&reqId=<?php echo $req['requestId']; ?>" class="px-3 py-1.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1 cursor-pointer" title="ออกใบแจ้งหนี้รอบนี้ทันที">
+                            <i data-lucide="file-plus" class="w-3.5 h-3.5"></i> ออกบิลรอบนี้
+                          </a>
+                        <?php endif; ?>
 
                         <!-- ปุ่มยกเลิกคำขอหากเปลี่ยนใจ -->
-                        <button type="button" onclick="openRejectRetroModal(<?php echo $req['requestId']; ?>, '<?php echo htmlspecialchars($req['roomNumber']); ?>', '<?php echo htmlspecialchars($req['tenantName']); ?>', '<?php echo htmlspecialchars($req['requestedMonth']); ?>')" class="px-2.5 py-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl text-xs font-semibold transition cursor-pointer" title="เปลี่ยนเป็นยกเลิกคำขอ">
+                        <button type="button" onclick="openRejectRetroModal(<?php echo $req['requestId']; ?>, '<?php echo htmlspecialchars($req['roomNumber']); ?>', '<?php echo htmlspecialchars($req['tenantName']); ?>', '<?php echo htmlspecialchars($req['requestedMonth']); ?>')" class="px-2 py-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl text-xs font-semibold transition cursor-pointer" title="เปลี่ยนเป็นยกเลิกคำขอ">
                           <i data-lucide="x" class="w-3.5 h-3.5"></i>
                         </button>
 

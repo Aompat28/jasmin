@@ -173,12 +173,17 @@ if (isset($_POST['submit_retro_request'])) {
         }
 
         try {
+            $thReqMonth = toThaiBillingMonth($rawReqMonth);
+            $stmtCheckInv = $conn->prepare("SELECT invoiceId FROM Invoices WHERE roomId = ? AND (billingMonth = ? OR billingMonth = ? OR billingMonth LIKE ?) ORDER BY invoiceId DESC LIMIT 1");
+            $stmtCheckInv->execute([$requestedRoomId, $thReqMonth, $rawReqMonth, '%' . $rawReqMonth . '%']);
+            $matchedExistingInvId = $stmtCheckInv->fetchColumn() ?: null;
+
             $stmtIns = $conn->prepare("
                 INSERT INTO RetroactiveInvoiceRequests 
-                (tenantId, roomId, requestedMonth, requestType, reason, slipImage, status, createdAt)
-                VALUES (?, ?, ?, ?, ?, ?, 'Pending', NOW())
+                (tenantId, roomId, invoiceId, requestedMonth, requestType, reason, slipImage, status, createdAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending', NOW())
             ");
-            $stmtIns->execute([$tenantId, $requestedRoomId, $rawReqMonth, $requestType, $reason, $slipImagePath]);
+            $stmtIns->execute([$tenantId, $requestedRoomId, $matchedExistingInvId, $rawReqMonth, $requestType, $reason, $slipImagePath]);
             $typeLabel = ($requestType === 'PaidInvoice') ? 'ขอบิล/ใบเสร็จที่เคยชำระแล้ว' : 'ขอให้ออกบิลใหม่ย้อนหลัง';
             $message = "<div class='alert-box p-4 mb-6 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-sm text-sm font-bold flex items-center gap-2'><i data-lucide='check-circle-2' class='w-5 h-5 text-emerald-600'></i> ส่งคำขอบิลย้อนหลังรอบเดือน " . htmlspecialchars($rawReqMonth) . " ({$typeLabel}) เรียบร้อยแล้ว! เจ้าหน้าที่จะตรวจสอบข้อมูลให้โดยเร็วครับ</div>";
             $activeTab = 'retro';
@@ -217,13 +222,34 @@ $pendingInvoices = array_merge($unpaidInvoices, $pendingApprovalInvoices);
 // --- ดึงข้อมูลคำขอบิลย้อนหลังของผู้เช่าคนนี้ ---
 $myRetroRequests = [];
 try {
+    // Auto-link any requests with null invoiceId if matching invoice exists in Invoices
+    try {
+        $unlinked = $conn->prepare("SELECT requestId, roomId, requestedMonth FROM RetroactiveInvoiceRequests WHERE tenantId = ? AND invoiceId IS NULL");
+        $unlinked->execute([$tenantId]);
+        foreach ($unlinked->fetchAll(PDO::FETCH_ASSOC) as $un) {
+            $thM = toThaiBillingMonth($un['requestedMonth']);
+            $chk = $conn->prepare("SELECT invoiceId FROM Invoices WHERE roomId = ? AND (billingMonth = ? OR billingMonth = ? OR billingMonth LIKE ?) ORDER BY invoiceId DESC LIMIT 1");
+            $chk->execute([$un['roomId'], $thM, $un['requestedMonth'], '%' . $un['requestedMonth'] . '%']);
+            $fId = $chk->fetchColumn();
+            if ($fId) {
+                $conn->prepare("UPDATE RetroactiveInvoiceRequests SET invoiceId = ? WHERE requestId = ?")->execute([$fId, $un['requestId']]);
+            }
+        }
+    } catch(Throwable $e) {}
+
     $stmtMyRetro = $conn->prepare("
         SELECT r.*, rm.roomNumber,
-               inv.invoiceId AS matchedInvoiceId, inv.status AS matchedInvoiceStatus, 
-               inv.totalAmount AS matchedTotalAmount, inv.billingMonth AS matchedBillingMonth
+               COALESCE(r.invoiceId, inv_direct.invoiceId, inv.invoiceId) AS matchedInvoiceId,
+               COALESCE(inv_direct.status, inv.status) AS matchedInvoiceStatus, 
+               COALESCE(inv_direct.totalAmount, inv.totalAmount) AS matchedTotalAmount,
+               COALESCE(inv_direct.billingMonth, inv.billingMonth) AS matchedBillingMonth
         FROM RetroactiveInvoiceRequests r
         JOIN Room rm ON r.roomId = rm.roomId
-        LEFT JOIN Invoices inv ON (inv.roomId = r.roomId AND (inv.billingMonth = r.requestedMonth COLLATE utf8mb4_general_ci OR inv.billingMonth LIKE CONCAT('%', r.requestedMonth COLLATE utf8mb4_general_ci, '%')))
+        LEFT JOIN Invoices inv_direct ON inv_direct.invoiceId = r.invoiceId
+        LEFT JOIN Invoices inv ON (inv.roomId = r.roomId AND (
+            inv.billingMonth = r.requestedMonth COLLATE utf8mb4_general_ci 
+            OR inv.billingMonth LIKE CONCAT('%', r.requestedMonth COLLATE utf8mb4_general_ci, '%')
+        ))
         WHERE r.tenantId = ?
         ORDER BY r.requestId DESC
     ");
@@ -1050,6 +1076,11 @@ foreach ($rawInvoices as $inv) {
                                 </a>
                                 <?php endif; ?>
                             </div>
+                        </div>
+                        <?php elseif($status === 'Approved'): ?>
+                        <div class="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200 text-xs text-amber-800 flex items-center gap-2">
+                            <i data-lucide="clock" class="w-4 h-4 text-amber-600 shrink-0"></i>
+                            <span>เจ้าหน้าที่อนุมัติคำขอแล้ว และกำลังดำเนินการจัดทำใบแจ้งหนี้รอบเดือนนี้ให้ในระบบครับ</span>
                         </div>
                         <?php endif; ?>
                     </div>

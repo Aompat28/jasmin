@@ -472,6 +472,7 @@ try {
     $conn->exec("DELETE FROM CoResidents WHERE tenantId NOT IN (SELECT userId FROM User)");
     $conn->exec("DELETE FROM RoomChangeRequests WHERE tenantId NOT IN (SELECT userId FROM User)");
     $conn->exec("DELETE FROM LeaseRenewals WHERE tenantId NOT IN (SELECT userId FROM User)");
+    $conn->exec("DELETE FROM RetroactiveInvoiceRequests WHERE tenantId NOT IN (SELECT userId FROM User)");
 } catch(Throwable $e) {}
 
 $pendingServices = 0;
@@ -533,7 +534,19 @@ try {
 
 
 
-$totalPendingActions = $pendingSlipCount + $pendingServices + $pendingRenewals + $pendingCoresidents + $pendingRoomChanges + $pendingMoveOuts;
+$pendingRetroRequests = 0;
+
+try {
+
+    $stmtRetroCount = $conn->query("SELECT COUNT(*) FROM RetroactiveInvoiceRequests r JOIN Room rm ON r.roomId = rm.roomId JOIN User u ON r.tenantId = u.userId WHERE r.status = 'Pending'");
+
+    if ($stmtRetroCount) $pendingRetroRequests = (int)$stmtRetroCount->fetchColumn();
+
+} catch(Throwable $e) {}
+
+
+
+$totalPendingActions = $pendingSlipCount + $pendingServices + $pendingRenewals + $pendingCoresidents + $pendingRoomChanges + $pendingMoveOuts + $pendingRetroRequests;
 
 
 
@@ -953,6 +966,70 @@ try {
                 'attachedImage' => $attachedImg,
                 'link' => 'admin_coresidents.php',
                 'btnText' => 'ไปจัดการผู้ร่วมอาศัย'
+            ];
+        }
+    }
+} catch(Throwable $e) {}
+
+// 7. คำขอบิลย้อนหลัง (Retroactive Invoice Requests)
+try {
+    $stmtRetroAlerts = $conn->query("
+        SELECT r.*, rm.roomNumber, u.fullName, u.phone 
+        FROM RetroactiveInvoiceRequests r 
+        JOIN Room rm ON r.roomId = rm.roomId 
+        JOIN User u ON r.tenantId = u.userId 
+        WHERE r.status = 'Pending' 
+        ORDER BY r.requestId DESC LIMIT 10
+    ");
+    if ($stmtRetroAlerts) {
+        foreach($stmtRetroAlerts->fetchAll(PDO::FETCH_ASSOC) as $req) {
+            $alertId = 'retro_' . $req['requestId'];
+            $reqDateStr = !empty($req['createdAt']) ? date('d/m/Y H:i', strtotime($req['createdAt'])) : '-';
+            $thMonth = toThaiBillingMonth($req['requestedMonth']);
+            $isPaidType = (($req['requestType'] ?? '') === 'PaidInvoice');
+            $typeLabel = $isPaidType ? 'ขอบิล/ใบเสร็จที่เคยชำระแล้ว' : 'ขอให้ออกบิลใหม่ย้อนหลัง';
+
+            $allAlertsData[$alertId] = [
+                'id' => $alertId,
+                'type' => 'retro_invoice',
+                'category' => 'retro_invoice',
+                'title' => 'คำขอบิลย้อนหลัง (ห้อง ' . ($req['roomNumber'] ?? '-') . ')',
+                'desc' => $typeLabel . ' รอบเดือน ' . $thMonth . ' โดยคุณ ' . ($req['fullName'] ?? '-'),
+                'icon' => 'file-clock',
+                'color' => 'bg-indigo-50 text-indigo-600 border border-indigo-200',
+                'badge' => 'รอดำเนินการ',
+                'badgeColor' => 'bg-indigo-100 text-indigo-800 border-indigo-200',
+                'roomNumber' => $req['roomNumber'] ?? '-',
+                'tenantName' => $req['fullName'] ?? '-',
+                'tenantPhone' => !empty($req['phone']) ? $req['phone'] : 'ไม่ระบุเบอร์โทร',
+                'requestDate' => $reqDateStr,
+                'reason' => !empty($req['reason']) ? $req['reason'] : 'คำขอบิลย้อนหลังรอบเดือน ' . $thMonth,
+                'customFields' => [
+                    ['label' => 'ห้องพัก', 'value' => 'ห้อง ' . ($req['roomNumber'] ?? '-')],
+                    ['label' => 'ผู้เช่า', 'value' => $req['fullName'] ?? '-'],
+                    ['label' => 'รอบเดือนที่ขอ', 'value' => $thMonth . ' (' . $req['requestedMonth'] . ')'],
+                    ['label' => 'ประเภทคำขอ', 'value' => $typeLabel]
+                ],
+                'financialFields' => [
+                    ['label' => 'สถานะการพิจารณา', 'value' => 'รอนิติบุคคลตรวจสอบและดำเนินการ']
+                ],
+                'attachedImage' => !empty($req['slipImage']) ? $req['slipImage'] : null,
+                'link' => 'manage_invoice.php?tab=retro',
+                'btnText' => 'ไปจัดการคำขอบิลย้อนหลัง'
+            ];
+
+            $alerts[] = [
+                'id' => $alertId,
+                'type' => 'retro_invoice',
+                'category' => 'retro_invoice',
+                'title' => 'คำขอบิลย้อนหลัง (ห้อง ' . ($req['roomNumber'] ?? '-') . ')',
+                'message' => $typeLabel . ' รอบเดือน ' . $thMonth . ' โดยคุณ ' . ($req['fullName'] ?? '-'),
+                'icon' => 'file-clock',
+                'color' => 'text-indigo-600',
+                'time' => $req['createdAt'] ?? date('Y-m-d H:i:s'),
+                'badge' => 'ขอบิลย้อนหลัง',
+                'badgeColor' => 'bg-indigo-100 text-indigo-800 border-indigo-200',
+                'link' => 'manage_invoice.php?tab=retro'
             ];
         }
     }
@@ -1535,6 +1612,10 @@ if ($currentHour >= 5 && $currentHour < 12) {
                 <i data-lucide="package-minus" class="w-3.5 h-3.5 text-purple-600"></i>
                 <span>แจ้งย้ายออก <?php echo $pendingMoveOuts; ?></span>
               </a>
+              <a href="manage_invoice.php?tab=retro" class="px-2.5 py-1 rounded-lg <?php echo $pendingRetroRequests > 0 ? 'bg-indigo-50 text-indigo-900 border border-indigo-200 font-bold hover:bg-indigo-100' : 'bg-stone-100 text-slate-600'; ?> transition flex items-center gap-1">
+                <i data-lucide="file-clock" class="w-3.5 h-3.5 text-indigo-600"></i>
+                <span>ขอบิลย้อนหลัง <?php echo $pendingRetroRequests; ?></span>
+              </a>
             </div>
           </div>
 
@@ -1978,6 +2059,12 @@ if ($currentHour >= 5 && $currentHour < 12) {
                 <span class="px-1.5 py-0.2 bg-purple-100 text-purple-800 rounded-full text-[10px] font-bold"><?php echo $coreAlertCount; ?></span>
               <?php endif; ?>
             </button>
+            <button type="button" onclick="filterDashAlerts('retro_invoice', this)" class="alert-filter-btn px-3 py-1.5 rounded-xl font-semibold transition cursor-pointer bg-stone-100 text-slate-600 hover:bg-stone-200 shrink-0 flex items-center gap-1.5">
+              <span>📑 ขอบิลย้อนหลัง</span>
+              <?php $retroAlertCount = count(array_filter($alerts, function($a) { return ($a['type'] ?? '') === 'retro_invoice'; })); if($retroAlertCount > 0): ?>
+                <span class="px-1.5 py-0.2 bg-indigo-100 text-indigo-800 rounded-full text-[10px] font-bold"><?php echo $retroAlertCount; ?></span>
+              <?php endif; ?>
+            </button>
           </div>
 
           <div id="dashAlertsList" class="space-y-3.5">
@@ -1988,6 +2075,7 @@ if ($currentHour >= 5 && $currentHour < 12) {
               elseif (($item['type'] ?? '') === 'service_request') $alertCat = 'repair';
               elseif (in_array(($item['type'] ?? ''), ['room_change', 'move_out', 'renewal'])) $alertCat = 'room';
               elseif (($item['type'] ?? '') === 'coresident') $alertCat = 'coresident';
+              elseif (($item['type'] ?? '') === 'retro_invoice') $alertCat = 'retro_invoice';
             ?>
               <div id="dash-item-<?php echo $item['id']; ?>" data-category="<?php echo $alertCat; ?>" class="dash-alert-card p-4 rounded-2xl border border-slate-200/90 bg-white hover:bg-rose-50/20 hover:border-rose-300 shadow-2xs transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                 <!-- คลิกในกรอบเพื่อดูรายละเอียด -->

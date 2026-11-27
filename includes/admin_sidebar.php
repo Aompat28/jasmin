@@ -31,6 +31,12 @@ if (isset($conn) && $conn instanceof PDO) {
         if ($stmt) $sidebarSlipCount = (int)$stmt->fetchColumn();
     } catch(Throwable $e) {}
 
+    $sidebarPendingRetro = 0;
+    try {
+        $stmt = $conn->query("SELECT COUNT(*) FROM RetroactiveInvoiceRequests WHERE status = 'Pending'");
+        if ($stmt) $sidebarPendingRetro = (int)$stmt->fetchColumn();
+    } catch(Throwable $e) {}
+
     try {
         $stmt = $conn->query("SELECT COUNT(*) FROM ServiceRequest WHERE status = 'Pending'");
         if ($stmt) $sidebarPendingServices = (int)$stmt->fetchColumn();
@@ -131,11 +137,13 @@ $sidebarMenuItems = [
     [
         'key' => 'invoice',
         'title' => 'การเงิน & ใบแจ้งหนี้',
-        'subtitle' => ($sidebarSlipCount > 0 ? "รอตรวจ {$sidebarSlipCount} สลิป" : 'ออกบิลและตรวจสลิป'),
+        'subtitle' => (($sidebarSlipCount > 0 || $sidebarPendingRetro > 0)
+            ? trim(($sidebarSlipCount > 0 ? "สลิป {$sidebarSlipCount} " : '') . ($sidebarPendingRetro > 0 ? "ขอบิล {$sidebarPendingRetro}" : ''))
+            : 'ออกบิลและตรวจสลิป'),
         'url' => 'manage_invoice.php',
         'icon' => 'receipt',
         'iconBg' => 'bg-emerald-50 text-emerald-700 border border-emerald-200/50',
-        'badge' => $sidebarSlipCount,
+        'badge' => ($sidebarSlipCount + $sidebarPendingRetro),
         'badgeColor' => 'bg-amber-500 text-white'
     ],
     [
