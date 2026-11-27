@@ -467,12 +467,19 @@ try {
 
 
 
+// ทำความสะอาดคำขอที่ค้างของผู้เช่าที่ถูกลบออกจากระบบไปแล้ว เพื่อให้ข้อมูลตรงกับความเป็นจริงเสมอ
+try {
+    $conn->exec("DELETE FROM CoResidents WHERE tenantId NOT IN (SELECT userId FROM User)");
+    $conn->exec("DELETE FROM RoomChangeRequests WHERE tenantId NOT IN (SELECT userId FROM User)");
+    $conn->exec("DELETE FROM LeaseRenewals WHERE tenantId NOT IN (SELECT userId FROM User)");
+} catch(Throwable $e) {}
+
 $pendingServices = 0;
 $completedServices = 0;
 try {
-    $stmtServ = $conn->query("SELECT COUNT(*) FROM ServiceRequest WHERE status IN ('Pending', 'In Progress', 'Pending Approval')");
+    $stmtServ = $conn->query("SELECT COUNT(*) FROM ServiceRequest sr JOIN Room r ON sr.roomId = r.roomId JOIN User u ON sr.tenantId = u.userId WHERE sr.status IN ('Pending', 'In Progress', 'Pending Approval')");
     if ($stmtServ) $pendingServices = (int)$stmtServ->fetchColumn();
-    $stmtComp = $conn->query("SELECT COUNT(*) FROM ServiceRequest WHERE status = 'Completed'");
+    $stmtComp = $conn->query("SELECT COUNT(*) FROM ServiceRequest sr JOIN Room r ON sr.roomId = r.roomId JOIN User u ON sr.tenantId = u.userId WHERE sr.status = 'Completed'");
     if ($stmtComp) $completedServices = (int)$stmtComp->fetchColumn();
 } catch(Throwable $e) {}
 
@@ -482,7 +489,7 @@ $pendingCoresidents = 0;
 
 try {
 
-    $stmtCore = $conn->query("SELECT COUNT(*) FROM CoResidents WHERE status IN ('Pending', 'Cancel_Pending')");
+    $stmtCore = $conn->query("SELECT COUNT(*) FROM CoResidents cr JOIN Room r ON cr.roomId = r.roomId JOIN User u ON cr.tenantId = u.userId WHERE cr.status IN ('Pending', 'Cancel_Pending')");
 
     if ($stmtCore) $pendingCoresidents = (int)$stmtCore->fetchColumn();
 
@@ -494,7 +501,7 @@ $pendingRenewals = 0;
 
 try {
 
-    $stmtRenCount = $conn->query("SELECT COUNT(*) FROM LeaseRenewals WHERE status = 'Pending'");
+    $stmtRenCount = $conn->query("SELECT COUNT(*) FROM LeaseRenewals lr JOIN Room r ON lr.roomId = r.roomId JOIN User u ON lr.tenantId = u.userId WHERE lr.status = 'Pending'");
 
     if ($stmtRenCount) $pendingRenewals = (int)$stmtRenCount->fetchColumn();
 
@@ -506,7 +513,7 @@ $pendingRoomChanges = 0;
 
 try {
 
-    $stmtRCCount = $conn->query("SELECT COUNT(*) FROM RoomChangeRequests WHERE status = 'Pending'");
+    $stmtRCCount = $conn->query("SELECT COUNT(*) FROM RoomChangeRequests rcr JOIN Room r ON rcr.currentRoomId = r.roomId JOIN User u ON rcr.tenantId = u.userId WHERE rcr.status = 'Pending'");
 
     if ($stmtRCCount) $pendingRoomChanges = (int)$stmtRCCount->fetchColumn();
 
@@ -518,7 +525,7 @@ $pendingMoveOuts = 0;
 
 try {
 
-    $stmtMoveCount = $conn->query("SELECT COUNT(*) FROM Lease WHERE status = 'Active' AND moveOutRequestDate IS NOT NULL");
+    $stmtMoveCount = $conn->query("SELECT COUNT(*) FROM Lease l JOIN Room r ON l.roomId = r.roomId JOIN User u ON l.tenantId = u.userId WHERE l.status = 'Active' AND l.moveOutRequestDate IS NOT NULL");
 
     if ($stmtMoveCount) $pendingMoveOuts = (int)$stmtMoveCount->fetchColumn();
 
@@ -1949,26 +1956,26 @@ if ($currentHour >= 5 && $currentHour < 12) {
             </button>
             <button type="button" onclick="filterDashAlerts('slip', this)" class="alert-filter-btn px-3 py-1.5 rounded-xl font-semibold transition cursor-pointer bg-stone-100 text-slate-600 hover:bg-stone-200 shrink-0 flex items-center gap-1.5">
               <span>🧾 ตรวจสลิป</span>
-              <?php if($pendingSlipCount > 0): ?>
-                <span class="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-full text-[10px] font-bold"><?php echo $pendingSlipCount; ?></span>
+              <?php $slipAlertCount = count(array_filter($alerts, function($a) { return ($a['type'] ?? '') === 'slip'; })); if($slipAlertCount > 0): ?>
+                <span class="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-full text-[10px] font-bold"><?php echo $slipAlertCount; ?></span>
               <?php endif; ?>
             </button>
             <button type="button" onclick="filterDashAlerts('repair', this)" class="alert-filter-btn px-3 py-1.5 rounded-xl font-semibold transition cursor-pointer bg-stone-100 text-slate-600 hover:bg-stone-200 shrink-0 flex items-center gap-1.5">
               <span>🔧 แจ้งซ่อม</span>
-              <?php if($pendingServices > 0): ?>
-                <span class="px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded-full text-[10px] font-bold"><?php echo $pendingServices; ?></span>
+              <?php $repairAlertCount = count(array_filter($alerts, function($a) { return ($a['type'] ?? '') === 'service_request'; })); if($repairAlertCount > 0): ?>
+                <span class="px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded-full text-[10px] font-bold"><?php echo $repairAlertCount; ?></span>
               <?php endif; ?>
             </button>
             <button type="button" onclick="filterDashAlerts('room', this)" class="alert-filter-btn px-3 py-1.5 rounded-xl font-semibold transition cursor-pointer bg-stone-100 text-slate-600 hover:bg-stone-200 shrink-0 flex items-center gap-1.5">
               <span>🔄 ย้ายห้อง/ออก</span>
-              <?php $roomActions = $pendingRoomChanges + $pendingRenewals + $pendingMoveOuts; if($roomActions > 0): ?>
-                <span class="px-1.5 py-0.2 bg-rose-100 text-rose-800 rounded-full text-[10px] font-bold"><?php echo $roomActions; ?></span>
+              <?php $roomAlertCount = count(array_filter($alerts, function($a) { return in_array($a['type'] ?? '', ['room_change', 'move_out', 'renewal'], true); })); if($roomAlertCount > 0): ?>
+                <span class="px-1.5 py-0.2 bg-rose-100 text-rose-800 rounded-full text-[10px] font-bold"><?php echo $roomAlertCount; ?></span>
               <?php endif; ?>
             </button>
             <button type="button" onclick="filterDashAlerts('coresident', this)" class="alert-filter-btn px-3 py-1.5 rounded-xl font-semibold transition cursor-pointer bg-stone-100 text-slate-600 hover:bg-stone-200 shrink-0 flex items-center gap-1.5">
               <span>👥 สมาชิก</span>
-              <?php if($pendingCoresidents > 0): ?>
-                <span class="px-1.5 py-0.2 bg-purple-100 text-purple-800 rounded-full text-[10px] font-bold"><?php echo $pendingCoresidents; ?></span>
+              <?php $coreAlertCount = count(array_filter($alerts, function($a) { return ($a['type'] ?? '') === 'coresident'; })); if($coreAlertCount > 0): ?>
+                <span class="px-1.5 py-0.2 bg-purple-100 text-purple-800 rounded-full text-[10px] font-bold"><?php echo $coreAlertCount; ?></span>
               <?php endif; ?>
             </button>
           </div>
