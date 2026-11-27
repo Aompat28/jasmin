@@ -406,20 +406,6 @@ if (!empty($matchedInvIds)) {
                         </p>
                     </div>
                 </div>
-
-                <!-- การ์ดห้องพักย่อ -->
-                <div class="bg-white/90 backdrop-blur-xs p-3 sm:p-4 rounded-2xl border border-rose-100 text-xs flex items-center gap-3 shrink-0 shadow-2xs">
-                    <div class="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold shrink-0">
-                        <i data-lucide="door-open" class="w-5 h-5"></i>
-                    </div>
-                    <div>
-                        <div class="font-bold text-slate-800">ห้องพัก: <?php echo htmlspecialchars($myRoomNumber ?: '-'); ?></div>
-                        <div class="text-[11px] text-slate-500">
-                            ประเภท: <?php echo ($myRoom['roomType'] ?? '') === 'Air' ? 'ห้องแอร์' : 'ห้องพัดลม'; ?> 
-                            | ฿<?php echo number_format($myRoom['rentPrice'] ?? 0); ?>/ด.
-                        </div>
-                    </div>
-                </div>
             </div>
 
             <!-- แท็บสลับหน้า: ยื่นคำขอบิลย้อนหลัง VS ประวัติคำขอ -->
@@ -620,11 +606,6 @@ if (!empty($matchedInvIds)) {
                         <?php endif; ?>
                     </div>
                 </div>
-
-                <button type="button" onclick="switchRetroTab('request')" class="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0">
-                    <i data-lucide="plus-circle" class="w-4 h-4"></i>
-                    <span>ยื่นคำขอใหม่</span>
-                </button>
             </div>
 
             <!-- List of Request History Cards -->
