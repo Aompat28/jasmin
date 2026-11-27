@@ -1536,21 +1536,7 @@ if ($currentHour >= 5 && $currentHour < 12) {
             </div>
           </div>
 
-          <!-- Quick Top Action Buttons -->
-          <div class="flex flex-wrap items-center gap-2.5 shrink-0">
-            <button type="button" onclick="openAddAnnouncementModal()" class="px-4 py-2.5 bg-white hover:bg-stone-50 text-slate-700 rounded-2xl text-xs sm:text-sm font-bold transition flex items-center gap-2 cursor-pointer border border-stone-200 shadow-2xs active:scale-95">
-              <i data-lucide="megaphone" class="w-4 h-4 text-amber-500"></i>
-              <span>เขียนประกาศ</span>
-            </button>
-            <a href="manage_room.php" class="px-4 py-2.5 bg-sky-50 hover:bg-sky-100 text-sky-800 rounded-2xl text-xs sm:text-sm font-bold transition flex items-center gap-2 border border-sky-200 active:scale-95 cursor-pointer">
-              <i data-lucide="door-open" class="w-4 h-4 text-sky-600"></i>
-              <span>ผังห้องพัก</span>
-            </a>
-            <a href="check_in_form.php" class="px-5 py-2.5 bg-gradient-to-r from-rose-600 via-rose-500 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white rounded-2xl text-xs sm:text-sm font-bold transition flex items-center gap-2 shadow-sm shadow-rose-600/25 active:scale-95 cursor-pointer">
-              <i data-lucide="file-signature" class="w-4 h-4"></i>
-              <span>ทำสัญญาเช่าใหม่</span>
-            </a>
-          </div>
+
         </div>
       </div>
 
