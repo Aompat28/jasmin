@@ -552,7 +552,7 @@ foreach ($rawInvoices as $inv) {
         </button>
 
         <!-- ลิงก์ไปหน้าคำขอบิลย้อนหลังเฉพาะ -->
-        <a href="tenant_retro_invoices.php" class="px-3.5 py-2 text-xs sm:text-sm font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-2xl flex items-center gap-1.5 whitespace-nowrap transition cursor-pointer border border-rose-200/80 shadow-2xs my-auto ml-auto" title="ยื่นคำขอสำเนาบิลหรือใบเสร็จรับเงินย้อนหลัง">
+        <a href="<?php echo (!empty($pendingMyRetroCount) && $pendingMyRetroCount > 0) ? 'tenant_retro_invoices.php?tab=history' : 'tenant_retro_invoices.php'; ?>" class="px-3.5 py-2 text-xs sm:text-sm font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-2xl flex items-center gap-1.5 whitespace-nowrap transition cursor-pointer border border-rose-200/80 shadow-2xs my-auto ml-auto" title="ยื่นคำขอสำเนาบิลหรือใบเสร็จรับเงินย้อนหลัง">
             <i data-lucide="file-clock" class="w-4 h-4"></i>
             <span>ขอบิลย้อนหลัง</span>
             <?php if(!empty($pendingMyRetroCount) && $pendingMyRetroCount > 0): ?>

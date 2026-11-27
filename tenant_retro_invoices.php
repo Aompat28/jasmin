@@ -1,7 +1,12 @@
 <?php
+ob_start();
 session_start();
 require_once 'includes/db_connect.php';
 require_once 'includes/time_helper.php';
+
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Cache-Control: post-check=0, pre-check=0", false);
+header("Pragma: no-cache");
 
 // ตรวจสอบสิทธิ์ ต้องเป็น ลูกบ้าน (Tenant) เท่านั้น
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Tenant') {
@@ -140,8 +145,6 @@ if (isset($_GET['check_status'])) {
     exit();
 }
 
-$activeTab = isset($_GET['tab']) && $_GET['tab'] === 'history' ? 'history' : 'request';
-
 // --- เมื่อผู้เช่ายื่นคำขอบิลย้อนหลังใหม่ ---
 if (isset($_POST['submit_retro_request'])) {
     $requestedRoomId = $myRoomId;
@@ -216,6 +219,7 @@ if (isset($_POST['submit_retro_request'])) {
             
             $_SESSION['retro_flash_msg'] = "ส่งคำขอบิลย้อนหลังรอบเดือน " . ($thReqMonth ?: $rawReqMonth) . " เรียบร้อยแล้ว! คำขอถูกย้ายมาที่หน้าประวัติเพื่อรอเจ้าหน้าที่ตรวจสอบครับ";
             header("Location: tenant_retro_invoices.php?tab=history");
+            echo "<script>window.location.replace('tenant_retro_invoices.php?tab=history');</script>";
             exit();
         } catch(PDOException $e) {
             $message = "<div class='p-4 mb-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-xs sm:text-sm font-bold flex items-center justify-between shadow-xs'>
@@ -242,6 +246,7 @@ if (isset($_POST['cancel_retro_request'])) {
             $stmtCancel->execute([$cancelReqId, $tenantId]);
             $_SESSION['retro_flash_msg'] = "ยกเลิกคำขอบิลย้อนหลังเรียบร้อยแล้ว";
             header("Location: tenant_retro_invoices.php?tab=history");
+            echo "<script>window.location.replace('tenant_retro_invoices.php?tab=history');</script>";
             exit();
         } catch(PDOException $e) {}
     }
@@ -303,6 +308,14 @@ foreach ($myRetroRequests as $req) {
     } elseif ($req['status'] === 'Rejected') {
         $countRejected++;
     }
+}
+
+// กำหนดแท็บที่แสดงผล
+if (isset($_GET['tab'])) {
+    $activeTab = ($_GET['tab'] === 'history') ? 'history' : 'request';
+} else {
+    // หากมีคำขอที่ค้างรอตรวจสอบ หรือมีประวัติคำขอ ให้แสดงหน้าประวัติเป็นค่าเริ่มต้นทันที เพื่อให้เห็นสถานะชัดเจน
+    $activeTab = ($countPending > 0 || $countTotal > 0) ? 'history' : 'request';
 }
 
 // ดึงข้อมูลใบแจ้งหนี้เพื่อใช้ใน Modal ดูรายละเอียดบิล
@@ -491,6 +504,25 @@ if (!empty($matchedInvIds)) {
 
         <!-- ================= TAB 1: ยื่นคำขอบิลย้อนหลัง ================= -->
         <div id="content-tab-request" class="<?php echo ($activeTab === 'request') ? 'space-y-6' : 'space-y-6 hidden'; ?>">
+
+            <?php if($countPending > 0): ?>
+            <!-- กล่องแจ้งเตือนคำขอที่ค้างอยู่ พร้อมปุ่มลัดไปหน้าประวัติ -->
+            <div class="bg-amber-50/90 border border-amber-200/90 p-4 sm:p-5 rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs sm:text-sm shadow-2xs">
+                <div class="flex items-center gap-3 text-amber-900 font-medium">
+                    <div class="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                        <i data-lucide="clock" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <div class="font-bold text-slate-800">คุณมีคำขอบิลย้อนหลังรอเจ้าหน้าที่ตรวจสอบ (<?php echo $countPending; ?> รายการ)</div>
+                        <div class="text-xs text-amber-800/80">ระบบได้ย้ายคำขอของคุณไปไว้ที่หน้าประวัติคำขอแล้ว สามารถติดตามผลได้ทันที</div>
+                    </div>
+                </div>
+                <button type="button" onclick="switchRetroTab('history')" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition shrink-0 cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs">
+                    <i data-lucide="history" class="w-4 h-4"></i>
+                    <span>ไปยังหน้าประวัติคำขอ</span>
+                </button>
+            </div>
+            <?php endif; ?>
 
             <!-- 🌟 ฟอร์มยื่นคำขอบิลย้อนหลัง 🌟 -->
             <div class="bg-white rounded-3xl border border-rose-100/90 shadow-sm p-6 sm:p-8">

@@ -819,7 +819,7 @@ try {
                 'icon' => 'file-clock',
                 'title' => 'คำขอบิลย้อนหลังรอบเดือน ' . htmlspecialchars($thM) . ' (รอดำเนินการ)',
                 'desc' => 'ส่งคำขอไปยังแอดมินแล้ว อยู่ระหว่างเจ้าหน้าที่ตรวจสอบและจัดส่งบิลให้คุณ',
-                'link' => 'tenant_retro_invoices.php?tab=request',
+                'link' => 'tenant_retro_invoices.php?tab=history',
                 'onclick' => '',
                 'linkText' => 'ติดตามสถานะ'
             ];
