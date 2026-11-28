@@ -54,10 +54,7 @@ $initials = strtoupper(mb_substr($staffName, 0, 2, 'UTF-8'));
 
 
 $message = "";
-$activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'all';
-if (!in_array($activeTab, ['all', 'active', 'completed'])) {
-    $activeTab = 'all';
-}
+$activeTab = isset($_GET['tab']) && $_GET['tab'] === 'completed' ? 'completed' : 'active';
 
 
 
@@ -134,7 +131,7 @@ if (isset($_POST['complete_job'])) {
 
             if ($execRes) {
                 $doneTime = date("d/m/Y H:i:s");
-                $activeTab = 'all';
+                $activeTab = 'completed';
 
                 $message = "<div class='alert-box p-4 mb-6 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 rounded-r-xl shadow-sm text-sm font-medium flex items-center justify-between gap-3'>
                     <div class='flex items-center gap-2.5'>
@@ -1670,12 +1667,9 @@ function previewCompletionImage(event) {
 
 
 
-    <!-- 🌟 แท็บสลับหน้า (งานทั้งหมด / งานปัจจุบัน / ประวัติงานเสร็จ) 🌟 -->
+    <!-- 🌟 แท็บสลับหน้า (งานปัจจุบัน / ประวัติงานเสร็จ) 🌟 -->
     <div class="mb-6 flex gap-2 border-b border-rose-100/80 pb-px overflow-x-auto hide-scrollbar">
-        <button type="button" onclick="switchTab('all')" id="tab-all" class="<?php echo ($activeTab === 'all' ? 'px-5 py-2.5 text-sm font-bold border-b-2 border-indigo-600 text-indigo-600 flex items-center gap-2 whitespace-nowrap transition cursor-pointer' : 'px-5 py-2.5 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer'); ?>">
-            <i data-lucide="layout-grid" class="w-4 h-4"></i> งานทั้งหมด (<?php echo count($activeJobs) + count($completedJobs); ?>)
-        </button>
-        <button type="button" onclick="switchTab('active')" id="tab-active" class="<?php echo ($activeTab === 'active' ? 'px-5 py-2.5 text-sm font-bold border-b-2 border-indigo-600 text-indigo-600 flex items-center gap-2 whitespace-nowrap transition cursor-pointer' : 'px-5 py-2.5 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer'); ?>">
+        <button type="button" onclick="switchTab('active')" id="tab-active" class="<?php echo ($activeTab === 'completed' ? 'px-5 py-2.5 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer' : 'px-5 py-2.5 text-sm font-bold border-b-2 border-indigo-600 text-indigo-600 flex items-center gap-2 whitespace-nowrap transition cursor-pointer'); ?>">
             <i data-lucide="<?php echo $isMaid ? 'sparkles' : 'hammer'; ?>" class="w-4 h-4"></i> งานที่ต้องทำ (<?php echo count($activeJobs); ?>)
         </button>
         <button type="button" onclick="switchTab('completed')" id="tab-completed" class="<?php echo ($activeTab === 'completed' ? 'px-5 py-2.5 text-sm font-bold border-b-2 border-indigo-600 text-indigo-600 flex items-center gap-2 whitespace-nowrap transition cursor-pointer' : 'px-5 py-2.5 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer'); ?>">
@@ -1685,13 +1679,6 @@ function previewCompletionImage(event) {
 
     <!-- ================= แท็บ 1: งานที่ได้รับมอบหมาย ================= -->
     <div id="content-active" class="space-y-4 <?php echo ($activeTab === 'completed' ? 'hidden' : ''); ?>">
-        <div class="flex items-center justify-between gap-2 pb-1">
-            <div class="flex items-center gap-2">
-                <span class="w-3 h-3 rounded-full bg-blue-500 shadow-2xs"></span>
-                <h2 class="text-sm sm:text-base font-bold text-slate-900 font-display">งานที่ต้องทำ / ได้รับมอบหมาย</h2>
-            </div>
-            <span class="text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-0.5 rounded-full font-mono"><?php echo count($activeJobs); ?> รายการ</span>
-        </div>
 
 
 
@@ -2238,14 +2225,7 @@ function previewCompletionImage(event) {
 
 
 
-    <div id="content-completed" class="space-y-4 mt-8 pt-6 border-t border-rose-100/90 <?php echo ($activeTab === 'active' ? 'hidden' : ''); ?>">
-        <div class="flex items-center justify-between gap-2 pb-1">
-            <div class="flex items-center gap-2">
-                <span class="w-3 h-3 rounded-full bg-emerald-500 shadow-2xs"></span>
-                <h2 class="text-sm sm:text-base font-bold text-slate-900 font-display">ประวัติงานที่ทำเสร็จสิ้นแล้ว</h2>
-            </div>
-            <span class="text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full font-mono"><?php echo count($completedJobs); ?> รายการ</span>
-        </div>
+    <div id="content-completed" class="space-y-4 <?php echo ($activeTab === "completed" ? "" : "hidden"); ?>">
 
 
 
@@ -3787,30 +3767,23 @@ function previewCompletionImage(event) {
     function switchTab(tabId) {
         const secActive = document.getElementById('content-active');
         const secCompleted = document.getElementById('content-completed');
-        const tabAll = document.getElementById('tab-all');
         const tabActive = document.getElementById('tab-active');
         const tabCompleted = document.getElementById('tab-completed');
 
         const inactiveClass = "px-5 py-2.5 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap transition cursor-pointer";
         const activeClass = "px-5 py-2.5 text-sm font-bold border-b-2 border-indigo-600 text-indigo-600 flex items-center gap-2 whitespace-nowrap transition cursor-pointer";
 
-        if (tabAll) tabAll.className = inactiveClass;
-        if (tabActive) tabActive.className = inactiveClass;
-        if (tabCompleted) tabCompleted.className = inactiveClass;
-
-        if (tabId === 'active') {
+        if (tabId === 'completed') {
+            if (secActive) secActive.classList.add('hidden');
+            if (secCompleted) secCompleted.classList.remove('hidden');
+            if (tabActive) tabActive.className = inactiveClass;
+            if (tabCompleted) tabCompleted.className = activeClass;
+        } else {
+            tabId = 'active';
             if (secActive) secActive.classList.remove('hidden');
             if (secCompleted) secCompleted.classList.add('hidden');
             if (tabActive) tabActive.className = activeClass;
-        } else if (tabId === 'completed') {
-            if (secActive) secActive.classList.add('hidden');
-            if (secCompleted) secCompleted.classList.remove('hidden');
-            if (tabCompleted) tabCompleted.className = activeClass;
-        } else {
-            tabId = 'all';
-            if (secActive) secActive.classList.remove('hidden');
-            if (secCompleted) secCompleted.classList.remove('hidden');
-            if (tabAll) tabAll.className = activeClass;
+            if (tabCompleted) tabCompleted.className = inactiveClass;
         }
 
         try {
