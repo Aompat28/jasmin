@@ -496,6 +496,33 @@ $invoices = $conn->query("
     ORDER BY i.invoiceId DESC
 ")->fetchAll(PDO::FETCH_ASSOC);
 
+// จัดกลุ่มประวัติบิลตาม roomId สำหรับฟังก์ชัน "ดึงข้อมูลจากบิลเก่า" (Auto-fill from past invoice)
+$roomInvoicesHistory = [];
+foreach ($invoices as $inv) {
+    $rId = (int)$inv['roomId'];
+    if (!isset($roomInvoicesHistory[$rId])) {
+        $roomInvoicesHistory[$rId] = [];
+    }
+    $roomInvoicesHistory[$rId][] = [
+        'invoiceId' => (int)$inv['invoiceId'],
+        'billingMonth' => $inv['billingMonth'],
+        'rentPrice' => (float)$inv['rentPrice'],
+        'waterPrev' => (int)$inv['waterPrev'],
+        'waterCurr' => (int)$inv['waterCurr'],
+        'waterUnits' => max(0, (int)$inv['waterCurr'] - (int)$inv['waterPrev']),
+        'waterUnitRate' => (float)$inv['waterUnitRate'],
+        'electricPrev' => (int)$inv['electricPrev'],
+        'electricCurr' => (int)$inv['electricCurr'],
+        'electricUnits' => max(0, (int)$inv['electricCurr'] - (int)$inv['electricPrev']),
+        'electricUnitRate' => (float)$inv['electricUnitRate'],
+        'otherFee' => (float)$inv['otherFee'],
+        'otherFeeNote' => $inv['otherFeeNote'] ?? '',
+        'totalAmount' => (float)$inv['totalAmount'],
+        'status' => $inv['status'],
+        'createdAt' => !empty($inv['createdAt']) ? date('d/m/Y H:i', strtotime($inv['createdAt'])) : ''
+    ];
+}
+
 // สถิติและจำนวนบิล
 $totalInvoicesCount = count($invoices);
 $pendingApprovalCount = 0;
@@ -1129,6 +1156,58 @@ if ($step === 2) {
                        class="w-full px-4 py-3 bg-white border-2 border-stone-200 hover:border-rose-400 focus:border-rose-500 rounded-2xl text-xs sm:text-sm font-bold text-slate-800 shadow-xs outline-none transition cursor-pointer">
               </div>
               <input type="hidden" name="presetReqId" id="presetReqId" value="<?php echo htmlspecialchars($presetReqId ?? ''); ?>">
+            </div>
+          </div>
+
+          <!-- 🌟 ตัวช่วยดึงข้อมูลจากบิลเก่า (Quick Copy / Auto-fill from Past Invoices) 🌟 -->
+          <div id="pastInvoiceHelperBox" class="p-4 sm:p-5 bg-gradient-to-r from-indigo-50/90 via-purple-50/40 to-indigo-50/90 rounded-2xl border border-indigo-200/80 shadow-xs space-y-3 hidden transition-all">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold shrink-0 shadow-2xs">
+                  <i data-lucide="history" class="w-4 h-4"></i>
+                </div>
+                <div>
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-xs font-bold text-indigo-950 font-display">ดึงข้อมูลจากบิลเก่าของห้องนี้</span>
+                    <span id="pastInvoiceCountBadge" class="text-[10px] px-2.5 py-0.5 rounded-full font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
+                      พบบิลเก่า 0 รอบ
+                    </span>
+                  </div>
+                  <p class="text-[11px] text-slate-500 mt-0.5">คัดลอกเลขมิเตอร์น้ำ-ไฟ และค่าบริการจากบิลรอบก่อนหน้าได้ทันที ไม่ต้องเสียเวลากรอกเอง</p>
+                </div>
+              </div>
+              
+              <!-- Quick 1-Click Button (Latest Bill) -->
+              <button type="button" id="btnQuickCopyLatest" onclick="copyLatestPastInvoice()" class="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0 active:scale-95">
+                <i data-lucide="zap" class="w-3.5 h-3.5 text-amber-300"></i>
+                <span id="quickCopyLatestText">คัดลอกข้อมูลบิลล่าสุด</span>
+              </button>
+            </div>
+
+            <!-- Dropdown Selector for All Past Bills & Reset Button -->
+            <div class="pt-2 border-t border-indigo-100/80 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div class="relative flex-1">
+                <select id="pastInvoiceSelect" onchange="handlePastInvoiceSelect(this.value)" class="w-full pl-3 pr-8 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer shadow-2xs appearance-none">
+                  <option value="">-- หรือเลือกดึงจากบิลรอบอื่นๆ ของห้องนี้ --</option>
+                </select>
+                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5 text-indigo-500">
+                  <i data-lucide="chevron-down" class="w-4 h-4"></i>
+                </div>
+              </div>
+              
+              <button type="button" id="btnResetToDefaults" onclick="resetFormToDefaults()" class="px-3.5 py-2 bg-white hover:bg-rose-50 text-slate-600 hover:text-rose-600 border border-slate-200 hover:border-rose-200 rounded-xl text-xs font-semibold transition shrink-0 flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs" title="ล้างค่าที่คัดลอกและกลับเป็นค่าคำนวณตั้งต้น">
+                <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                <span>รีเซ็ตค่าตั้งต้น</span>
+              </button>
+            </div>
+
+            <!-- Alert / Status Notice when copied -->
+            <div id="pastInvoiceCopiedNotice" class="hidden p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
+              <div class="flex items-center gap-2">
+                <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600 shrink-0"></i>
+                <span id="pastInvoiceCopiedText">ดึงข้อมูลสำเร็จ!</span>
+              </div>
+              <span class="text-[11px] text-emerald-600 font-normal shrink-0">สามารถแก้ไขตัวเลขในฟอร์มด้านล่างเพิ่มเติมได้</span>
             </div>
           </div>
 
@@ -2440,6 +2519,8 @@ if ($step === 2) {
 
     // ข้อมูลประวัติมิเตอร์ตามห้องที่ส่งมาจาก PHP
     window.roomMetersHistory = <?php echo json_encode($roomMetersHistory, JSON_UNESCAPED_UNICODE); ?>;
+    // ข้อมูลประวัติบิลฉบับเต็มตามห้อง สำหรับฟังก์ชันดึงข้อมูลจากบิลเก่า
+    window.allRoomInvoicesHistory = <?php echo json_encode($roomInvoicesHistory, JSON_UNESCAPED_UNICODE); ?>;
 
     const thaiMonthNames = [
       'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
@@ -3016,14 +3097,19 @@ if ($step === 2) {
       const roomSelect = document.getElementById('roomSelect');
       const selectedOpt = (roomSelect && roomSelect.value) ? (roomSelect.selectedOptions[0] || roomSelect.querySelector(`option[value="${roomSelect.value}"]`)) : null;
       if (selectedOpt && selectedOpt.value) {
-        const lastMonth = selectedOpt.getAttribute('data-last-month');
-        if (lastMonth && lastMonth.trim() !== '') {
-          const nextMonth = getNextBillingMonth(lastMonth);
-          setBillingMonthValue(nextMonth);
+        const urlParams = new URLSearchParams(window.location.search);
+        const hasPreset = urlParams.has('presetMonth');
+        if (!hasPreset) {
+          const lastMonth = selectedOpt.getAttribute('data-last-month');
+          if (lastMonth && lastMonth.trim() !== '') {
+            const nextMonth = getNextBillingMonth(lastMonth);
+            setBillingMonthValue(nextMonth);
+          }
         }
       }
       recalculateOtherFees();
       autoFillPreviousMeters(true);
+      updatePastInvoicesHelper();
     }
 
     function handleBillingMonthChange() {
@@ -3099,6 +3185,175 @@ if ($step === 2) {
       }
     }
 
+    // 🌟 ระบบดึงข้อมูลจากบิลเก่าของห้องพัก (Auto-fill / Clone from Past Invoices) 🌟
+    function updatePastInvoicesHelper() {
+      const roomSelect = document.getElementById('roomSelect');
+      const helperBox = document.getElementById('pastInvoiceHelperBox');
+      const countBadge = document.getElementById('pastInvoiceCountBadge');
+      const selectDropdown = document.getElementById('pastInvoiceSelect');
+      const quickBtn = document.getElementById('btnQuickCopyLatest');
+      const quickBtnText = document.getElementById('quickCopyLatestText');
+      const noticeBox = document.getElementById('pastInvoiceCopiedNotice');
+      
+      if (!roomSelect || !helperBox) return;
+      if (noticeBox) noticeBox.classList.add('hidden');
+      
+      const roomId = roomSelect.value;
+      if (!roomId) {
+        helperBox.classList.add('hidden');
+        return;
+      }
+      
+      const history = (window.allRoomInvoicesHistory && window.allRoomInvoicesHistory[roomId]) ? window.allRoomInvoicesHistory[roomId] : [];
+      
+      helperBox.classList.remove('hidden');
+      
+      if (history.length === 0) {
+        if (countBadge) {
+          countBadge.innerText = 'ห้องนี้ยังไม่มีประวัติบิลเก่า';
+          countBadge.className = 'text-[10px] px-2.5 py-0.5 rounded-full font-bold bg-amber-50 text-amber-800 border border-amber-200';
+        }
+        if (quickBtn) quickBtn.classList.add('hidden');
+        if (selectDropdown) {
+          selectDropdown.innerHTML = '<option value="">ห้องนี้ยังไม่มีประวัติบิลเก่าในระบบ (ระบบใช้เลขมิเตอร์ตั้งต้นจากสัญญาเช่า)</option>';
+          selectDropdown.disabled = true;
+        }
+        return;
+      }
+      
+      // มีประวัติบิลเก่าในระบบ
+      if (quickBtn) quickBtn.classList.remove('hidden');
+      if (selectDropdown) selectDropdown.disabled = false;
+      
+      const latest = history[0]; // บิลล่าสุดของห้องนี้
+      if (countBadge) {
+        countBadge.innerText = `พบบิลเก่า ${history.length} รอบในระบบ`;
+        countBadge.className = 'text-[10px] px-2.5 py-0.5 rounded-full font-bold bg-indigo-100 text-indigo-800 border border-indigo-200';
+      }
+      
+      if (quickBtnText) {
+        quickBtnText.innerHTML = `⚡ คัดลอกข้อมูลบิลล่าสุด (${latest.billingMonth} - ฿${Number(latest.totalAmount).toLocaleString('th-TH', {minimumFractionDigits: 2})})`;
+      }
+      
+      // สร้างตัวเลือกใน Dropdown
+      let optionsHtml = `<option value="">-- หรือเลือกดึงจากบิลรอบอื่นๆ ของห้องนี้ (${history.length} รอบ) --</option>`;
+      history.forEach((inv, idx) => {
+        const isLatestTag = (idx === 0) ? ' [ล่าสุด]' : '';
+        optionsHtml += `<option value="${inv.invoiceId}">รอบ ${inv.billingMonth}${isLatestTag} | ยอดรวม ฿${Number(inv.totalAmount).toLocaleString('th-TH', {minimumFractionDigits: 2})} (น้ำ ${inv.waterUnits} น. | ไฟ ${inv.electricUnits} น. | ค่าบริการ ฿${Number(inv.otherFee).toFixed(2)})</option>`;
+      });
+      if (selectDropdown) {
+        selectDropdown.innerHTML = optionsHtml;
+        selectDropdown.value = '';
+      }
+    }
+
+    function copyLatestPastInvoice() {
+      const roomSelect = document.getElementById('roomSelect');
+      if (!roomSelect || !roomSelect.value) {
+        alert('กรุณาเลือกห้องพักก่อนครับ');
+        return;
+      }
+      const history = (window.allRoomInvoicesHistory && window.allRoomInvoicesHistory[roomSelect.value]) ? window.allRoomInvoicesHistory[roomSelect.value] : [];
+      if (history.length > 0) {
+        applyPastInvoiceData(history[0]);
+      }
+    }
+
+    function handlePastInvoiceSelect(invId) {
+      if (!invId) return;
+      const roomSelect = document.getElementById('roomSelect');
+      if (!roomSelect || !roomSelect.value) return;
+      const history = (window.allRoomInvoicesHistory && window.allRoomInvoicesHistory[roomSelect.value]) ? window.allRoomInvoicesHistory[roomSelect.value] : [];
+      const found = history.find(inv => String(inv.invoiceId) === String(invId));
+      if (found) {
+        applyPastInvoiceData(found);
+      }
+    }
+
+    function applyPastInvoiceData(inv) {
+      if (!inv) return;
+
+      // 1. เติมเลขมิเตอร์น้ำ
+      const waterPrev = document.getElementById('waterPrev');
+      const waterCurr = document.getElementById('waterCurr');
+      if (waterPrev) waterPrev.value = inv.waterPrev;
+      if (waterCurr) waterCurr.value = inv.waterCurr;
+
+      // 2. เติมเลขมิเตอร์ไฟ
+      const electricPrev = document.getElementById('electricPrev');
+      const electricCurr = document.getElementById('electricCurr');
+      if (electricPrev) electricPrev.value = inv.electricPrev;
+      if (electricCurr) electricCurr.value = inv.electricCurr;
+
+      // 3. ปรับค่าบริการอื่นๆ
+      const allCheckboxes = document.querySelectorAll('.other-fee-checkbox');
+      allCheckboxes.forEach(cb => {
+        cb.checked = false;
+      });
+      clearCustomFee();
+
+      if (inv.otherFeeNote && inv.otherFeeNote.trim() !== '') {
+        const noteStr = inv.otherFeeNote;
+        allCheckboxes.forEach(cb => {
+          const name = cb.getAttribute('data-name');
+          if (name && noteStr.includes(name)) {
+            cb.checked = true;
+          }
+        });
+      }
+      
+      recalculateOtherFees();
+
+      // ถ้ายอดรวมค่าบริการอื่นๆ ไม่ตรงกับบิลเก่า
+      const inputOtherFee = document.getElementById('inputOtherFee');
+      if (inputOtherFee && parseFloat(inv.otherFee) >= 0) {
+        const currentSum = parseFloat(inputOtherFee.value || 0);
+        const diff = parseFloat(inv.otherFee) - currentSum;
+        if (Math.abs(diff) > 0.01) {
+          const customNameInput = document.getElementById('customFeeName');
+          const customAmtInput = document.getElementById('customFeeAmount');
+          if (customNameInput && customAmtInput) {
+            customNameInput.value = 'ปรับปรุงยอดตามบิลเดิม';
+            customAmtInput.value = (parseFloat(customAmtInput.value || 0) + diff).toFixed(2);
+            recalculateOtherFees();
+          }
+        }
+      }
+
+      // 4. คำนวณยอดรวมสุทธิสด
+      calculateLiveTotal();
+
+      // 5. แสดงผลข้อความแจ้งเตือนสำเร็จ
+      const noticeBox = document.getElementById('pastInvoiceCopiedNotice');
+      const noticeText = document.getElementById('pastInvoiceCopiedText');
+      if (noticeBox && noticeText) {
+        noticeText.innerHTML = `<strong>✓ ดึงข้อมูลสำเร็จจากบิลรอบ ${inv.billingMonth}!</strong> (น้ำ ${inv.waterUnits} หน่วย [${inv.waterPrev} ➔ ${inv.waterCurr}], ไฟ ${inv.electricUnits} หน่วย [${inv.electricPrev} ➔ ${inv.electricCurr}], ค่าบริการ ฿${Number(inv.otherFee).toFixed(2)}, ยอดรวม ฿${Number(inv.totalAmount).toLocaleString('th-TH', {minimumFractionDigits: 2})})`;
+        noticeBox.classList.remove('hidden');
+      }
+
+      // ซิงค์ค่าใน dropdown
+      const selectDropdown = document.getElementById('pastInvoiceSelect');
+      if (selectDropdown) selectDropdown.value = String(inv.invoiceId);
+
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function resetFormToDefaults() {
+      autoFillPreviousMeters(false);
+      const waterCurr = document.getElementById('waterCurr');
+      const electricCurr = document.getElementById('electricCurr');
+      if (waterCurr) waterCurr.value = '';
+      if (electricCurr) electricCurr.value = '';
+      clearOtherFees();
+      recalculateOtherFees();
+      calculateLiveTotal();
+      
+      const noticeBox = document.getElementById('pastInvoiceCopiedNotice');
+      if (noticeBox) noticeBox.classList.add('hidden');
+      const selectDropdown = document.getElementById('pastInvoiceSelect');
+      if (selectDropdown) selectDropdown.value = '';
+    }
+
     // ปิดการแจ้งเตือนอัตโนมัติ 4 วินาที และเรียก autoFill หากมีห้องถูกเลือกค้างไว้
     document.addEventListener("DOMContentLoaded", function() {
       // โหลดและคำนวณค่าบริการประจำเดือน (ค่าขยะ, ค่าส่วนกลาง ที่ล็อกไว้) อัตโนมัติ
@@ -3107,6 +3362,7 @@ if ($step === 2) {
       const roomSelect = document.getElementById('roomSelect');
       if (roomSelect && roomSelect.value) {
         autoFillPreviousMeters(false);
+        updatePastInvoicesHelper();
       }
 
       const alerts = document.querySelectorAll(".alert-box");
@@ -3159,10 +3415,11 @@ if ($step === 2) {
 
     // คลิกที่แถวใบแจ้งหนี้เพื่อเปิดดูรายละเอียดแบบเต็มจอ
     document.addEventListener("DOMContentLoaded", function() {
-      // หากมีการส่งค่า presetRoomId มาจากคำขอ ให้รัน autoFillPreviousMeters
+      // หากมีการส่งค่า presetRoomId มาจากคำขอ ให้รัน autoFillPreviousMeters และ updatePastInvoicesHelper
       const roomSelect = document.getElementById('roomSelect');
       if (roomSelect && roomSelect.value) {
         autoFillPreviousMeters(false);
+        updatePastInvoicesHelper();
       }
 
       document.querySelectorAll('.invoice-row').forEach(row => {
