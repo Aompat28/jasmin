@@ -577,285 +577,14 @@ if ($myLease && !empty($myLease['settledAt'])) {
 
   <title>jasmin</title>
 
-  <script src="https://cdn.tailwindcss.com">
-    function toggleCustomDropdown(menuId, chevronId, e) {
-        if (e) e.stopPropagation();
-        const menu = document.getElementById(menuId);
-        const chevron = document.getElementById(chevronId);
-        // Close others
-        ['reasonDropdownMenu', 'bankDropdownMenu'].forEach(id => {
-            if (id !== menuId) {
-                const el = document.getElementById(id);
-                if (el) el.classList.add('hidden');
-            }
-        });
-        if (menu) {
-            const isHidden = menu.classList.contains('hidden');
-            menu.classList.toggle('hidden');
-            if (chevron) {
-                if (isHidden) chevron.classList.add('rotate-180');
-                else chevron.classList.remove('rotate-180');
-            }
-        }
-        if (window.lucide) lucide.createIcons();
-    }
-
-    function selectReasonOption(val, icon, e) {
-        if (e) e.stopPropagation();
-        const input = document.getElementById('reasonSelectInput');
-        if (input) input.value = val;
-        
-        const triggerText = document.getElementById('reasonTriggerText');
-        if (triggerText) triggerText.innerText = (val === 'custom') ? 'อื่นๆ (ระบุเอง)' : val;
-        
-        const triggerIcon = document.getElementById('reasonTriggerIcon');
-        if (triggerIcon) triggerIcon.innerText = icon;
-
-        const textEl = document.getElementById('reasonText');
-        if (textEl) {
-            if (val === 'custom') {
-                textEl.value = '';
-                textEl.focus();
-            } else {
-                textEl.value = val;
-            }
-        }
-
-        const menu = document.getElementById('reasonDropdownMenu');
-        if (menu) menu.classList.add('hidden');
-        const chevron = document.getElementById('reasonChevron');
-        if (chevron) chevron.classList.remove('rotate-180');
-    }
-
-    function selectBankOption(val, icon, badge, badgeClass, e) {
-        if (e) e.stopPropagation();
-        const input = document.getElementById('bankNameInput');
-        if (input) input.value = val;
-
-        const triggerText = document.getElementById('bankTriggerText');
-        if (triggerText) {
-            triggerText.innerText = val;
-            triggerText.className = 'text-slate-800 font-bold';
-        }
-
-        const triggerBadge = document.getElementById('bankTriggerBadge');
-        if (triggerBadge) {
-            triggerBadge.innerText = badge;
-            triggerBadge.className = 'px-1.5 py-0.5 rounded-md text-[10px] font-bold ' + badgeClass;
-        }
-
-        const menu = document.getElementById('bankDropdownMenu');
-        if (menu) menu.classList.add('hidden');
-        const chevron = document.getElementById('bankChevron');
-        if (chevron) chevron.classList.remove('rotate-180');
-    }
-
-    document.addEventListener('click', function(e) {
-        if (!e.target.closest('#customReasonDropdown')) {
-            const rMenu = document.getElementById('reasonDropdownMenu');
-            if (rMenu) rMenu.classList.add('hidden');
-            const rCh = document.getElementById('reasonChevron');
-            if (rCh) rCh.classList.remove('rotate-180');
-        }
-        if (!e.target.closest('#customBankDropdown')) {
-            const bMenu = document.getElementById('bankDropdownMenu');
-            if (bMenu) bMenu.classList.add('hidden');
-            const bCh = document.getElementById('bankChevron');
-            if (bCh) bCh.classList.remove('rotate-180');
-        }
-    });
-
-</script>
-
+  <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&family=Kanit:wght@400;500;600;700&display=swap" rel="stylesheet">
-
-  <script src="https://unpkg.com/lucide@latest">
-    function toggleCustomDropdown(menuId, chevronId, e) {
-        if (e) e.stopPropagation();
-        const menu = document.getElementById(menuId);
-        const chevron = document.getElementById(chevronId);
-        // Close others
-        ['reasonDropdownMenu', 'bankDropdownMenu'].forEach(id => {
-            if (id !== menuId) {
-                const el = document.getElementById(id);
-                if (el) el.classList.add('hidden');
-            }
-        });
-        if (menu) {
-            const isHidden = menu.classList.contains('hidden');
-            menu.classList.toggle('hidden');
-            if (chevron) {
-                if (isHidden) chevron.classList.add('rotate-180');
-                else chevron.classList.remove('rotate-180');
-            }
-        }
-        if (window.lucide) lucide.createIcons();
-    }
-
-    function selectReasonOption(val, icon, e) {
-        if (e) e.stopPropagation();
-        const input = document.getElementById('reasonSelectInput');
-        if (input) input.value = val;
-        
-        const triggerText = document.getElementById('reasonTriggerText');
-        if (triggerText) triggerText.innerText = (val === 'custom') ? 'อื่นๆ (ระบุเอง)' : val;
-        
-        const triggerIcon = document.getElementById('reasonTriggerIcon');
-        if (triggerIcon) triggerIcon.innerText = icon;
-
-        const textEl = document.getElementById('reasonText');
-        if (textEl) {
-            if (val === 'custom') {
-                textEl.value = '';
-                textEl.focus();
-            } else {
-                textEl.value = val;
-            }
-        }
-
-        const menu = document.getElementById('reasonDropdownMenu');
-        if (menu) menu.classList.add('hidden');
-        const chevron = document.getElementById('reasonChevron');
-        if (chevron) chevron.classList.remove('rotate-180');
-    }
-
-    function selectBankOption(val, icon, badge, badgeClass, e) {
-        if (e) e.stopPropagation();
-        const input = document.getElementById('bankNameInput');
-        if (input) input.value = val;
-
-        const triggerText = document.getElementById('bankTriggerText');
-        if (triggerText) {
-            triggerText.innerText = val;
-            triggerText.className = 'text-slate-800 font-bold';
-        }
-
-        const triggerBadge = document.getElementById('bankTriggerBadge');
-        if (triggerBadge) {
-            triggerBadge.innerText = badge;
-            triggerBadge.className = 'px-1.5 py-0.5 rounded-md text-[10px] font-bold ' + badgeClass;
-        }
-
-        const menu = document.getElementById('bankDropdownMenu');
-        if (menu) menu.classList.add('hidden');
-        const chevron = document.getElementById('bankChevron');
-        if (chevron) chevron.classList.remove('rotate-180');
-    }
-
-    document.addEventListener('click', function(e) {
-        if (!e.target.closest('#customReasonDropdown')) {
-            const rMenu = document.getElementById('reasonDropdownMenu');
-            if (rMenu) rMenu.classList.add('hidden');
-            const rCh = document.getElementById('reasonChevron');
-            if (rCh) rCh.classList.remove('rotate-180');
-        }
-        if (!e.target.closest('#customBankDropdown')) {
-            const bMenu = document.getElementById('bankDropdownMenu');
-            if (bMenu) bMenu.classList.add('hidden');
-            const bCh = document.getElementById('bankChevron');
-            if (bCh) bCh.classList.remove('rotate-180');
-        }
-    });
-
-</script>
-
+  <script src="https://unpkg.com/lucide@latest"></script>
   <script>
-
     tailwind.config = {
-
-      theme: { extend: { fontFamily: { sans: ['Prompt', 'sans-serif'], display: ['Kanit', 'sans-serif'] } } }
-
+      theme: { extend: { fontFamily: { sans: ["Prompt", "sans-serif"], display: ["Kanit", "sans-serif"] } } }
     }
-
-  
-    function toggleCustomDropdown(menuId, chevronId, e) {
-        if (e) e.stopPropagation();
-        const menu = document.getElementById(menuId);
-        const chevron = document.getElementById(chevronId);
-        // Close others
-        ['reasonDropdownMenu', 'bankDropdownMenu'].forEach(id => {
-            if (id !== menuId) {
-                const el = document.getElementById(id);
-                if (el) el.classList.add('hidden');
-            }
-        });
-        if (menu) {
-            const isHidden = menu.classList.contains('hidden');
-            menu.classList.toggle('hidden');
-            if (chevron) {
-                if (isHidden) chevron.classList.add('rotate-180');
-                else chevron.classList.remove('rotate-180');
-            }
-        }
-        if (window.lucide) lucide.createIcons();
-    }
-
-    function selectReasonOption(val, icon, e) {
-        if (e) e.stopPropagation();
-        const input = document.getElementById('reasonSelectInput');
-        if (input) input.value = val;
-        
-        const triggerText = document.getElementById('reasonTriggerText');
-        if (triggerText) triggerText.innerText = (val === 'custom') ? 'อื่นๆ (ระบุเอง)' : val;
-        
-        const triggerIcon = document.getElementById('reasonTriggerIcon');
-        if (triggerIcon) triggerIcon.innerText = icon;
-
-        const textEl = document.getElementById('reasonText');
-        if (textEl) {
-            if (val === 'custom') {
-                textEl.value = '';
-                textEl.focus();
-            } else {
-                textEl.value = val;
-            }
-        }
-
-        const menu = document.getElementById('reasonDropdownMenu');
-        if (menu) menu.classList.add('hidden');
-        const chevron = document.getElementById('reasonChevron');
-        if (chevron) chevron.classList.remove('rotate-180');
-    }
-
-    function selectBankOption(val, icon, badge, badgeClass, e) {
-        if (e) e.stopPropagation();
-        const input = document.getElementById('bankNameInput');
-        if (input) input.value = val;
-
-        const triggerText = document.getElementById('bankTriggerText');
-        if (triggerText) {
-            triggerText.innerText = val;
-            triggerText.className = 'text-slate-800 font-bold';
-        }
-
-        const triggerBadge = document.getElementById('bankTriggerBadge');
-        if (triggerBadge) {
-            triggerBadge.innerText = badge;
-            triggerBadge.className = 'px-1.5 py-0.5 rounded-md text-[10px] font-bold ' + badgeClass;
-        }
-
-        const menu = document.getElementById('bankDropdownMenu');
-        if (menu) menu.classList.add('hidden');
-        const chevron = document.getElementById('bankChevron');
-        if (chevron) chevron.classList.remove('rotate-180');
-    }
-
-    document.addEventListener('click', function(e) {
-        if (!e.target.closest('#customReasonDropdown')) {
-            const rMenu = document.getElementById('reasonDropdownMenu');
-            if (rMenu) rMenu.classList.add('hidden');
-            const rCh = document.getElementById('reasonChevron');
-            if (rCh) rCh.classList.remove('rotate-180');
-        }
-        if (!e.target.closest('#customBankDropdown')) {
-            const bMenu = document.getElementById('bankDropdownMenu');
-            if (bMenu) bMenu.classList.add('hidden');
-            const bCh = document.getElementById('bankChevron');
-            if (bCh) bCh.classList.remove('rotate-180');
-        }
-    });
-
-</script>
+  </script>
 
   <style>
 
@@ -1665,11 +1394,11 @@ if ($myLease && !empty($myLease['settledAt'])) {
 
 
 
-        <form action="" method="POST" id="cancelMoveOutForm" data-confirm="คุณแน่ใจหรือไม่ว่าต้องการยกเลิกคำขอแจ้งย้ายออกนี้? (สถานะห้องจะกลับเป็นปกติ)">
+        <form action="" method="POST" id="cancelMoveOutForm">
 
           <input type="hidden" name="cancel_move_out" value="1">
 
-          <button type="submit" name="cancel_move_out" value="1" class="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-xl transition flex items-center justify-center gap-2 cursor-pointer">
+          <button type="button" onclick="confirmCancelMoveOut()" class="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-xl transition flex items-center justify-center gap-2 cursor-pointer">
 
             <i data-lucide="rotate-ccw" class="w-4 h-4"></i> ยกเลิกคำขอแจ้งย้ายออก (กลับสู่สถานะปกติ)
 
@@ -2345,134 +2074,50 @@ if ($myLease && !empty($myLease['settledAt'])) {
         }
     });
 
+
+    function confirmCancelMoveOut() {
+        if (typeof Swal !== "undefined") {
+            Swal.fire({
+                title: "ยืนยันยกเลิกคำขอแจ้งย้ายออก?",
+                html: "<span class=\"text-sm text-slate-600\">สถานะห้องพักของคุณจะกลับสู่สัญญาเช่าปกติทันที</span>",
+                icon: "warning",
+                showCancelButton: true,
+                confirmButtonColor: "#e11d48",
+                cancelButtonColor: "#64748b",
+                confirmButtonText: "ใช่, ยกเลิกคำขอ",
+                cancelButtonText: "ปิด",
+                reverseButtons: true,
+                customClass: {
+                    popup: "rounded-3xl shadow-2xl font-sans border border-rose-100/60 p-6",
+                    confirmButton: "rounded-xl px-5 py-2.5 font-bold text-sm shadow-md",
+                    cancelButton: "rounded-xl px-5 py-2.5 font-semibold text-sm"
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const form = document.getElementById("cancelMoveOutForm");
+                    form.setAttribute("data-swal-submitted", "true");
+                    form.submit();
+                }
+            });
+        } else {
+            if (confirm("ยืนยันยกเลิกคำขอแจ้งย้ายออก? สถานะห้องพักของคุณจะกลับสู่สัญญาเช่าปกติ")) {
+                document.getElementById("cancelMoveOutForm").submit();
+            }
+        }
+    }
+
 </script>
 
 
 
   <?php if (isset($_GET['cancelled']) && $_GET['cancelled'] === '1'): ?>
-
     <script>
-
-      document.addEventListener('DOMContentLoaded', function() {
-
-          if (typeof Swal !== 'undefined') {
-
-              Swal.fire({
-
-                  title: 'ยกเลิกคำขอเรียบร้อยแล้ว!',
-
-                  html: 'คุณได้ทำการยกเลิกคำขอแจ้งย้ายออกแล้ว<br><span class="text-xs text-slate-500 mt-2 block">สถานะห้องพักกลับสู่สัญญาเช่าปกติ และข้อมูลการขอย้ายออกจะไม่แสดงให้เห็นทั้งฝั่งผู้เช่าและแอดมิน</span>',
-
-                  icon: 'success',
-
-                  confirmButtonColor: '#10b981',
-
-                  confirmButtonText: 'ตกลง',
-
-                  customClass: {
-
-                      popup: 'rounded-3xl shadow-2xl font-sans border border-rose-100/60 p-6',
-
-                      confirmButton: 'rounded-xl px-6 py-2.5 font-bold text-sm shadow-md'
-
-                  }
-
-              });
-
-          }
-
-      });
-
-    
-    function toggleCustomDropdown(menuId, chevronId, e) {
-        if (e) e.stopPropagation();
-        const menu = document.getElementById(menuId);
-        const chevron = document.getElementById(chevronId);
-        // Close others
-        ['reasonDropdownMenu', 'bankDropdownMenu'].forEach(id => {
-            if (id !== menuId) {
-                const el = document.getElementById(id);
-                if (el) el.classList.add('hidden');
-            }
-        });
-        if (menu) {
-            const isHidden = menu.classList.contains('hidden');
-            menu.classList.toggle('hidden');
-            if (chevron) {
-                if (isHidden) chevron.classList.add('rotate-180');
-                else chevron.classList.remove('rotate-180');
-            }
-        }
-        if (window.lucide) lucide.createIcons();
-    }
-
-    function selectReasonOption(val, icon, e) {
-        if (e) e.stopPropagation();
-        const input = document.getElementById('reasonSelectInput');
-        if (input) input.value = val;
-        
-        const triggerText = document.getElementById('reasonTriggerText');
-        if (triggerText) triggerText.innerText = (val === 'custom') ? 'อื่นๆ (ระบุเอง)' : val;
-        
-        const triggerIcon = document.getElementById('reasonTriggerIcon');
-        if (triggerIcon) triggerIcon.innerText = icon;
-
-        const textEl = document.getElementById('reasonText');
-        if (textEl) {
-            if (val === 'custom') {
-                textEl.value = '';
-                textEl.focus();
-            } else {
-                textEl.value = val;
-            }
-        }
-
-        const menu = document.getElementById('reasonDropdownMenu');
-        if (menu) menu.classList.add('hidden');
-        const chevron = document.getElementById('reasonChevron');
-        if (chevron) chevron.classList.remove('rotate-180');
-    }
-
-    function selectBankOption(val, icon, badge, badgeClass, e) {
-        if (e) e.stopPropagation();
-        const input = document.getElementById('bankNameInput');
-        if (input) input.value = val;
-
-        const triggerText = document.getElementById('bankTriggerText');
-        if (triggerText) {
-            triggerText.innerText = val;
-            triggerText.className = 'text-slate-800 font-bold';
-        }
-
-        const triggerBadge = document.getElementById('bankTriggerBadge');
-        if (triggerBadge) {
-            triggerBadge.innerText = badge;
-            triggerBadge.className = 'px-1.5 py-0.5 rounded-md text-[10px] font-bold ' + badgeClass;
-        }
-
-        const menu = document.getElementById('bankDropdownMenu');
-        if (menu) menu.classList.add('hidden');
-        const chevron = document.getElementById('bankChevron');
-        if (chevron) chevron.classList.remove('rotate-180');
-    }
-
-    document.addEventListener('click', function(e) {
-        if (!e.target.closest('#customReasonDropdown')) {
-            const rMenu = document.getElementById('reasonDropdownMenu');
-            if (rMenu) rMenu.classList.add('hidden');
-            const rCh = document.getElementById('reasonChevron');
-            if (rCh) rCh.classList.remove('rotate-180');
-        }
-        if (!e.target.closest('#customBankDropdown')) {
-            const bMenu = document.getElementById('bankDropdownMenu');
-            if (bMenu) bMenu.classList.add('hidden');
-            const bCh = document.getElementById('bankChevron');
-            if (bCh) bCh.classList.remove('rotate-180');
-        }
-    });
-
-</script>
-
+      // เคลียร์พารามิเตอร์ ?cancelled=1 ออกจาก URL ทันที เพื่อไม่ให้รีเฟรชหน้าแล้วเกิดการทำงานซ้ำ
+      if (window.history.replaceState) {
+          const cleanUrl = window.location.protocol + '//' + window.location.host + window.location.pathname;
+          window.history.replaceState({ path: cleanUrl }, '', cleanUrl);
+      }
+    </script>
   <?php endif; ?>
 
 </body>
